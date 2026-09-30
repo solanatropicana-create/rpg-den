@@ -1,0 +1,25 @@
+{
+  "name": "fantastik-dunya",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "build": "node build.mjs",
+    "sim": "tsx src/headless.ts",
+    "sim:v": "tsx src/headless.ts 1 1800 -v",
+    "typecheck": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/three": "^0.169.0",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "private": true,
+  "dependencies": {
+    "three": "^0.169.0"
+  }
+}

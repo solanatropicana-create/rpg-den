@@ -1,0 +1,101 @@
+# Fantastik Dünya — Durum (v0.22, 30 Eylül 2026)
+
+Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tanımsız; amaç, dokunmadan onlarca dakika izlenebilen bir dünya.
+
+## Simülasyon
+- **Dünya:** 110×75 hex, organik kıta: girintili kıyılar, yarımadalar, körfezler, iç göller, dağdan denize akan nehirler, açıkta adalar. Açık deniz geçilmez; kıyı hexleri açığa doğru derinleşir. 8 biyom. Aynı seed her ortamda aynı dünyayı üretir.
+- **Medeniyetler:** 12 D&D sınıfının hepsi oynanır; her dünyada 7–9'u seçilir. Her sınıfın:
+  - kendi ırkı ve 8 düğümlü ağacı,
+  - 3 alt sınıfı (kalıcı doktrin) ve uç gücü,
+  - özel birimleri, yıllık özel olayı ve Krallık çağında dikilen harikası var.
+  - Paktçı ilk kötü medeniyet; paladinler ona Kutsal Sefer açar.
+- **Ekonomi:**
+  - Birkaç hex'e yayılmış, tükenen maden yatakları.
+  - Çıkarma yapıları L1–L3 (araştırmayla açılır, kaynakla yükseltilir).
+  - Atölye zincirleri, fiyata göre iş bölümü, depo sınırı, bozulma, kıtlık.
+- **Araştırma:** 38 düğümlü ana ağaç, 4 çağ (Kamp → Köy → Kasaba → Krallık). Kaynağı olmayan medeniyet pahalı yoldan ilerler.
+- **İlişkiler:**
+  - Kaynak çekişmesi ve antlaşmalar, toprak hırsı, savaş ve barış süresi.
+  - Yağma akınları, casusluk, suikast.
+  - Göç, mülteci, melez doğumlar.
+- **Canavarlar:** Büyüyen ve yayılan goblin kampları, hobgoblin karakolları, bugbear inleri. Medeniyetler işgal edilen yataklara sefer düzenler.
+- **Saldırıların kalıcı zararı:** Canavarlar tarlaya, iskeleye, madene tek tek saldırır. İşçiler ölür, mal çalınır, yapı yanar ve odunla yeniden kurulana dek üretim durur. Savaş orduları geçtikleri düşman topraklarını yakar, baskınlarda evler yanar ve konut azalır.
+- **Konut ve barakalar:** Nüfus konut kapasitesini aşarsa (göç, fetih, mülteci, yanan evler) fazlası sur dışında barakada yaşar. Barakalar salgın ve yangın riskini artırır, evsizler aynı medeniyette boş evi olan yerleşime yürür, inşaatçılar önce ev yapar.
+- **Dünya olayları:** Kalabalık kasabalarda salgın çıkar ve ticaret yollarıyla yayılır; hekimlik, şifa evi ve tapınak korur, ölüler kasaba dışındaki mezarlığı büyütür. Ahşap kasabalarda (özellikle yazın) yangın çıkar. Kıtlıkta aç halk yürüyerek komşu medeniyete sığınır.
+- **Tarafsız hanlar:** Sınır bölgelerinde, hiçbir medeniyete ait olmayan 2–4 han (medeniyet − 2). Sınır genişlemesi hanı ve çevresini alamaz.
+  - Her han yılda 1–2 karışık ırklı serbest kahraman üretir (havuz 6). Kahraman hana girince 1 yıllık açık artırma açılır; kazanan medeniyet 5 yıllık sözleşme imzalar. Sözleşme sonunda sadakat zarı (d20 + yıl + ödeme, DC 12): tutmazsa kahraman hana döner. Medeniyet başına en çok 2 han kahramanı.
+  - Hizalama kuralı: iyi kahraman Paktçı'ya, kötü kahraman paladine çalışmaz. İtibarı 3 olan kahraman o medeniyete %20 indirimli sayılır.
+  - Görev panosu: medeniyetler canavar ilanını en yakın hana asar, hancı da hana yakın kampa ilan açar. İlan 3 yıl açık kalır; başarısız sefer ödülü %25 artırır.
+  - Misafir hakkı: hanı basan medeniyet herkesle −30 (Paktçı −15) alır ve 5 yıl "Han Bozan" olarak kahraman kiralayamaz. Paktçı ara sıra han basar, bu paladinlerin Kutsal Sefer eşiğini düşürür. Canavarlar da hana saldırır; hanı handaki kahramanlar savunur, düşerse harabe olur ve 3 yıl sonra yeniden kurulur.
+- **Kahramanlar:** Handa ya da tavernada doğar. Kiralanana dek kendi yolunu izler; kiralanınca yolu askıya alınır.
+  - Yollar: Avcı (kamp kovalar), Gezgin (harabe keşfi), Şifacı (salgınlı kasabaya şifa, hac), Bilge (kütüphaneler), Paralı (en yüksek ilan), Karanlık (kervan soyar; iyi kahramanlar onu düelloda avlar). Her mevsim hedef seçer: puan = yol uyumu × ödül / risk × mesafe.
+  - Olaylar yolu değiştirir: doğduğu yer canavarca yakılan kahraman intikamcı olur; partisinin tek sağ kalanı Yalnız Kurt olur; art arda yenilen kötü kahraman karanlık yola sapar.
+  - İzler: Goblin Kıran, Veba Yürüyüşçüsü, Yalnız Kurt, Harabe Kurdu, İntikamcı, Efsane. Kamp önderini nat 20 ile deviren lakap kazanır. Seviye atlarken bonus, yaşadıklarına göre seçilir.
+  - Son: seviye tavanı ya da 5 kamp → efsane (ozan şarkısı, han önüne heykel). Yaşlı ünlü kahraman emekli olur: handa öğretmen (yetiştirdikleri +1 seviye doğar) ya da hancı. Ölen han kahramanı hanın mezarlığına gömülür.
+- **Savaş:** d20 tabanlı çarpışma; nat 20/1 anları, kahraman yetenekleri, sınıf etkileri.
+- **Test:** 15 yıllık koşularda test ölçütleri 16 dünyanın 15'inde geçer (kalan dünyada bazen hiçbir maden yatağı tükenmez). 25 yıllık koşularda hiçbir medeniyet yok olmaz ve eski ölçütlerin hepsi 16/16 geçer.
+  - Han ölçütleri (16 dünya, 25 yıl): her dünyada 4 han; hiçbir medeniyet han kiralamalarının yarısını almaz (16/16); Paktçılı dünyalarda en çok 2 han baskını. Tamamlanan ilan dünya başına ~4 (hedef 6; 3/16 geçer). Han kahramanlarının ~%29'u (%22–37) en az bir kez kiralanır (hedef %40). 25. yılda canavar kampı eskisine göre %5–24 az (dünyalar arası fark büyük).
+
+## Görünüm (Three.js)
+- **Dünya:** Kesintisiz low-poly 3B arazi, silik hex ızgarası, çizgi sınırlar.
+- **Yerleşimler:**
+  - Ev sayısı gerçek konut sayısı kadar. Atölyeler, pazar, taverna, tapınak ve kütüphane ayrı binalar; şantiyeler görünür.
+  - Irka göre binalar ve harikalar.
+  - Zemini izleyen surlar ve kapılar.
+  - Harabeler.
+  - Kazıklar üstünde iskele, balıkçı kulübesi ve ağ.
+- **Figürler:**
+  - Nüfusa orantılı halk, simülasyondaki iş dağılımıyla çalışır: sabah evden işe gider, akşam döner. Gece evde; meyhanede birkaç kişi kalır, nöbetçiler fenerle devriye gezer.
+  - Irk, sınıf, iş aleti ve iş hareketleri.
+  - Görünür ekonomi: taşıyıcılar ürünü kasabaya götürür, iskelelerden balıkçı tekneleri açılır, tarlada ekin mevsime göre büyüyüp hasat edilir, meralarda koyunlar otlar.
+  - Atlar, kervanlar, ordular.
+  - Kamp ateşinde goblinler.
+  - Hanlarda: iki katlı taş-ahşap bina, tabela, kuyu, ahırda farklı renkte binekler, açık ilan kadar kâğıt asılı pano, arkada kahraman mezarlığı, efsane heykelleri. Serbest kahramanlar gündüz avluda talim eder, gece içeride kalır; hancı avluda dolaşır. Gece hanın yanında meyhane ezgisi çalar.
+  - Yollarda yolcular, çuvallı köylüler, öküz arabaları.
+- **Kasaba hayatı:**
+  - Meydanda kuyu, pazar tezgâhları, çamaşır ipleri.
+  - Oynayan çocuklar, peşlerinde köpek, evlerin önünde tavuklar.
+  - Hasat ve kış şenliğinde bayraklı meydanda halka dansı, ozan ve gece şenlik ateşi. Başkentteki bayram akışa düşer.
+  - Duruma göre sahneler: kıtlıkta ekmek kuyruğu, salgında karantina bayrağı ve ceset arabası, savaşta talim, yanan evlerde onaran ustalar.
+  - Yakın planda figürler gerçekçi ölçüye iner.
+  - Her kasabalının günlük planı var: şafakta işe, bazıları öğlen meydanda mola, akşam eve ya da meyhaneye, gece uyku.
+  - Her ev bir hane: soyadı, doluluk (5/6), üyelerin işleri, çocuklar, yaşlılar. Kasabalılar kendi evlerine girip çıkar. Nüfus merkezden dışa evlere dağılır; boş evin penceresi yanmaz, dolu evin bacası tüter. Konutsuzlar sur dışında çadır ve derme çatma kulübelerde, ateş başında.
+  - Kişinin üstüne gelince adı, ırkı, işi ve ne yaptığı görünür. Tıklayınca kamera onu izler; kart yaşını, işini ve gününün neresinde olduğunu gösterir. Baş üstü simgeler hâli gösterir (🍞 🤒 🎵 🔨 ⚔).
+- **Ses:** WebAudio ile üretilen ortam sesi (hoparlör ikonu / M): rüzgâr, dalga, kalabalık, çekiç, kuş, cırcır böceği, yağmur, çarpışma, meyhane ve bayram ezgisi. Kameranın baktığı yere göre değişir.
+- **Atmosfer:** Mevsimler, gece-gündüz, gök kubbesi ve gün batımı, ay ışığı, yıldızlar, dalgalı deniz ve kıyı köpüğü, bulut gölgeleri, kar, yağmur, kuşlar, çimen ve çiçekler. Gece pencereler yanar, fener ve ateş parlar (yüksek kalitede ışık parlaması).
+- **Kenar yumuşatma (v0.19):** Son işlem zinciri MSAA'lı hedefe çizer (Yüksek/Orta 4×, Düşük 2×); son işlem kapalıyken doğrudan ekrana, tarayıcının kendi antialias'ıyla çizer. Çözünürlük hiçbir kalitede 1'in altına inmez (eskiden Düşük 0.75'ti). Yıldızlar ve kar kare piksel yerine yumuşak yuvarlak nokta.
+- **Görsel cila (v0.22):**
+  - Duman yumuşak, kameraya dönük bulutçuklar: bacadan ince beyaz, yangından kalın kara sütun. Duman gerçek baca ağzından çıkar.
+  - Maden, yamaca oyulmuş galeri ve cevher yığını. Taş ocağı kademeli taş yüzü, kil çukuru kuruyan kerpiç sıraları. Bataklıkta yuvarlak gölcük ve püsküllü saz. Taş surlarda gözcü kuleleri.
+  - Dağ, ağaç ve kaya tonları çeşitli. Dağ eteklerinde kaya öbekleri, tepelerde irili ufaklı kayalar.
+  - Sınırlar ince koyu çizgi ve içe doğru sönen renk tülü. Gece sınırlar parlamaz, deniz koyulaşır, ortam ışığı ay mavisine döner.
+  - Bulut gölgesi yalnız güneş yüksekken, yağmursuz havada ve kamera alçaktayken düşer. Bulutlar yumuşak topaklar; alt yüzleri göğün rengini alır. Kameraya yakın bulut erir. Kamera dağın içine giremez. Göllerde ızgara çizilmez. Ekran kenarlarında hafif karartma var.
+  - Yakın planda kahraman etiketinde isim görünür.
+  - Kışın çatılar ve kasaba ağaçları karla örtülür. Yakın planda figürlerin gözleri var.
+  - Kamera ile bakılan nokta arasına giren dağ, noktalı desenle saydamlaşır (kasaba dağın arkasında kalmaz).
+  - Alçak açıda uzak kasaba etiketleri gizlenir (başkent ve savaş hedefi daha uzaktan görünür). Aynı gün başlayan bayramlar akışta tek satır.
+  - Üst şeritte günün saati (şafak, sabah, öğle, ikindi, akşam, gece).
+  - Ekran kartı bağlamı düşerse uyarı çıkar, geri gelince sahne yeniden kurulur.
+- **Kamera ve anlatım:**
+  - Serbest kamera (Tepe / Eğik / Alçak), takip kamerası, Sinema modu.
+  - Olay akışı, yıl afişi.
+  - Etiketler: ♛ başkent, ⚔ savaş, kıtlık, 🍺 han (içerideki kahraman ★, açık ilan 📜). Kahramanın başında seviyesi, yakın planda adı da; efsaneyse ♪.
+- **Performans:** FPS göstergesi, otomatik kalite. Arazi ve yapılar dünya parçalarına bölünür; ekran dışı parçalar çizilmez, çimen ve çiçek yalnız kameraya yakın parçalarda görünür, açık denizin dibi çizilmez. Uzakta pencere ve kapı parçaları çizilmez, boş örnek kümeleri çizim çağrısı üretmez. Otomatik kalite kare hızı uzun süre rahat akarsa bir kademe geri çıkar (aynı kademeden iki kez düşülmüşse çıkmaz).
+- **Oyun içi arayüz (v0.21, Civ tarzı HUD):** Harita tam ekran; ayrı sağ panel kalktı.
+  - Üst şerit: tarih, rapor ikonları (Medeniyetler, Ağaç, Kıyas, Kahramanlar, Hanlar, Kronik; kısayol 1–6), hız, seed, ses, yardım.
+  - Sağ üst: her medeniyet için sınıfının armasıyla yuvarlak rozet (kenar = sınır rengi, altta çağ, kırmızı kılıç = savaşta, gri + çizik = yok oldu). Üstüne gelince özet, tıklayınca ayrıntı paneli (‹ › ile medeniyetler arasında gezinir).
+  - Raporlar oyunun üstünde yüzen koyu/altın panelde açılır; aynı ikon ya da Esc kapatır. Haritada kasabaya tıklamak o medeniyetin panelini açar.
+  - Raporların içeriği: Kahramanlar (yol, hizalama, izler, XP çubuğu, şu anki hedef, son 3 olay), Hanlar (pano, havuz, açık artırma teklifleri, mezarlık), Kronik (savaş raporları).
+  - Kamera ve görünüm düğmeleri sağ altta; alan derinliği, kalite, ızgara, gece/gündüz ve yataklar ⚙ menüsünde. Telefonda panel alttan açılır.
+  - 2B debug harita da duruyor; hanlar sarı elmas.
+- **Adres parametreleri:** `?gun=N` dünyayı N gün ileri sararak açar; `?debug` konsola `window.__fd` (sim, dio) verir.
+
+## Açık konular
+- Gerçek ekran kartında FPS ölçülmedi (MSAA sonrası özellikle). Büyük haritada simülasyon günü ~3–4 ms (60× hızda kare başına bir gün); Web Worker'a taşımak şimdilik gerekmedi.
+- Adalara ulaşılamıyor (gemi yok); ileride keşif ve kolonileşme için ayrıldı.
+- Saldırgan sınıfların bir arada olduğu dünyalarda savaş sayısı yüksek (25 yılda 20+).
+- 25. yıldan sonra yeni hedef yok. Oyunun geç evresi için hedefler düşünülmeli: dünya olayları, ejderha, çağ sonrası.
+- Oyuncu rolü hâlâ tanımsız. Aday: hancı (ilan asar, kahramana sponsor olur).
+- Han denge açıkları: tamamlanan ilan azlığı (hobgoblin karakolları serbest partilere ağır geliyor, ilanların ~%40'ı süresi dolup iade ediliyor); 2 kişilik kontenjan ve yenilenen 5 yıllık sözleşmeler kiralama oranını %30 civarında tutuyor.
+- Han sonraki fazları: handa diplomasi, casusluk, paralı bölükler; han büyümesi (kervansaray, serbest şehir); ejderha ilanı.
+- Tauri ile masaüstü paketleme yapılmadı.
