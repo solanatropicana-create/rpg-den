@@ -25,7 +25,8 @@ export function chooseResearch(s: Sim, c: Civ) {
   c.research.hard = false;
   if (!avail.length) {
     // kaynak kapısına takıldı: uzun ve pahalı yoldan (başka yöntemlerle) öğrenmeye çalışır
-    avail = blockedByGate(s, c);
+    // kıyısı olmayan denizcilik öğrenemez
+    avail = blockedByGate(s, c).filter((t) => !(t.gate ?? []).includes('coast'));
     if (!avail.length) { c.research.current = null; return; }
     c.research.hard = true;
   }
@@ -69,6 +70,11 @@ export function chooseResearch(s: Sim, c: Civ) {
       case 'smithing': add(t.id, 6 + (war ? 6 : 0), 'Çelik'); break;
       case 'arcana1': add(t.id, c.cls === 'wizard' ? 10 : 2, 'Büyünün sırrı'); break;
       case 'writing': add(t.id, 5, 'Bilgiyi kayda geçirmek'); break;
+      case 'boatbuilding': add(t.id, 4 + Math.min(6, (extCount.dock ?? 0) * 2), (extCount.dock ?? 0) ? 'İskeleler kalabalık, açığa çıkmak' : 'Kıyıdan açılmak'); break;
+      case 'shipbuilding': { const isl = s.w.tiles.some((x) => x.isle && x.owner < 0); add(t.id, 3 + (isl ? 5 : 0) + (ss.length >= 4 ? 5 : 0), ss.length >= 4 ? 'Anakara daralıyor; denizaşırı topraklar' : isl ? 'Ufukta bakir adalar' : 'Yük gemileri'); break; }
+      case 'navigation': add(t.id, 4 + (ss.some((x) => x.overseas) ? 4 : 0), 'Ufkun ötesi'); break;
+      case 'seatrade': add(t.id, 3 + s.w.routes.filter((r) => r.alive && r.sea && [r.a, r.b].some((x) => s.settlement(x)?.civ === c.id)).length * 3, 'Deniz yolları'); break;
+      case 'navy': add(t.id, 2 + cls.aggression * 9 + (war ? 8 : 0), war ? 'Savaşı denize taşımak' : 'Denizde güç'); break;
     }
   }
   const score = (id: string) => reasons[id].reduce((a, [v]) => a + v, 0) * Math.pow(150 / techCost(TECH[id]), 0.3);
@@ -108,7 +114,7 @@ export function onTechDone(s: Sim, c: Civ, id: string) {
   chooseResearch(s, c);
 }
 
-const GATE_TR: Record<string, string> = { water: 'su kenarı', fertile: 'verimli ova', clay: 'kil', copper: 'bakır', tin: 'kalay', iron: 'demir', coal: 'kömür', gold: 'altın', silver: 'gümüş', horses: 'at sürüsü', salt: 'tuz', herbs: 'şifalı ot', mana: 'mana', mithril: 'mithril', heartwood: 'kadim ağaç' };
+const GATE_TR: Record<string, string> = { water: 'su kenarı', coast: 'deniz kıyısı', fertile: 'verimli ova', clay: 'kil', copper: 'bakır', tin: 'kalay', iron: 'demir', coal: 'kömür', gold: 'altın', silver: 'gümüş', horses: 'at sürüsü', salt: 'tuz', herbs: 'şifalı ot', mana: 'mana', mithril: 'mithril', heartwood: 'kadim ağaç' };
 function forestShare(s: Sim, c: Civ) {
   let f = 0, n = 0;
   for (const t of s.w.tiles) if (t.owner >= 0 && s.settlement(t.owner)?.civ === c.id) { n++; if (t.terrain === 'forest' || t.terrain === 'oldforest') f++; }

@@ -2,8 +2,7 @@ import { Rng } from './rng';
 import { HexGrid } from './hex';
 import { CLASSES, type ClassId } from '../data/classes';
 import { DEPOSITS, WOOD_RESERVE, STONE_RESERVE, type DepositKind, type Terrain } from '../data/goods';
-import type { Camp, Civ, Deposit, Inn, Relation, Settlement, Tile, World } from './types';
-import { INN_NAMES, KEEPER_NAMES } from '../data/heroes';
+import type { Camp, Civ, Deposit, Inn, IsleInfo, IsleKind, Relation, Settlement, Tile, World } from './types';
 
 export const MAP_W = 110;
 export const MAP_H = 75;
@@ -286,11 +285,19 @@ export function generateWorld(seed: number): World {
   }
   for (const c of camps) tiles[c.tile].camp = c.id;
 
-  // tarafsız hanlar: ayrı rastgele akışla, dünyanın geri kalanını bozmadan
-  const inns = placeInns(g, tiles, starts, camps, seed, () => nextId++);
+  // tarafsız hanlar dünya kurulurken yoktur: oyun başlayınca hancılar yerleşimlerden öküz arabasıyla çıkıp
+  // sınır bölgelerinde kendileri kurar (innlife.ts). Kaç hancının yola çıkacağı burada belirlenir.
+  const innTarget = Math.max(2, Math.min(4, starts.length - 2));
+
+  // adaların hazinesi: ayrı rastgele akışla (anakara ve eski dünyalar değişmez); kolonileşmeye değer adalar
+  // denizler: seed'e göre kıta (birkaç ada), takımada ya da büyük adalar; ayrı rastgele akışla eklenir
+  const sea = addIsles(g, tiles, seed);
+  enrichIsles(g, tiles, deposits, seed);
+  // dağ kütleleri geçilmez: bir kara parçasını ikiye bölen dağda en ucuz yerden geçit açılır
+  const passes = carvePasses(g, tiles);
 
   const relations = civs.map(() => civs.map(() => emptyRel()));
-  return { seed, day: 0, W, H, tiles, deposits, civs, settlements, heroes: [], camps, inns, quests: [], agents: [], routes: [], relations, events: [], battles: [], nextId, rngState: rng.state(), metrics: {} };
+  return { seed, day: 0, W, H, tiles, deposits, civs, settlements, heroes: [], camps, inns: [], innPlan: { target: innTarget, wave: innTarget, next: 2 }, quests: [], agents: [], routes: [], relations, events: [], battles: [], nextId, rngState: rng.state(), metrics: { mountainPass: passes }, isles: sea.isles, seaProfile: sea.profile };
 }
 
 export const GOBLIN_CAMP_NAMES = ['Kırıkdiş Kampı', 'Çürükpençe Kampı', 'Kanlıkaya Kampı', 'Paslıkılıç Kampı', 'Kemikçatal Kampı', 'Karagöz Kampı', 'Kurtkulak Kampı', 'Sümüklüdere Kampı'];
@@ -331,43 +338,231 @@ export function makeSettlement(id: number, civ: number, name: string, tile: numb
   return { id, civ, name, tile, founded: day, pop: { ...pop }, growthAcc: 0, civics: { hut: 1 }, workshops: {}, project: null, jobs: {}, soldiers: 0, alive: true, starving: 0, tier: 0, mixedSince: {} };
 }
 
-/** Sınır bölgelerine, hiçbir medeniyetin toprağı olmayan 2–4 han yerleştirir. */
-export function placeInns(g: HexGrid, tiles: Tile[], starts: number[], camps: Camp[], seed: number, nextId: () => number): Inn[] {
-  const rng = new Rng((seed * 2654435761) ^ 0x5eed1);
-  const want = Math.max(2, Math.min(4, starts.length - 2));
-  const out: Inn[] = [];
-  for (const slack of [3, 5, 8, 14]) {
-    const cands: { i: number; sc: number }[] = [];
-    for (let i = 0; i < tiles.length; i++) {
-      const t = tiles[i];
-      if (t.terrain === 'water' || t.terrain === 'mountain' || t.terrain === 'swamp' || t.sea || t.isle || t.deposit >= 0 || t.camp !== undefined) continue;
-      const c = g.col(i), r = g.row(i);
-      if (c < 3 || r < 3 || c > g.W - 4 || r > g.H - 4) continue;
-      const ds = starts.map((st) => g.dist(st, i)).sort((a, b) => a - b);
-      if (ds[0] < 8 || ds.length < 2 || ds[1] - ds[0] > slack) continue;
-      if (camps.some((cp) => g.dist(cp.tile, i) < 3)) continue;
-      let sc = rng.next() * 2 - (ds[0] - 8) * 0.25;
-      sc += camps.filter((cp) => g.dist(cp.tile, i) <= 10).length * 1.5;
-      if (t.terrain === 'grass') sc += 1;
-      if (g.neighbors(i).some((n) => tiles[n].terrain === 'water')) sc += 0.5;
-      cands.push({ i, sc });
-    }
-    cands.sort((a, b) => b.sc - a.sc || a.i - b.i);
-    for (const { i } of cands) {
-      if (out.length >= want) break;
-      if (out.some((x) => g.dist(x.tile, i) < 12)) continue;
-      const used = new Set(out.map((x) => x.name));
-      const name = rng.shuffle(INN_NAMES.slice()).find((n) => !used.has(n))!;
-      out.push({ id: nextId(), tile: i, name, keeper: rng.pick(KEEPER_NAMES), founded: 0, alive: true, gold: 60, raids: 0 });
-    }
-    if (out.length >= want) break;
-  }
-  for (const inn of out) markInn(g, tiles, inn);
-  return out;
-}
 export function markInn(g: HexGrid, tiles: Tile[], inn: Inn) {
   tiles[inn.tile].inn = inn.id;
   tiles[inn.tile].road = Math.max(1, tiles[inn.tile].road);
-  if (tiles[inn.tile].terrain !== 'grass') tiles[inn.tile].terrain = 'grass';
   for (const t of g.within(inn.tile, 1)) tiles[t].innZone = inn.id;
+}
+
+/**
+ * Her ada (≥5 karo) bir yatak taşır; büyük adalar bazen iki. Değerli türler ağır basar.
+ * Arazi değiştirilmez ve kimlikler ayrı aralıktan verilir: anakaranın erken tarihi eski dünyalarla aynı kalır.
+ */
+function enrichIsles(g: HexGrid, tiles: Tile[], deposits: Deposit[], seed: number): void {
+  const rng = new Rng((seed * 2654435761) ^ 0x51ed2701);
+  let id = 900000;
+  const isles = new Map<number, number[]>();
+  tiles.forEach((t, i) => { if (t.isle && t.terrain !== 'water') { const a = isles.get(t.isle) ?? []; a.push(i); isles.set(t.isle, a); } });
+  const KINDS: [DepositKind, number][] = [['gold', 3], ['silver', 2], ['salt', 3], ['herbs', 3], ['horses', 2], ['iron', 2], ['copper', 2], ['fertile', 2], ['coal', 1], ['mana', 1]];
+  for (const [, ts] of [...isles.entries()].sort((a, b) => a[0] - b[0])) {
+    if (ts.length < 5) continue;
+    const have = new Set(ts.map((i) => tiles[i].deposit).filter((d) => d >= 0)).size;
+    const want = (ts.length >= 40 ? rng.int(2, 3) : ts.length >= 18 && rng.chance(0.5) ? 2 : 1) - have;
+    for (let k = 0; k < want; k++) {
+      const fits = KINDS.filter(([kind]) => ts.some((i) => tiles[i].deposit < 0 && DEPOSITS[kind].terrain.includes(tiles[i].terrain)));
+      if (!fits.length) break;
+      const kind = rng.weighted(fits, ([, w]) => w)![0];
+      const def = DEPOSITS[kind];
+      const free = ts.filter((i) => tiles[i].deposit < 0 && def.terrain.includes(tiles[i].terrain));
+      const seedT = rng.pick(free);
+      const size = Math.min(free.length, rng.int(def.size[0], Math.max(def.size[0], def.size[1] - 1)));
+      const cl = [seedT];
+      for (const n of rng.shuffle(g.within(seedT, 2))) { if (cl.length >= size) break; if (n !== seedT && free.includes(n)) cl.push(n); }
+      const richness = rng.pick([1, 1, 1.4]);
+      const d: Deposit = { id: id++, kind, tiles: cl, richness, depleted: false, knownBy: [] };
+      for (const t of cl) { tiles[t].deposit = d.id; if (def.reserve) tiles[t].reserve = Math.round(def.reserve * richness); }
+      deposits.push(d);
+    }
+  }
+}
+
+// ---- adalar ----
+export const ISLE_TR: Record<IsleKind, string> = { volkan: 'volkanik ada', orman: 'ormanlık ada', cayir: 'çayırlık ada', kayalik: 'kayalık ada', bataklik: 'sisli bataklık adası', kumsal: 'kumsal adacık' };
+export const SEA_PROFILE_TR = { kita: 'kıta ve birkaç ada', takimada: 'takımadalar', buyuk: 'büyük adalar' } as const;
+const ISLE_NAMES: Record<IsleKind, string[]> = {
+  volkan: ['Dumanlı Ada', 'Ateş Adası', 'Kızıl Ada', 'Kül Adası', 'Kara Ada', 'Ejder Adası', 'Kükürt Adası', 'Kor Adası', 'Obsidyen Adası'],
+  orman: ['Yeşil Ada', 'Çam Adası', 'Meşe Adası', 'Gölgeli Ada', 'Kuş Adası', 'Sarmaşık Adası', 'Porsuk Adası', 'Yosunlu Ada', 'Geyik Adası'],
+  cayir: ['Keçi Adası', 'Rüzgârlı Ada', 'Çiçekli Ada', 'At Adası', 'Uzun Ada', 'Bereket Adası', 'Arı Adası', 'Kuzu Adası', 'Gelincik Adası', 'Sarı Ada'],
+  kayalik: ['Taşlı Ada', 'Kartal Adası', 'Martı Adası', 'Tuzlu Ada', 'Yalnız Ada', 'Fırtına Adası', 'Kayalı Ada', 'Karabatak Adası', 'Dişli Ada'],
+  bataklik: ['Sisli Ada', 'Sazlı Ada', 'Hayalet Adası', 'Yılan Adası', 'Kurbağa Adası', 'Çürük Ada', 'Bataklı Ada', 'Sivrisinek Adası'],
+  kumsal: ['Kaplumbağa Adası', 'İnci Adası', 'Mercan Adası', 'Balina Adası', 'Ay Adası', 'Kemik Adası', 'Midye Adası', 'Yengeç Adası', 'Deniz Kızı Adası'],
+};
+
+/** kıyıdan uzaklık (karada: en yakın denize), BFS */
+function coastDepth(g: HexGrid, tiles: Tile[], ts: number[]): Map<number, number> {
+  const set = new Set(ts), d = new Map<number, number>(), q: number[] = [];
+  for (const i of ts) if (g.neighbors(i).some((n) => !set.has(n))) { d.set(i, 0); q.push(i); }
+  for (let h = 0; h < q.length; h++) { const i = q[h]; for (const n of g.neighbors(i)) if (set.has(n) && !d.has(n)) { d.set(n, d.get(i)! + 1); q.push(n); } }
+  return d;
+}
+
+/**
+ * Anakara dışına ada ekler ve bütün adalara ad/tür verir. Profil seed'e göre:
+ * kıta (birkaç orta ada), takımada (kümelenmiş çok ada), büyük adalar (2–3 geniş ada).
+ * Yeni adalar mevcut karaya en az 2 deniz karosu uzak durur; eski adaların arazisi değişmez.
+ */
+function addIsles(g: HexGrid, tiles: Tile[], seed: number): { profile: 'kita' | 'takimada' | 'buyuk'; isles: IsleInfo[] } {
+  const rng = new Rng((seed * 40503 + 17) ^ 0x2c1b3c6d);
+  const W = g.W, H = g.H;
+  const p0 = rng.next();
+  const profile = p0 < 0.4 ? 'kita' : p0 < 0.75 ? 'takimada' : 'buyuk';
+  const edgeOk = (i: number) => Math.min(g.col(i), g.row(i), W - 1 - g.col(i), H - 1 - g.row(i)) >= 3;
+  const landDist = () => {
+    const d = new Int16Array(tiles.length).fill(99), q: number[] = [];
+    for (let i = 0; i < tiles.length; i++) if (!tiles[i].sea) { d[i] = 0; q.push(i); }
+    for (let h = 0; h < q.length; h++) { const i = q[h]; if (d[i] >= 12) continue; for (const n of g.neighbors(i)) if (d[n] > d[i] + 1) { d[n] = d[i] + 1; q.push(n); } }
+    return d;
+  };
+  let nextIsle = Math.max(0, ...tiles.map((t) => t.isle ?? 0)) + 1;
+  const tundraRows = Math.round(H * 0.1);
+  const place = (seedTile: number, size: number, gap: number): number[] | null => {
+    const ld = landDist();
+    if (!tiles[seedTile].sea || !edgeOk(seedTile) || ld[seedTile] < gap + 1) return null;
+    const blob = [seedTile], inB = new Set(blob);
+    for (let tries = 0; blob.length < size && tries < size * 30; tries++) {
+      const from = blob[Math.floor(rng.next() * blob.length)];
+      const n = rng.pick(g.neighbors(from));
+      if (inB.has(n) || !tiles[n].sea || !edgeOk(n) || ld[n] < gap) continue;
+      // yuvarlak değil, girintili: kalabalık tarafa ek zorlaşır
+      if (g.neighbors(n).filter((q) => inB.has(q)).length >= 4 && rng.chance(0.5)) continue;
+      blob.push(n); inB.add(n);
+    }
+    if (blob.length < 5) return null;
+    const id = nextIsle++;
+    for (const i of blob) tiles[i] = { ...tiles[i], sea: undefined, terrain: 'grass', elev: 0.34, isle: id, owner: -1, road: 0, deposit: -1, reserve: 0, wood: 0 };
+    return blob;
+  };
+  const kindFor = (size: number): IsleKind => {
+    if (size <= 8 && rng.chance(0.6)) return 'kumsal';
+    const opts: [IsleKind, number][] = size >= 30 ? [['volkan', 3], ['orman', 2.5], ['cayir', 2.5], ['kayalik', 1], ['bataklik', 1]] : [['volkan', 2], ['orman', 2.5], ['cayir', 2], ['kayalik', 2], ['bataklik', 1.5], ['kumsal', 1]];
+    return rng.weighted(opts, ([, w]) => w)![0];
+  };
+  const shape = (blob: number[], kind: IsleKind): number | undefined => {
+    const depth = coastDepth(g, tiles, blob);
+    const maxD = Math.max(...blob.map((i) => depth.get(i) ?? 0));
+    let peak: number | undefined;
+    for (const i of blob) {
+      const d = depth.get(i) ?? 0, r = rng.next(), t = tiles[i];
+      let tr: Terrain = 'grass';
+      switch (kind) {
+        case 'volkan': tr = d === maxD && maxD >= 2 ? 'mountain' : d >= 1 ? (r < 0.6 ? 'hill' : r < 0.8 ? 'forest' : 'grass') : r < 0.25 ? 'hill' : 'grass'; break;
+        case 'orman': tr = r < 0.75 || d >= 1 ? 'forest' : 'grass'; break;
+        case 'cayir': tr = r < 0.8 ? 'grass' : 'forest'; break;
+        case 'kayalik': tr = r < 0.6 || d >= 2 ? 'hill' : 'grass'; break;
+        case 'bataklik': tr = r < 0.55 ? 'swamp' : r < 0.85 ? 'forest' : 'grass'; break;
+        case 'kumsal': tr = d >= 1 && r < 0.3 ? 'forest' : 'grass'; break;
+      }
+      if (g.row(i) < tundraRows && (tr === 'grass' || tr === 'forest' || tr === 'swamp')) tr = 'tundra';
+      t.terrain = tr;
+      t.elev = Math.min(0.92, 0.3 + d * 0.1 + (tr === 'mountain' ? 0.3 : tr === 'hill' ? 0.12 : 0) + rng.next() * 0.04);
+      if (tr === 'forest') t.wood = WOOD_RESERVE;
+      if (tr === 'hill' || tr === 'mountain') t.reserve = STONE_RESERVE;
+      if (tr === 'mountain' && (peak === undefined || t.elev > tiles[peak].elev)) peak = i;
+    }
+    return peak;
+  };
+  const made: { blob: number[]; kind: IsleKind; peak?: number }[] = [];
+  const add = (seedTile: number, size: number, gap: number) => {
+    const blob = place(seedTile, size, gap);
+    if (!blob) return false;
+    const kind = kindFor(blob.length);
+    made.push({ blob, kind, peak: shape(blob, kind) });
+    return true;
+  };
+  const randSea = (minLd: number) => {
+    const ld = landDist();
+    let best = -1, bs = -1;
+    for (let k = 0; k < 300; k++) { const i = rng.int(0, tiles.length - 1); if (!tiles[i].sea || !edgeOk(i) || ld[i] < minLd) continue; const sc = Math.min(ld[i], 9) + rng.next() * 3; if (sc > bs) { bs = sc; best = i; } }
+    return best;
+  };
+  if (profile === 'kita') {
+    for (let k = rng.int(1, 3); k > 0; k--) { const t = randSea(5); if (t >= 0) add(t, rng.int(8, 22), 3); }
+  } else if (profile === 'takimada') {
+    for (let cl = rng.int(2, 3); cl > 0; cl--) {
+      const c0 = randSea(5);
+      if (c0 < 0) continue;
+      for (let k = rng.int(3, 5), tries = 0; k > 0 && tries < 40; tries++) {
+        const near = g.within(c0, 7).filter((i) => tiles[i].sea);
+        if (!near.length) break;
+        if (add(rng.pick(near), rng.int(5, 26), 2)) k--;
+      }
+    }
+  } else {
+    for (let k = rng.int(2, 3); k > 0; k--) { const t = randSea(7); if (t >= 0) add(t, rng.int(40, 95), 3); }
+  }
+  // bütün adalara ad ve tür (eski adaların arazisi olduğu gibi kalır; tür araziden okunur)
+  const members = new Map<number, number[]>();
+  tiles.forEach((t, i) => { if (t.isle && !t.sea) { const a = members.get(t.isle) ?? []; a.push(i); members.set(t.isle, a); } });
+  const used = new Set<string>();
+  const isles: IsleInfo[] = [];
+  for (const [id, ts] of [...members.entries()].sort((a, b) => a[0] - b[0])) {
+    const m = made.find((x) => tiles[x.blob[0]].isle === id);
+    let kind: IsleKind;
+    if (m) kind = m.kind;
+    else {
+      const cnt = (tr: Terrain[]) => ts.filter((i) => tr.includes(tiles[i].terrain)).length / ts.length;
+      kind = ts.length <= 6 ? 'kumsal' : cnt(['mountain']) > 0 ? 'volkan' : cnt(['hill']) > 0.4 ? 'kayalik' : cnt(['swamp']) > 0.3 ? 'bataklik' : cnt(['forest', 'oldforest']) > 0.45 ? 'orman' : 'cayir';
+    }
+    const list = rng.shuffle(ISLE_NAMES[kind].slice());
+    const name = list.find((n) => !used.has(n)) ?? `Küçük ${list[0]}`;
+    used.add(name);
+    let cx = 0, cz = 0;
+    for (const i of ts) { const [x, z] = g.pixel(i, 1); cx += x; cz += z; }
+    cx /= ts.length; cz /= ts.length;
+    const center = ts.slice().sort((a, b) => { const [ax, az] = g.pixel(a, 1), [bx, bz] = g.pixel(b, 1); return (ax - cx) ** 2 + (az - cz) ** 2 - ((bx - cx) ** 2 + (bz - cz) ** 2); })[0];
+    const peak = m?.peak ?? (kind === 'volkan' ? ts.slice().sort((a, b) => tiles[b].elev - tiles[a].elev)[0] : undefined);
+    isles.push({ id, name, kind, size: ts.length, center, peak });
+  }
+  return { profile, isles };
+}
+
+/**
+ * Dağlar geçilmez (MOVE_COST = ∞). Bir kara parçasında dağların kapattığı her cep, en az dağ karosu
+ * aşan yoldan ana bölgeye bağlanır; aşılan dağ karoları tepeye (geçit) döner. Yatak karoları son çare.
+ * Rastgelelik kullanmaz: aynı seed aynı geçitleri verir.
+ */
+export function carvePasses(g: HexGrid, tiles: Tile[]): number {
+  const n = tiles.length;
+  const open = (i: number) => !tiles[i].sea && tiles[i].terrain !== 'mountain';
+  const land = (i: number) => (tiles[i].sea ? -1 : tiles[i].isle ?? 0);
+  let carved = 0;
+  for (let guard = 0; guard < 200; guard++) {
+    const comp = new Int32Array(n).fill(-1);
+    const info: { land: number; size: number; seed: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      if (!open(i) || comp[i] >= 0) continue;
+      const id = info.length, st = [i];
+      comp[i] = id; let size = 0;
+      while (st.length) { const c = st.pop()!; size++; for (const q of g.neighbors(c)) if (comp[q] < 0 && open(q) && land(q) === land(i)) { comp[q] = id; st.push(q); } }
+      info.push({ land: land(i), size, seed: i });
+    }
+    // her kara parçasının en büyük bölgesi ana bölgedir
+    const main = new Map<number, number>();
+    info.forEach((c, id) => { const m = main.get(c.land); if (m === undefined || info[m].size < c.size) main.set(c.land, id); });
+    const orphan = info.map((c, id) => ({ c, id })).filter(({ c, id }) => main.get(c.land) !== id).sort((a, b) => b.c.size - a.c.size)[0];
+    if (!orphan) break;
+    // kova kuyruklu en kısa yol (Dial): açık karo 0, dağ 1, yataklı dağ 4
+    const target = main.get(orphan.c.land)!;
+    const dist = new Int32Array(n).fill(1 << 30), prev = new Int32Array(n).fill(-1);
+    const buckets: number[][] = [[]];
+    for (let i = 0; i < n; i++) if (comp[i] === orphan.id) { dist[i] = 0; buckets[0].push(i); }
+    let hit = -1;
+    for (let d = 0; d < buckets.length && hit < 0; d++) {
+      const b = buckets[d];
+      if (!b) continue;
+      for (let k = 0; k < b.length && hit < 0; k++) {
+        const c = b[k];
+        if (dist[c] !== d) continue;
+        if (comp[c] === target) { hit = c; break; }
+        for (const nb of g.neighbors(c)) {
+          if (land(nb) !== orphan.c.land) continue;
+          const nd = d + (open(nb) ? 0 : tiles[nb].deposit >= 0 ? 4 : 1);
+          if (nd < dist[nb]) { dist[nb] = nd; prev[nb] = c; (buckets[nd] ??= []).push(nb); }
+        }
+      }
+    }
+    if (hit < 0) break;
+    for (let c = hit; c >= 0 && comp[c] !== orphan.id; c = prev[c]) if (tiles[c].terrain === 'mountain') { tiles[c].terrain = 'hill'; tiles[c].pass = true; carved++; }
+  }
+  return carved;
 }

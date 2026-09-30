@@ -12,6 +12,16 @@ import { classIcon, uiIcon } from './icons';
 import type { Agent, Battle, Civ, GameEvent, Hero, Inn, Settlement } from '../sim/types';
 import { innPool, innHeroesOf, CONTRACT_YEARS } from '../sim/inns';
 import { heroLabel } from '../sim/will';
+import { renderInnList, renderInnDetail } from './innpanel';
+import { GUEST } from '../data/inn';
+import { buildStageName, innOcc, levelName } from '../sim/innlife';
+import { fleet, freeHulls, freeGalleys, hullName } from '../sim/sea';
+import { musterKey, etaDays, atTarget, bandName, agentCombatants, defenders, MUSTER_CAMP, MUSTER_CITY } from '../sim/agents';
+import { campForce } from '../sim/heroes';
+import { powerVs, winChance } from '../sim/combat';
+import { monsterSide } from '../sim/monsters';
+import { BattleTheater } from './battleview';
+import { ISLE_TR } from '../sim/worldgen';
 
 const $ = (id: string) => document.getElementById(id)!;
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -20,7 +30,7 @@ const TERRAIN_COL: Record<Terrain, [number, number, number]> = {
   grass: [132, 168, 92], forest: [74, 118, 70], oldforest: [40, 88, 56], hill: [170, 156, 104], mountain: [132, 126, 120],
   water: [78, 132, 176], swamp: [102, 118, 84], tundra: [214, 222, 226],
 };
-const CAMP_COL = { goblin: '#d9412f', hobgoblin: '#7d1d16', bugbear: '#7a4bb0' };
+const CAMP_COL = { goblin: '#d9412f', hobgoblin: '#7d1d16', bugbear: '#7a4bb0', pirate: '#141418' };
 
 let seed = 1;
 try { const s = Number(localStorage.getItem('fd-seed')); if (s > 0) seed = s; } catch { /* yok */ }
@@ -31,9 +41,10 @@ try {
 let sim: Sim;
 let speed = 1;
 let paused = false;
-type Tab = 'civ' | 'tree' | 'compare' | 'hero' | 'inn' | 'log';
+type Tab = 'civ' | 'tree' | 'compare' | 'hero' | 'inn' | 'log' | 'war';
 let tab: Tab = 'civ';
 let treeCiv = 0;
+let innSel: number | null = null;   // sağ panelde açık han
 let drawerOpen = false;
 let onlyMajor = true;
 let showDeposits = true;
@@ -45,8 +56,9 @@ let mode: Mode = '3d';
 try { const m = localStorage.getItem('fd-mode'); if (m === '2d' || m === '3d') mode = m; } catch { /* yok */ }
 let dio: Diorama | null = null;
 try { dio = new Diorama($('stage')); } catch (err) { console.warn('3B açılamadı', err); mode = '2d'; }
+if (dio) dio.onInnClick = (id) => openInn(id);
 // ?debug: konsoldan erişim (window.__fd.sim, window.__fd.dio)
-try { if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __fd: unknown }).__fd = { get sim() { return sim; }, dio }; } catch { /* yok */ }
+try { if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __fd: unknown }).__fd = { get sim() { return sim; }, dio, watch: (id: number) => openTheater(id) }; } catch { /* yok */ }
 
 interface Fx { tile: number; text?: string; color: string; t0: number; dur: number; ring?: boolean; dy?: number }
 const fx: Fx[] = [];
@@ -63,6 +75,8 @@ function newWorld(s: number) {
   fx.length = 0;
   openBattle = null;
   treeCiv = 0;
+  innSel = null;
+  if (dio) dio.selInn = null;
   civbarKey = '';
   drawerHeadKey = '';
   terrainCache = null;
@@ -75,10 +89,11 @@ function newWorld(s: number) {
 
 function onEvent(e: GameEvent) {
   dirty = true;
+  if (autoWatch && !theater && e.battle && e.major) { const bb = sim.w.battles.find((x) => x.id === e.battle); if (bb?.replay && bb.replay.units.length >= 6) setTimeout(() => { if (!theater) openTheater(bb.id); }, 0); }
   if (mode === '3d' && e.major) feedPush(e);
   if (e.tile === undefined) return;
   const now = performance.now();
-  if (mode === '3d' && e.major) cineQueue.push({ tile: e.tile, pri: e.battle ? 5 : e.kind === 'war' || e.kind === 'wonder' ? 4 : e.kind === 'era' || e.kind === 'settle' || e.kind === 'world' ? 3 : e.kind === 'lair' || e.kind === 'hero' || e.kind === 'quest' || e.kind === 'class' ? 2 : 1, t: now, battle: !!e.battle });
+  if (mode === '3d' && e.major) cineQueue.push({ tile: e.tile, pri: e.battle ? 5 : e.kind === 'war' || e.kind === 'wonder' ? 4 : e.kind === 'era' || e.kind === 'settle' || e.kind === 'world' ? 3 : e.kind === 'lair' || e.kind === 'hero' || e.kind === 'quest' || e.kind === 'class' || e.kind === 'sea' ? 2 : 1, t: now, battle: !!e.battle });
   if (mode === '3d' && dio) { dio.onEvent(e, now); return; }
   if (e.battle) {
     const b = sim.w.battles.find((x) => x.id === e.battle);
@@ -280,10 +295,11 @@ function draw(now: number) {
   }
   // tarafsız hanlar
   for (const inn of w.inns) {
+    if (inn.stage === 'road') continue;
     const [x, y] = px(inn.tile); if (!visible(x, y)) continue;
     const q = Math.max(5, s * 0.75);
-    ctx.globalAlpha = inn.alive ? 1 : 0.4;
-    ctx.fillStyle = inn.alive ? '#e8c24a' : '#6d6760'; ctx.strokeStyle = '#3a2814'; ctx.lineWidth = 1.5;
+    ctx.globalAlpha = inn.alive || inn.stage === 'build' ? 1 : 0.4;
+    ctx.fillStyle = inn.alive ? '#e8c24a' : inn.stage === 'build' ? 'rgba(232,194,74,.25)' : '#6d6760'; ctx.strokeStyle = inn.stage === 'build' ? '#e8c24a' : '#3a2814'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(x, y - q); ctx.lineTo(x + q, y); ctx.lineTo(x, y + q); ctx.lineTo(x - q, y); ctx.closePath(); ctx.fill(); ctx.stroke();
     if (s >= 6) label(inn.name, x, y + q + 9, inn.alive ? '#ffe7a8' : '#b8b2a6', 8 + s * 0.3, true);
     ctx.globalAlpha = 1;
@@ -335,6 +351,8 @@ function draw(now: number) {
         ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.strokeStyle = civColor(a.civ); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, q * 1.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); break;
       case 'scout':
         ctx.fillStyle = civColor(a.civ); ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, q * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); break;
+      case 'ship':
+        ctx.fillStyle = civColor(a.civ); ctx.strokeStyle = '#fff'; ctx.beginPath(); ctx.moveTo(x - q * 1.2, y); ctx.lineTo(x + q * 1.2, y); ctx.lineTo(x + q * 0.6, y + q * 0.8); ctx.lineTo(x - q * 0.6, y + q * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke(); break;
     }
   }
   // efektler
@@ -424,6 +442,8 @@ canvas.addEventListener('click', (e) => {
 });
 function selectTile(i: number) {
   if (i < 0) return;
+  const innHere = sim.w.inns.find((x) => x.stage !== 'road' && (x.tile === i || sim.w.tiles[i].innZone === x.id));
+  if (innHere && !sim.w.settlements.some((x) => x.alive && x.tile === i)) { openInn(innHere.id); return; }
   // kasabanın kendisine tıklamak medeniyet panelini açar; sınır içindeki araziye tıklamak yalnız panel açıkken seçimi değiştirir
   const onSt = sim.w.settlements.find((x) => x.alive && x.tile === i);
   const st = onSt ?? (sim.w.tiles[i].owner >= 0 ? sim.settlement(sim.w.tiles[i].owner) : undefined);
@@ -466,6 +486,17 @@ if (dio) {
       el.style.cursor = ct.idx >= 0 ? 'pointer' : 'help';
       return;
     }
+    const ih = dio!.pickInn(e.clientX, e.clientY);
+    if (ih !== null) {
+      const inn = sim.w.inns.find((q) => q.id === ih)!;
+      const tip = $('tip');
+      tip.hidden = false;
+      tip.innerHTML = `${innTip(inn)}<br><span style="opacity:.7">Tıkla: han paneli</span>`;
+      tip.style.left = Math.max(4, Math.min(r.width - tip.offsetWidth - 6, e.clientX - r.left + 14)) + 'px';
+      tip.style.top = Math.max(4, Math.min(r.height - tip.offsetHeight - 6, e.clientY - r.top + 14)) + 'px';
+      el.style.cursor = 'pointer';
+      return;
+    }
     const ag = dio!.pickAgent(e.clientX, e.clientY);
     const hs = ag ? null : dio!.pickHouse(e.clientX, e.clientY);
     if (hs) {
@@ -497,8 +528,10 @@ if (dio) {
   el.addEventListener('pointerup', (e) => {
     if (down && !moved && e.button === 0) {
       const ct = dio!.pickCitizen(e.clientX, e.clientY);
-      const f = ct && ct.idx >= 0 ? { kind: 'cit' as const, id: ct.st, idx: ct.idx } : dio!.pickAgent(e.clientX, e.clientY);
-      if (f) { dio!.startFollow(f); renderFollow(); }
+      const innHit = ct && ct.idx >= 0 ? null : dio!.pickInn(e.clientX, e.clientY);
+      const f = ct && ct.idx >= 0 ? { kind: 'cit' as const, id: ct.st, idx: ct.idx } : innHit !== null ? null : dio!.pickAgent(e.clientX, e.clientY);
+      if (innHit !== null) openInn(innHit);
+      else if (f) { dio!.startFollow(f); renderFollow(); }
       else selectTile(dio!.pick(e.clientX, e.clientY));
     }
     down = null;
@@ -540,13 +573,15 @@ function feedTick(now: number) {
   el.dataset.t = String(now);
   if (e.tile !== undefined) el.dataset.tile = String(e.tile);
   el.style.setProperty('--cc', e.civ !== undefined ? civColor(e.civ) : e.kind === 'lair' ? '#d9412f' : '#9fe0c9');
-  el.innerHTML = `${esc(e.text)}${e.cause ? `<small>${esc(e.cause)}</small>` : ''}`;
+  const fb = e.battle ? sim.w.battles.find((x) => x.id === e.battle) : undefined;
+  el.innerHTML = `${esc(e.text)}${e.cause ? `<small>${esc(e.cause)}</small>` : ''}${fb?.replay ? `<span class="watch" data-watch="${fb.id}" role="button">▶ Zar zar izle</span>` : ''}`;
   box.appendChild(el);
   while (box.children.length > 4) box.firstElementChild!.remove();
 }
 const cineQueue: { tile: number; pri: number; t: number; battle: boolean }[] = [];
 let cine = false, cinePause = 0, cineNext = 0;
 function setCine(v: boolean) {
+  if (v && dio?.roam) dio.exitRoam();
   cine = v;
   try { localStorage.setItem('fd-cine', v ? '1' : '0'); } catch { /* yok */ }
   if (dio) dio.autoOrbit = v;
@@ -567,8 +602,8 @@ function cineTick(now: number) {
     return;
   }
   // olay yoksa: bir kahramanı, orduyu ya da kervanı izle; yoksa bir kasabaya süzül
-  const movers = sim.w.agents.filter((a) => !a.dead && (a.kind === 'army' || a.kind === 'hero' || a.kind === 'party' || a.kind === 'caravan' || a.kind === 'raid' || a.kind === 'settlers') && a.path.length - a.step > 6);
-  const weight = (k: string) => (k === 'army' || k === 'raid' ? 4 : k === 'party' || k === 'hero' ? 3 : k === 'settlers' ? 2 : 1);
+  const movers = sim.w.agents.filter((a) => !a.dead && (a.kind === 'army' || a.kind === 'hero' || a.kind === 'party' || a.kind === 'caravan' || a.kind === 'raid' || a.kind === 'settlers' || a.kind === 'keeper' || a.kind === 'traveler') && a.path.length - a.step > 6 && a.restUntil === undefined);
+  const weight = (k: string) => (k === 'army' || k === 'raid' ? 4 : k === 'party' || k === 'hero' || k === 'keeper' ? 3 : k === 'settlers' ? 2 : k === 'traveler' ? 0.3 : 1);
   if (movers.length && Math.random() < 0.7) {
     let r = Math.random() * movers.reduce((a, m) => a + weight(m.kind), 0);
     const m = movers.find((x) => (r -= weight(x.kind)) <= 0) ?? movers[0];
@@ -578,7 +613,7 @@ function cineTick(now: number) {
     return;
   }
   const towns = sim.w.settlements.filter((x) => x.alive);
-  if (towns.length) { stopFollow(); const st = towns[Math.floor(Math.random() * towns.length)]; dio.shot(st.tile, 9 + Math.random() * 6, 0.9 + Math.random() * 0.25); cineNext = now + 10000; }
+  if (towns.length) { stopFollow(); const st = towns[Math.floor(Math.random() * towns.length)]; dio.shot(st.tile, 10 + Math.random() * 7, 1.0 + Math.random() * 0.28); cineNext = now + 10000; } // alçak açı: arkada ufuk ve dağlar
 }
 function stopFollow() { if (dio) dio.follow = null; $('follow').hidden = true; }
 function renderFollow() {
@@ -613,9 +648,12 @@ function renderFollow() {
   } else {
     const a = w.agents.find((q) => q.id === f.id && !q.dead);
     if (!a) { box.hidden = true; return; }
-    const dest = a.to !== undefined ? sim.w.settlements.find((x) => x.id === a.to) : undefined;
+    const toInn = a.kind === 'keeper' || a.kind === 'supply' || (a.kind === 'traveler' && a.purpose === 'come');
+    const dest = !toInn && a.to !== undefined ? sim.w.settlements.find((x) => x.id === a.to) : undefined;
+    const innD = toInn ? sim.w.inns.find((x) => x.id === a.inn) : undefined;
     h = `<b>${agentDesc(a)}</b>`;
     if (dest) h += `<div class="sub">Hedef: ${esc(dest.name)}</div>`;
+    if (innD) h += `<div class="sub">Hedef: ${esc(innD.name)} Hanı · <button class="btn sm" data-inn-open="${innD.id}">Han paneli</button></div>`;
     h += `<div class="bar"><i style="width:${Math.round((Math.min(a.step + a.progress, a.path.length - 1) / Math.max(1, a.path.length - 1)) * 100)}%"></i></div>`;
   }
   box.innerHTML = `<button class="x" data-unfollow aria-label="Takibi bırak">×</button><div class="lbl">İzleniyor</div>${h}`;
@@ -623,7 +661,7 @@ function renderFollow() {
 }
 function setMode(m: Mode) {
   if (!dio) m = '2d';
-  if (m === '2d') { stopFollow(); if (cine) setCine(false); $('feed').innerHTML = ''; }
+  if (m === '2d') { stopFollow(); if (cine) setCine(false); dio?.exitRoam(); $('feed').innerHTML = ''; }
   mode = m;
   try { localStorage.setItem('fd-mode', m); } catch { /* yok */ }
   canvas.hidden = m === '3d';
@@ -648,11 +686,14 @@ function tileInfo(i: number): string {
     if (ws.length || cv.length) out.push(esc([...cv, ...ws].join(', ')));
     if (st.project) out.push(`İnşa: ${esc(projectName(c, st))} (${Math.round((1 - st.project.left / st.project.total) * 100)}%)`);
     if (st.soldiers) out.push(`${st.soldiers} asker`);
+    if (st.civics.shipyard) out.push(`⚓ Tersane · ${st.ships ?? 0} ${hullName(sim, c)} (${freeHulls(sim, st)} limanda)${st.galleys ? ` · ${st.galleys} kadırga (${freeGalleys(sim, st)} limanda)` : ''}${st.overseas ? ' · denizaşırı koloni' : ''}`);
+    else if (st.overseas) out.push('Denizaşırı koloni');
   }
-  const inn = w.inns.find((x) => x.tile === i);
-  if (inn) out.push(`<b>🍺 ${esc(inn.name)} Hanı</b>${inn.alive ? ` · hancı ${esc(inn.keeper)} · ${innPool(sim, inn).length} serbest kahraman · ${w.quests.filter((q) => q.open && q.inn === inn.id).length} ilan` : ' · harabe'}`);
+  const inn = w.inns.find((x) => x.tile === i && x.stage !== 'road');
+  if (inn) out.push(innTip(inn));
   const cp = w.camps.find((x) => x.alive && x.tile === i);
-  if (cp) out.push(`<b>${esc(cp.name)}</b> · ${cp.count} ${monsterName(cp.kind, false).toLocaleLowerCase('tr')}${cp.boss ? ' + önder' : ''}`);
+  if (cp) out.push(`<b>${cp.kind === 'pirate' ? '☠ ' : ''}${esc(cp.name)}</b> · ${cp.count} ${monsterName(cp.kind, false).toLocaleLowerCase('tr')}${cp.boss ? (cp.kind === 'pirate' ? ` + Kaptan ${esc(cp.captain ?? '')}` : ' + önder') : ''}${cp.kind === 'pirate' ? ` · ganimet ${Math.round(cp.loot)}` : ''}`);
+  if (t.isle) { const isl = w.isles?.find((x) => x.id === t.isle); if (isl) out.push(`<span style="opacity:.8"><i>${esc(isl.name)}</i> · ${ISLE_TR[isl.kind]}, ${isl.size} karo</span>`); }
   if (t.deposit >= 0) {
     const d = w.deposits.find((x) => x.id === t.deposit)!;
     const def = DEPOSITS[d.kind];
@@ -667,11 +708,19 @@ function tileInfo(i: number): string {
     out.push(`<b>${esc(nm)}</b> L${t.ext.level} · ${t.ext.workers}/${LEVEL_SLOTS[t.ext.level]} işçi${t.ext.depleted ? ' · TÜKENDİ' : y ? ` · ${(y.y * Math.max(1, t.ext.workers)).toFixed(2)} ${GOODS[y.good].name.toLocaleLowerCase('tr')}/gün` : ''}`);
   }
   for (const a of w.agents.filter((x) => !x.dead && x.path[Math.min(x.step, x.path.length - 1)] === i)) out.push(agentDesc(a));
-  out.push(`<span style="opacity:.75">${TERRAIN_TR[t.terrain]}${t.road ? ', yol' : ''}${!st && t.owner >= 0 ? ' · ' + esc(sim.settlement(t.owner)!.name) + ' toprağı' : ''}</span>`);
+  out.push(`<span style="opacity:.75">${TERRAIN_TR[t.terrain]}${t.terrain === 'mountain' ? ' (geçilmez kaya kütlesi)' : t.pass ? ', dağ geçidi' : ''}${t.road ? ', yol' : ''}${!st && t.owner >= 0 ? ' · ' + esc(sim.settlement(t.owner)!.name) + ' toprağı' : ''}</span>`);
   return out.join('<br>');
+}
+function innTip(inn: Inn) {
+  const w = sim.w;
+  if (inn.stage === 'build') return `<b>🔨 ${esc(inn.name)} Hanı</b> · ${buildStageName(inn)} %${Math.round(((inn.build?.work ?? 0) / (inn.build?.need ?? 1)) * 100)} · hancı ${esc(inn.keeper)}`;
+  if (inn.stage === 'ruin') return `<b>${esc(inn.name)} Hanı</b> · harabe`;
+  const o = innOcc(inn);
+  return `<b>🍺 ${esc(inn.name)} Hanı</b> · ${esc(levelName(inn))}<br>Hancı ${esc(inn.keeper)} · ${o.persons} misafir · ${innPool(sim, inn).length} serbest kahraman · ${w.quests.filter((q) => q.open && q.inn === inn.id).length} ilan · ${Math.round(inn.gold)} altın`;
 }
 function projectName(c: Civ, st: Settlement) {
   const p = st.project!;
+  if (p.type === 'ship') return p.kind === 'galley' ? 'Kadırga' : hullName(sim, c) === 'koga' ? 'Koga' : 'Tekne';
   if (p.type === 'civic') return civicName(c, p.kind as never);
   if (p.type === 'workshop') return WORKSHOPS[p.kind as WorkshopKind].name;
   const names = EXTRACTS[p.kind as keyof typeof EXTRACTS].names;
@@ -702,17 +751,33 @@ function heroNow(h: Hero, a?: Agent): string {
   }
   return stateStr(h);
 }
-function agentDesc(a: Agent) {
+function agentDesc(a: Agent): string {
   const civ = a.civ >= 0 ? sim.w.civs[a.civ].name : '';
   const hs = (a.heroes ?? []).map((id) => sim.hero(id).name).join(', ');
+  const atSea = !!sim.w.tiles[a.path[Math.min(a.step, a.path.length - 1)]].sea;
+  const hullN = a.civ >= 0 ? hullName(sim, sim.w.civs[a.civ]) : 'gemi';
+  if (atSea && a.kind !== 'ship') {
+    const cap = hullN.charAt(0).toLocaleUpperCase('tr') + hullN.slice(1);
+    switch (a.kind) {
+      case 'caravan': return `${cap} (${esc(civ)}): ${Object.entries(a.cargo ?? {}).map(([k, v]) => `${Math.round(v!)} ${GOODS[k as Good].name.toLocaleLowerCase('tr')}`).join(', ') || 'boş'}`;
+      case 'settlers': return `${cap} (${esc(civ)}): ${sim.popSize(a.pop)} öncü denizaşırı topraklara`;
+      case 'army': return `${a.purpose === 'plunder' ? 'Deniz akıncıları' : 'Donanma'} (${esc(civ)}): ${a.troops} asker${a.galleys ? `, ${a.galleys} kadırga` : ''}${hs ? ', ' + esc(hs) : ''}${a.returning ? ' · dönüyor' : ''}`;
+    }
+  }
   switch (a.kind) {
+    case 'ship': if (a.purpose === 'fleet' || a.purpose === 'fleet-back') return `Kadırga filosu (${esc(civ)}): ${a.galleys ?? 0} kadırga${a.purpose === 'fleet' && a.to !== undefined ? ` → ${esc(sim.settlement(a.to)?.name ?? '')}` : ' · dönüyor'}`;
+      return a.purpose?.startsWith('explore') ? `Keşif gemisi (${esc(civ)})${a.purpose === 'explore-back' ? ' · limana dönüyor' : ''}` : `${hullN.charAt(0).toLocaleUpperCase('tr') + hullN.slice(1)} (${esc(civ)}) · limanına dönüyor`;
     case 'caravan': return `Kervan (${esc(civ)}): ${Object.entries(a.cargo ?? {}).map(([k, v]) => `${Math.round(v!)} ${GOODS[k as Good].name.toLocaleLowerCase('tr')}`).join(', ') || 'boş'}`;
     case 'army': return `${a.purpose === 'expedition' ? 'Sefer' : a.purpose === 'plunder' ? 'Akıncılar' : 'Ordu'} (${esc(civ)}): ${a.troops} asker${hs ? ', ' + esc(hs) : ''}${a.returning ? ' · dönüyor' : ''}`;
-    case 'raid': return `${monsterName(a.monster ?? 'goblin')}: ${a.troops}${a.boss ? ' + önder' : ''}${a.returning ? ' · kampa dönüyor' : ''}`;
+    case 'raid': if (a.monster === 'pirate') { const cp = sim.w.camps.find((x) => x.id === a.from); return `☠ Korsan gemisi (${esc(cp?.name ?? '')}): ${a.troops} korsan${a.boss ? ` + Kaptan ${esc(cp?.captain ?? '')}` : ''}${a.returning ? ' · koyuna dönüyor' : a.purpose === 'prey' ? ' · av peşinde' : ' · kıyı baskınına'}`; }
+      return `${monsterName(a.monster ?? 'goblin')}: ${a.troops}${a.boss ? ' + önder' : ''}${a.returning ? ' · kampa dönüyor' : ''}`;
     case 'hero': { const h0 = a.heroes?.length ? sim.hero(a.heroes[0]) : undefined; return a.purpose === 'goal' && h0?.goal ? `${esc(hs)} yolda: ${esc(h0.goal.text)}` : `Kahraman yolda: ${esc(hs)}`; }
     case 'party': return `Macera grubu: ${esc(hs)}${a.returning ? ' · dönüyor' : ''}`;
     case 'settlers': return `Öncüler (${esc(civ)}): ${sim.popSize(a.pop)} kişi`;
     case 'scout': return `Kâşif (${esc(civ)})`;
+    case 'keeper': { const inn = sim.w.inns.find((x) => x.id === a.inn); return `Hancı ${esc(inn?.keeper ?? '')}: ${esc(inn?.name ?? '')} Hanı'nı kurmaya gidiyor`; }
+    case 'supply': { const inn = sim.w.inns.find((x) => x.id === a.inn); return `Erzak arabası (${esc(civ)}) → ${esc(inn?.name ?? '')} Hanı: ${Object.entries(a.cargo ?? {}).map(([k, v]) => `${v} ${GOODS[k as Good].name.toLocaleLowerCase('tr')}`).join(', ')}`; }
+    case 'traveler': { const g = a.guest; const inn = sim.w.inns.find((x) => x.id === a.inn); if (!g) return 'Yolcu'; return `${GUEST[g.kind].icon} ${esc(g.name)}${g.n > 1 ? ` +${g.n - 1}` : ''} (${GUEST[g.kind].name.toLocaleLowerCase('tr')}): ${a.purpose === 'come' ? `${esc(inn?.name ?? '')} Hanı'na gidiyor` : `${esc(g.toName)} yolunda`} · ${esc(g.why)}`; }
   }
 }
 
@@ -744,6 +809,8 @@ function renderCivs(): string {
     h += `<div class="sub">${RACES[c.race].plural} · ${cls.name} <span class="dnd">(${cls.dnd})</span> · ${alignStr(c.align)}</div>`;
     h += `<div class="chips">${!c.alive ? '<span class="chip dead">Yok oldu</span>' : ''}${wars.map((o) => `<span class="chip war">Savaşta: ${esc(o.name)}</span>`).join('')}<span class="chip feat" title="${esc(cls.featureDesc)}">${esc(cls.feature)}</span>${sub ? `<span class="chip doc" title="${esc(sub.desc)}">${esc(sub.name)}</span>` : '<span class="chip ghost">Alt sınıf seçilmedi</span>'}${(() => { const ws = ss.find((x) => x.civics.wonder || x.project?.kind === 'wonder'); return ws ? `<span class="chip feat" title="${esc(WONDERS[c.cls].desc)}">★ ${esc(WONDERS[c.cls].name)}${ws.civics.wonder ? '' : ` %${Math.round((1 - ws.project!.left / ws.project!.total) * 100)}`}</span>` : ''; })()}${Object.entries(races).map(([r, n]) => `<span class="chip">${RACES[r as RaceId].name} ${n}</span>`).join('')}</div>`;
     h += `<div class="res"><div><b>${pop}</b><span>Nüfus</span></div><div><b>${ss.length}</b><span>Yerleşim</span></div><div><b>${num(sim.st(c, 'gold'))}</b><span>Altın</span></div><div><b>${soldiers}</b><span>Asker</span></div><div><b>${heroes.length}</b><span>Kahraman</span></div><div><b>${c.research.done.length}</b><span>Bilgi</span></div></div>`;
+    { const f = fleet(sim, c), yards = ss.filter((x) => x.civics.shipyard).length, over = ss.filter((x) => x.overseas).length;
+      if (yards || over) h += `<div class="sub">⚓ ${yards} tersane · ${f.ships} ${hullName(sim, c, true)}${f.galleys ? ` · ${f.galleys} kadırga` : ''}${over ? ` · ${over} denizaşırı koloni` : ''}</div>`; }
     h += `<div class="lbl">Araştırma</div>`;
     if (cur) {
       h += `<div class="research"><span>${esc(sim.techName(c, cur.id))} <span class="sub">(${cur.tree === 'main' ? 'ana ağaç' : 'sınıf ağacı'}, ${ERA_ROMAN[cur.era]})</span></span><span class="sub">${Math.floor(c.research.progress)}/${researchCost(sim, c, cur)}</span></div>`;
@@ -792,7 +859,7 @@ function renderTree(): string {
   let h = `<div class="picker">${w.civs.map((o) => `<button class="pick" data-civ="${o.id}" aria-pressed="${o.id === c.id}">${swatch(o)}${esc(CLASSES[o.cls].name)}</button>`).join('')}</div>`;
   h += `<p class="sub">${esc(c.name)} · ${ERA_ROMAN[c.era]} ${ERA_TR[c.era]} çağı · ${c.research.done.length} düğüm</p>`;
   h += `<div class="legend2"><span class="nd done">bilinen</span><span class="nd cur">araştırılıyor</span><span class="nd avail">açık</span><span class="nd gated">kaynak eksik</span><span class="nd locked">kilitli</span></div>`;
-  const chains: [string, string][] = [['gida', 'Gıda'], ['metal', 'Metal'], ['yapi', 'Yapı, savunma'], ['ticaret', 'Ticaret'], ['bilgi', 'Bilgi, büyü']];
+  const chains: [string, string][] = [['gida', 'Gıda'], ['metal', 'Metal'], ['yapi', 'Yapı, savunma'], ['ticaret', 'Ticaret'], ['deniz', 'Denizcilik'], ['bilgi', 'Bilgi, büyü']];
   h += `<div class="tree">`;
   for (let era = 1; era <= 4; era++) {
     const reached = c.era >= era;
@@ -825,7 +892,7 @@ function nodeHtml(c: Civ, t: TechDef) {
   return `<div class="nd ${st}" title="${esc(title)}"${st === 'cur' ? ` style="--p:${pct}%"` : ''}>${esc(sim.techName(c, t.id))}${t.unit ? ` <small>★ ${esc(UNITS[t.unit].name)}</small>` : ''}${st === 'gated' ? `<small>${esc(gate.slice(3))}</small>` : ''}</div>`;
 }
 function gateName(k: string) {
-  return ({ water: 'su', fertile: 'verimli ova', clay: 'kil', copper: 'bakır', tin: 'kalay', iron: 'demir', coal: 'kömür', gold: 'altın', mana: 'mana', mithril: 'mithril', horses: 'at', herbs: 'şifalı ot', heartwood: 'kadim ağaç' } as Record<string, string>)[k] ?? k;
+  return ({ water: 'su', coast: 'deniz kıyısı', fertile: 'verimli ova', clay: 'kil', copper: 'bakır', tin: 'kalay', iron: 'demir', coal: 'kömür', gold: 'altın', mana: 'mana', mithril: 'mithril', horses: 'at', herbs: 'şifalı ot', heartwood: 'kadim ağaç' } as Record<string, string>)[k] ?? k;
 }
 
 // ---- Karşılaştırma sekmesi
@@ -889,50 +956,136 @@ function renderHeroes(): string {
 }
 
 function renderInns(): string {
-  const w = sim.w;
-  if (!w.inns.length) return `<p class="empty">Bu dünyada tarafsız han yok.</p>`;
-  const banned = w.civs.filter((c) => (c.innBanUntil ?? 0) > sim.day);
-  let out = `<p class="sub">Hanlar kimseye ait değildir. Serbest kahramanlar burada doğar, kendi yollarını izler; medeniyetler onları açık artırmayla ${CONTRACT_YEARS} yıllığına kiralar.</p>`;
-  if (banned.length) out += `<div class="chips">${banned.map((c) => `<span class="chip war">Han Bozan: ${esc(c.name)} (Y${Math.floor(c.innBanUntil! / YEAR) + 1}'e dek)</span>`).join('')}</div>`;
-  const hires = w.civs.filter((c) => c.alive).map((c) => ({ c, n: innHeroesOf(sim, c).length })).filter((x) => x.n);
-  if (hires.length) out += `<div class="sub">Sözleşmeli: ${hires.map((x) => `<span style="color:${civColor(x.c.id)}">■</span> ${esc(x.c.name)} ${x.n}`).join(' · ')}</div>`;
-  for (const inn of w.inns) out += renderInn(inn);
-  return out;
+  const ctx = { sim, civColor, canFollow: !!dio };
+  const inn = innSel !== null ? sim.w.inns.find((x) => x.id === innSel) : undefined;
+  if (innSel !== null && !inn) innSel = null;
+  return inn ? renderInnDetail(ctx, inn) : renderInnList(ctx);
 }
-function renderInn(inn: Inn): string {
-  const w = sim.w;
-  let h = `<div class="inn ${inn.alive ? '' : 'dead'}"><h3><span>🍺 ${esc(inn.name)} Hanı</span><small>${inn.alive ? `${Math.round(inn.gold)} altın` : 'harabe'}</small></h3>`;
-  const teacher = inn.teacher !== undefined ? w.heroes.find((x) => x.id === inn.teacher) : undefined;
-  const graves = w.heroes.filter((x) => x.state === 'dead' && x.baseInn && x.base === inn.id).length;
-  h += `<div class="sub">${inn.alive ? `Hancı ${esc(inn.keeper)}` : `Yıkıldı: ${sim.dateStr(inn.ruinedDay ?? 0)}`}${teacher && teacher.state === 'retired' ? ` · öğretmen ${esc(heroLabel(teacher))}` : ''}${graves ? ` · mezarlıkta ${graves} kahraman` : ''}${inn.raids ? ` · ${inn.raids} baskın gördü` : ''}</div>`;
-  const quests = w.quests.filter((q) => q.open && q.inn === inn.id);
-  h += `<div class="lbl">Pano</div>`;
-  h += quests.length ? `<ul class="board">${quests.map((q) => {
-    const cp = w.camps.find((c) => c.id === q.camp);
-    const who = q.civ >= 0 ? `<span style="color:${civColor(q.civ)}">■</span> ${esc(w.civs[q.civ].name)}` : `Hancı`;
-    return `<li><b>${esc(cp?.name ?? '?')}</b> · ${q.bounty} altın · ${who}${q.failures ? ` · ${q.failures} başarısız` : ''}${q.expires ? ` · Y${Math.floor(q.expires / YEAR) + 1}'e dek` : ''}</li>`;
-  }).join('')}</ul>` : `<div class="sub">Açık ilan yok.</div>`;
-  const pool = innPool(sim, inn);
-  h += `<div class="lbl">Serbest kahramanlar (${pool.length})</div>`;
-  h += pool.length ? pool.sort((a, b) => b.level - a.level).map((x) => {
-    const a = w.agents.find((q) => !q.dead && q.heroes?.includes(x.id));
-    const bids = (x.auction?.bids ?? []).slice().sort((p, q) => q.gold - p.gold);
-    return `<div class="pool"><div><b>${esc(heroLabel(x))}</b> <span class="sub">Sv ${x.level} ${RACES[x.race].name} ${HERO_CLASS_TR[x.cls]} · ${ALIGN_TR[x.align]} · ${PATH_TR[x.path]}</span>${dio ? ` <button class="btn sm" data-follow-hero="${x.id}">İzle</button>` : ''}</div>`
-      + `<div class="sub">${esc(heroNow(x, a))}</div>`
-      + (bids.length ? `<div class="sub mono">Teklifler: ${bids.map((b) => `<span style="color:${civColor(b.civ)}">■</span>${b.gold}`).join(' ')} · kapanış ${sim.dateStr(x.auction!.end)}</div>` : '')
-      + `</div>`;
-  }).join('') : `<div class="sub">Han boş.</div>`;
-  const evs = w.events.filter((e) => e.text.includes(inn.name)).slice(-4).reverse();
-  if (evs.length) h += `<div class="lbl">Son olaylar</div><div class="journal">${evs.map((e) => `<div><span class="mono">${sim.dateStr(e.day).replace('Yıl ', 'Y')}</span> ${esc(e.text)}</div>`).join('')}</div>`;
-  return h + '</div>';
+/** hana tıklanınca: sağda han paneli, haritada seçim halkası */
+function openInn(id: number) {
+  innSel = id;
+  if (dio) dio.selInn = id;
+  openDrawer('inn');
 }
 
 function renderBattle(b: Battle): string {
+  const r = b.replay;
   let h = `<div class="battle"><h3><span>${esc(b.title)}</span><button class="btn close" data-close="1">Kapat</button></h3>`;
-  h += `<div class="sub">${sim.dateStr(b.day)} · ${esc(b.sideA)} (${b.lossesA} kayıp) karşı ${esc(b.sideB)} (${b.lossesB} kayıp)</div><div><b>Kazanan:</b> ${esc(b.winner === 'A' ? b.sideA : b.sideB)}</div>`;
+  h += `<div class="sub">${sim.dateStr(b.day)} · ${esc(b.sideA)} (${b.lossesA} kayıp) karşı ${esc(b.sideB)} (${b.lossesB} kayıp)</div><div><b>Kazanan:</b> ${esc(b.winner === 'A' ? b.sideA : b.sideB)}${r ? ` <span class="sub">· ${r.end === 'rout' ? `${r.rounds}. turda bozgun` : r.end === 'wipe' ? `${r.rounds}. turda yok edildi` : 'süre doldu'} · savaş öncesi tahmin %${Math.round(winChance(r.powA, r.powB) * 100)}</span>` : ''}</div>`;
+  if (r && r.groups.filter((g) => g.side === 'A').length > 1) h += `<div class="sub">Ortak saldırı: ${r.groups.filter((g) => g.side === 'A').map((g) => esc(g.name)).join(' + ')}</div>`;
+  if (r) h += `<div style="margin:8px 0 4px"><button class="btn watch" data-watch="${b.id}">▶ Savaşı zar zar izle</button></div>`;
+  else h += `<div class="sub" style="margin:6px 0">Bu savaşın ayrıntılı tekrarı artık tutulmuyor (yalnızca son 40 savaş saklanır).</div>`;
   if (b.lines.length) h += `<ul>${b.lines.slice(0, 14).map((l) => `<li class="${l.crit ? 'crit' : l.fumble ? 'fumble' : ''}">${esc(l.t)}</li>`).join('')}</ul>`;
-  if (b.rolls.length) h += `<div class="lbl">d20 atışları</div><div class="dice">${b.rolls.slice(0, 40).map((r) => `<span class="die ${r.side === 'A' ? 'a' : 'b'} ${r.d20 === 20 ? 'n20' : r.d20 === 1 ? 'n1' : ''}" title="${esc(r.who)}">${r.d20}</span>`).join('')}</div>`;
+  if (r) {
+    const atk = r.ev.filter((e) => e.sp === 'attack').slice(0, 48);
+    h += `<div class="lbl">İlk saldırılar · d20 + bonus ≥ AC</div><div class="dice">${atk.map((e) => { const u = r.units[e.a!]; return `<span class="die ${u.s === 'A' ? 'a' : 'b'} ${e.d === 20 ? 'n20' : e.d === 1 ? 'n1' : ''}${e.h ? '' : ' miss'}" title="${esc(u.n)} → ${esc(r.units[e.t!].n)}: ${e.d}+${e.m}=${e.d! + e.m!} vs AC ${e.ac} · ${e.h === 2 ? 'kritik' : e.h ? 'isabet' : 'ıska'}${e.h ? `, ${e.v} hasar` : ''}">${e.d}</span>`; }).join('')}</div>`;
+  } else if (b.rolls.length) h += `<div class="lbl">d20 atışları</div><div class="dice">${b.rolls.slice(0, 40).map((x) => `<span class="die ${x.side === 'A' ? 'a' : 'b'} ${x.d20 === 20 ? 'n20' : x.d20 === 1 ? 'n1' : ''}" title="${esc(x.who)}">${x.d20}</span>`).join('')}</div>`;
   return h + '</div>';
+}
+
+// ---------------------------------------------------------------- savaş takibi: Cepheler sekmesi ve Savaş Tiyatrosu
+let theater: BattleTheater | null = null;
+let theaterPaused = false;
+let autoWatch = false, pauseWatch = true;
+try { autoWatch = localStorage.getItem('fd-autowatch') === '1'; pauseWatch = localStorage.getItem('fd-pausewatch') !== '0'; } catch { /* yok */ }
+function openTheater(id: number) {
+  const b = sim.w.battles.find((x) => x.id === id);
+  if (!b || !b.replay) return;
+  theater?.close();
+  theaterPaused = false;
+  if (pauseWatch && !paused) { togglePause(); theaterPaused = true; }
+  theater = new BattleTheater(b, {
+    civColor, dateStr: (d) => sim.dateStr(d), sound: () => amb.enabled,
+    onClose: () => { theater = null; if (theaterPaused && paused) togglePause(); theaterPaused = false; },
+  });
+}
+function pct(x: number) { return x > 0.99 ? '%99+' : x < 0.01 ? '%1-' : `%${Math.round(x * 100)}`; }
+function forceName(a: Agent): string {
+  if (a.kind === 'raid') return `${monsterName(a.monster ?? 'goblin')} akını`;
+  if (a.kind === 'army' && a.purpose === 'plunder') return `${sim.w.civs[a.civ]?.name ?? ''} akıncıları`;
+  if (a.kind === 'army' && a.purpose === 'innraid') return `${sim.w.civs[a.civ]?.name ?? ''} han baskını`;
+  return bandName(sim, a);
+}
+function forceComp(a: Agent): string {
+  const hs = (a.heroes ?? []).map((id) => sim.hero(id)).filter((h) => h.state !== 'dead');
+  const parts: string[] = [];
+  if (a.kind === 'raid') parts.push(`${a.troops ?? 0} ${monsterName(a.monster ?? 'goblin', false).toLocaleLowerCase('tr')}${a.boss ? ' + önder' : ''}`);
+  else if (a.troops) parts.push(`${a.troops} asker`);
+  if (hs.length) parts.push(hs.map((h) => `${esc(h.name)} (${HERO_CLASS_TR[h.cls]} ${h.level})`).join(', '));
+  return parts.join(' · ') || '—';
+}
+/** hedef, hedefin savunması ve adı */
+function forceTarget(a: Agent): { name: string; tile?: number; def?: import('../sim/combat').Combatant[] } {
+  const w = sim.w;
+  if (a.kind === 'party' || (a.kind === 'army' && a.purpose === 'expedition')) {
+    const cp = w.camps.find((x) => x.id === a.to);
+    return cp ? { name: cp.name, tile: cp.tile, def: cp.alive ? campForce(sim, cp) : undefined } : { name: '?' };
+  }
+  if (a.kind === 'army' && a.purpose === 'innraid') { const inn = w.inns.find((x) => x.id === a.to); return { name: inn ? `${inn.name} Hanı` : 'han', tile: inn?.tile }; }
+  if (a.kind === 'raid' && a.purpose === 'caravan') return { name: 'kervan pususu' };
+  if (a.kind === 'raid' && a.purpose === 'ext') return { name: 'çıkarma yapısı', tile: a.targetTile };
+  if (a.kind === 'raid' && a.purpose === 'inn') { const inn = w.inns.find((x) => x.id === a.inn || x.tile === a.targetTile); return { name: inn ? `${inn.name} Hanı` : 'han' }; }
+  const st = a.to !== undefined ? sim.settlement(a.to) : undefined;
+  if (!st) return { name: '?' };
+  const def = st.alive ? defenders(sim, st, a.kind === 'raid' ? 'A' : 'B', a.kind === 'raid') : undefined;
+  if (def && a.kind === 'army' && a.civ >= 0 && sim.has(sim.w.civs[a.civ], 'siege')) for (const d of def) d.ac -= 2;
+  return { name: st.name, tile: st.tile, def };
+}
+function renderFronts(): string {
+  const w = sim.w;
+  let h = `<div class="fopts"><label><input type="checkbox" id="autowatch" ${autoWatch ? 'checked' : ''}> Büyük savaşları otomatik izle</label><label><input type="checkbox" id="pausewatch" ${pauseWatch ? 'checked' : ''}> İzlerken zamanı durdur</label></div>`;
+  // savaşlar
+  const wars: { a: Civ; d: Civ; war: NonNullable<ReturnType<typeof sim.rel>['war']> }[] = [];
+  const seenW = new Set<unknown>();
+  for (const a of w.civs) for (const d of w.civs) { const war = a.id !== d.id ? sim.rel(a.id, d.id).war : null; if (war && war.attacker === a.id && !seenW.has(war)) { seenW.add(war); wars.push({ a, d, war }); } }
+  h += `<div class="fsec">Savaşlar (${wars.length})</div>`;
+  if (!wars.length) h += '<div class="sub">Şu an kimse savaşta değil.</div>';
+  for (const { a, d, war } of wars) {
+    const tgt = sim.settlement(war.target);
+    const ally = war.ally !== undefined ? w.civs[war.ally] : undefined;
+    h += `<div class="front"><h4><span class="sw" style="background:${civColor(a.id)}"></span>${esc(a.name)} <span class="sub">⚔</span> <span class="sw" style="background:${civColor(d.id)}"></span>${esc(d.name)}</h4><div class="sub">${esc(war.goal)}</div><div class="row"><span>Hedef: <b>${esc(tgt?.name ?? '?')}</b>${tgt && tgt.civ !== d.id ? ' (el değiştirdi)' : ''}</span><span class="sub">${sim.day - war.since}. gün · saldırı ${war.attacks}/3</span>${ally ? `<span class="muster">Müttefik: ${esc(ally.name)}</span>` : ''}</div></div>`;
+  }
+  // yoldaki güçler: aynı hedefe gidenler birlikte
+  const movers = w.agents.filter((a) => !a.dead && !a.returning && ((a.kind === 'army' && (a.troops || a.heroes?.length)) || a.kind === 'party' || (a.kind === 'raid' && a.purpose !== 'return')));
+  const groups = new Map<string, Agent[]>();
+  for (const a of movers) { const k = musterKey(a) ?? `x${a.id}`; groups.set(k, [...(groups.get(k) ?? []), a]); }
+  h += `<div class="fsec">Yoldaki güçler (${movers.length})</div>`;
+  if (!movers.length) h += '<div class="sub">Şu an yürüyen ordu, parti ya da akın yok.</div>';
+  const list = [...groups.values()].sort((x, y) => Math.min(...x.map((a) => etaDays(sim, a))) - Math.min(...y.map((a) => etaDays(sim, a))));
+  for (const g of list) {
+    const lead = g[0];
+    const tg = forceTarget(lead);
+    let odds = '';
+    if (tg.def?.length) {
+      const mine = g.flatMap((a) => a.kind === 'raid' ? monsterSide(a.monster ?? 'goblin', a.troops ?? 0, !!a.boss, 'A') : agentCombatants(sim, a));
+      if (mine.length) { const [pa, pb] = powerVs(mine, tg.def); const p = winChance(pa, pb); odds = `<span class="odds${p < 0.4 ? ' bad' : ''}" title="Şu anki güçlere göre tahmin (güç ${pa.toFixed(1)} : ${pb.toFixed(1)})">zafer şansı ${pct(p)}</span>`; }
+    }
+    const joint = g.length > 1;
+    const key = musterKey(lead);
+    const waitEnd = g.filter((a) => a.muster).reduce((m, a) => Math.min(m, a.muster!.until), Infinity);
+    h += `<div class="front${joint ? ' joint' : ''}"><h4>${joint ? '⚔ Ortak saldırı → ' : '→ '}${esc(tg.name)} ${odds}</h4>`;
+    if (joint) h += `<div class="sub">${g.length} grup aynı hedefe gidiyor. İlk varan en çok ${key?.startsWith('s') ? MUSTER_CITY : MUSTER_CAMP} gün bekler${Number.isFinite(waitEnd) ? ` (bekleme ${Math.max(0, waitEnd - sim.day)} gün sonra biter)` : ''}; o ana dek gelenler tek savaşta birlikte saldırır.</div>`;
+    for (const a of g) {
+      const eta = etaDays(sim, a);
+      const late = joint && !atTarget(a) && Number.isFinite(waitEnd) && eta > waitEnd - sim.day;
+      const at = atTarget(a);
+      const prog = Math.round((Math.min(a.step + a.progress, a.path.length - 1) / Math.max(1, a.path.length - 1)) * 100);
+      const col = a.civ >= 0 ? civColor(a.civ) : a.kind === 'raid' ? CAMP_COL[a.monster ?? 'goblin'] : '#d9b04a';
+      const status = at ? (a.muster ? `<span class="muster">⛺ hedefte bekliyor · en çok ${Math.max(0, a.muster.until - sim.day)} gün</span>` : '<span class="muster">hedefte</span>') : `<span class="sub">~${Math.max(1, Math.ceil(eta))} gün${late ? ' · <b style="color:var(--danger)">yetişemeyecek</b>' : ''}</span>`;
+      const follow = (a.kind === 'party' && a.heroes?.length) ? `data-follow-hero="${a.heroes[0]}"` : `data-follow-agent="${a.id}"`;
+      h += `<div class="row"><span class="sw" style="background:${col}"></span><b>${esc(forceName(a))}</b><span class="sub">${forceComp(a)}</span></div><div class="row"><div class="prog"><i style="width:${prog}%"></i></div>${status}${dio ? `<button class="btn sm" ${follow}>İzle</button>` : ''}</div>`;
+    }
+    h += '</div>';
+  }
+  // son savaşlar
+  const recent = w.battles.slice(-14).reverse();
+  h += `<div class="fsec">Son savaşlar</div>`;
+  for (const b of recent) {
+    const r = b.replay;
+    h += `<div class="bres"><div class="t">${b.joint ? '⚔ ' : ''}${esc(b.title)}<small>${sim.dateStr(b.day)} · ${esc(b.winner === 'A' ? b.sideA : b.sideB)} kazandı${r ? ` · ${r.rounds} tur · ${r.ev.filter((e) => e.sp === 'attack').length} zar` : ''}</small></div><span class="w">${b.lossesA} : ${b.lossesB}</span>${r ? `<button class="btn sm watch" data-watch="${b.id}">▶ İzle</button>` : ''}</div>`;
+  }
+  if (!recent.length) h += '<div class="sub">Henüz savaş olmadı.</div>';
+  return h;
 }
 function renderLog(): string {
   const w = sim.w;
@@ -943,14 +1096,14 @@ function renderLog(): string {
     const b = e.battle ? w.battles.find((x) => x.id === e.battle) : undefined;
     const crit = b ? b.rolls.filter((r) => r.d20 === 20).length : 0;
     const c = e.civ !== undefined ? w.civs[e.civ] : undefined;
-    return `<button class="ev ${e.major ? 'major' : ''} k-${e.kind}" data-ev="${e.id}"${c ? ` style="--cc:${c.color}"` : ''}><time>${sim.dateStr(e.day)}</time><span class="t">${esc(e.text)}</span>${e.cause ? `<div class="why">${esc(e.cause)}</div>` : ''}${b ? `<span class="d20">⚔ savaş raporu${crit ? ` · ${crit}× nat 20` : ''}</span>` : ''}</button>`;
+    return `<button class="ev ${e.major ? 'major' : ''} k-${e.kind}" data-ev="${e.id}"${c ? ` style="--cc:${c.color}"` : ''}><time>${sim.dateStr(e.day)}</time><span class="t">${esc(e.text)}</span>${e.cause ? `<div class="why">${esc(e.cause)}</div>` : ''}${b ? `<span class="d20">⚔ savaş raporu${crit ? ` · ${crit}× nat 20` : ''}${b.replay ? ' · ▶ izlenebilir' : ''}</span>` : ''}</button>`;
   }).join('');
   return h;
 }
 
 // ---- oyun içi HUD: sağ üst armalar + açılır rapor paneli (Civ tarzı)
-const TAB_TITLE: Record<Tab, string> = { civ: 'Medeniyetler', tree: 'Araştırma Ağacı', compare: 'Kıyas', hero: 'Kahramanlar', inn: 'Hanlar', log: 'Kronik' };
-const REPORT_KEYS: Record<string, Tab> = { '1': 'civ', '2': 'tree', '3': 'compare', '4': 'hero', '5': 'inn', '6': 'log' };
+const TAB_TITLE: Record<Tab, string> = { civ: 'Medeniyetler', tree: 'Araştırma Ağacı', compare: 'Kıyas', hero: 'Kahramanlar', inn: 'Hanlar', log: 'Kronik', war: 'Cepheler' };
+const REPORT_KEYS: Record<string, Tab> = { '1': 'civ', '2': 'tree', '3': 'compare', '4': 'hero', '5': 'inn', '6': 'log', '7': 'war' };
 const drawer = $('drawer');
 const civbar = $('civbar');
 const civtip = $('civtip');
@@ -962,19 +1115,22 @@ function renderPanel() {
   if (!drawerOpen) return;
   const pane = $('pane');
   const st = pane.scrollTop;
-  pane.innerHTML = tab === 'civ' ? renderCivs() : tab === 'tree' ? renderTree() : tab === 'compare' ? renderCompare() : tab === 'hero' ? renderHeroes() : tab === 'inn' ? renderInns() : renderLog();
+  pane.innerHTML = tab === 'civ' ? renderCivs() : tab === 'tree' ? renderTree() : tab === 'compare' ? renderCompare() : tab === 'hero' ? renderHeroes() : tab === 'inn' ? renderInns() : tab === 'war' ? renderFronts() : renderLog();
   pane.scrollTop = st;
   renderDrawerHead();
 }
 function renderDrawerHead() {
   const c = sim.w.civs[treeCiv] ?? sim.w.civs[0];
-  const key = tab === 'civ' && c ? `civ:${c.id}:${c.era}:${c.alive}` : tab;
+  const selInn = tab === 'inn' && innSel !== null ? sim.w.inns.find((x) => x.id === innSel) : undefined;
+  const key = tab === 'civ' && c ? `civ:${c.id}:${c.era}:${c.alive}` : selInn ? `inn:${selInn.id}:${selInn.stage}:${selInn.level}` : tab;
   if (key === drawerHeadKey) return;
   drawerHeadKey = key;
   drawer.dataset.tab = tab;
   $('drawer-title').innerHTML = tab === 'civ' && c
     ? `<span class="med${c.alive ? '' : ' dead'}" style="--cc:${c.color}">${classIcon(c.cls)}</span><span class="t">${esc(c.name)}</span><span class="era">${ERA_ROMAN[c.era]} · ${ERA_TR[c.era]}</span><span class="drawer-nav"><button data-civstep="-1" aria-label="Önceki medeniyet" title="Önceki">${uiIcon('prev')}</button><button data-civstep="1" aria-label="Sonraki medeniyet" title="Sonraki">${uiIcon('next')}</button></span>`
-    : `${uiIcon(tab)}<span class="t">${TAB_TITLE[tab]}</span>`;
+    : selInn
+      ? `${uiIcon('inn')}<span class="t">${esc(selInn.name)} Hanı</span><span class="era">${selInn.stage === 'open' ? esc(levelName(selInn)) : selInn.stage === 'ruin' ? 'harabe' : 'inşaat'}</span><span class="drawer-nav"><button data-innstep="-1" aria-label="Önceki han" title="Önceki">${uiIcon('prev')}</button><button data-innstep="1" aria-label="Sonraki han" title="Sonraki">${uiIcon('next')}</button></span>`
+      : `${uiIcon(tab)}<span class="t">${TAB_TITLE[tab]}</span>`;
 }
 /** tarih, rapor düğmeleri ve armalar — panel kapalıyken de güncellenir */
 function renderHud() {
@@ -1017,6 +1173,8 @@ function openDrawer(t: Tab, civ?: number) {
   if ((civ !== undefined && civ !== treeCiv) || t !== tab || !drawerOpen) pane.scrollTop = 0;
   if (civ !== undefined) treeCiv = civ;
   tab = t;
+  if (t !== 'inn') innSel = null;
+  if (dio) dio.selInn = t === 'inn' ? innSel : null;
   drawerOpen = true;
   drawer.hidden = false;
   document.body.classList.add('drawer-open');
@@ -1027,6 +1185,7 @@ function openDrawer(t: Tab, civ?: number) {
 }
 function closeDrawer() {
   drawerOpen = false;
+  if (dio) dio.selInn = null;
   drawer.hidden = true;
   paneHover = false;
   document.body.classList.remove('drawer-open');
@@ -1041,9 +1200,18 @@ pane.addEventListener('pointerenter', () => { paneHover = true; });
 pane.addEventListener('pointerleave', () => { paneHover = false; });
 pane.addEventListener('click', (e) => {
   const el = e.target as HTMLElement;
+  const wb = el.closest<HTMLElement>('[data-watch]');
+  if (wb) { openTheater(Number(wb.dataset.watch)); return; }
   if (el.closest('[data-close]')) { openBattle = null; renderPanel(); return; }
   const fh = el.closest<HTMLElement>('[data-follow-hero]');
   if (fh && dio) { if (mode !== '3d') setMode('3d'); dio.startFollow({ kind: 'hero', id: Number(fh.dataset.followHero) }); renderFollow(); return; }
+  const io = el.closest<HTMLElement>('[data-inn-open]');
+  if (io) { openInn(Number(io.dataset.innOpen)); return; }
+  if (el.closest('[data-inn-list]')) { innSel = null; if (dio) dio.selInn = null; pane.scrollTop = 0; drawerHeadKey = ''; renderPanel(); return; }
+  const ifo = el.closest<HTMLElement>('[data-inn-focus]');
+  if (ifo) { const inn = sim.w.inns.find((x) => x.id === Number(ifo.dataset.innFocus)); if (inn && dio) { if (mode !== '3d') setMode('3d'); stopFollow(); if (cine) setCine(false); dio.focusTile(inn.tile); } return; }
+  const fa = el.closest<HTMLElement>('[data-follow-agent]');
+  if (fa && dio) { if (mode !== '3d') setMode('3d'); if (cine) setCine(false); dio.startFollow({ kind: 'agent', id: Number(fa.dataset.followAgent) }); renderFollow(); return; }
   const pick = el.closest<HTMLElement>('[data-civ]');
   if (pick) { openDrawer('tree', Number(pick.dataset.civ)); return; }
   const ev = el.closest<HTMLElement>('[data-ev]');
@@ -1054,10 +1222,22 @@ pane.addEventListener('click', (e) => {
     if (g.battle) { openBattle = g.battle; pane.scrollTop = 0; renderPanel(); }
   }
 });
-pane.addEventListener('change', (e) => { const el = e.target as HTMLInputElement; if (el.id === 'major') { onlyMajor = el.checked; renderPanel(); } });
+pane.addEventListener('change', (e) => {
+  const el = e.target as HTMLInputElement;
+  if (el.id === 'major') { onlyMajor = el.checked; renderPanel(); }
+  if (el.id === 'autowatch') { autoWatch = el.checked; try { localStorage.setItem('fd-autowatch', autoWatch ? '1' : '0'); } catch { /* yok */ } }
+  if (el.id === 'pausewatch') { pauseWatch = el.checked; try { localStorage.setItem('fd-pausewatch', pauseWatch ? '1' : '0'); } catch { /* yok */ } }
+});
 drawer.addEventListener('click', (e) => {
   const el = e.target as HTMLElement;
   if (el.closest('[data-closedrawer]')) { closeDrawer(); return; }
+  const ist = el.closest<HTMLElement>('[data-innstep]');
+  if (ist && innSel !== null) {
+    const list = sim.w.inns;
+    const k = list.findIndex((x) => x.id === innSel);
+    if (list.length) openInn(list[(((k + Number(ist.dataset.innstep)) % list.length) + list.length) % list.length].id);
+    return;
+  }
   const step = el.closest<HTMLElement>('[data-civstep]');
   if (step) {
     const n = sim.w.civs.length;
@@ -1066,7 +1246,7 @@ drawer.addEventListener('click', (e) => {
 });
 for (const b of document.querySelectorAll<HTMLButtonElement>('.rbtn')) {
   b.innerHTML = uiIcon(b.dataset.tab as Tab);
-  b.addEventListener('click', (e) => { toggleTab(b.dataset.tab as Tab); if (e.detail > 0) b.blur(); });
+  b.addEventListener('click', (e) => { if (b.dataset.tab === 'inn' && !(drawerOpen && tab === 'inn')) innSel = null; toggleTab(b.dataset.tab as Tab); if (e.detail > 0) b.blur(); });
 }
 $('optbtn').innerHTML = uiIcon('gear');
 $('helpbtn').innerHTML = uiIcon('help');
@@ -1123,7 +1303,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.modes button')) b
 window.addEventListener('keydown', (e) => { if (e.code === 'Space' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); togglePause(); } });
 window.addEventListener('resize', () => { cw = 0; });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { const vo = document.querySelector<HTMLDetailsElement>('.viewopts'); if (vo?.open) vo.open = false; else if (!$('help').hidden) $('help').hidden = true; else if (drawerOpen) closeDrawer(); else stopFollow(); }
+  if (e.key === 'Escape') { const vo = document.querySelector<HTMLDetailsElement>('.viewopts'); if (document.body.classList.contains('clean')) document.body.classList.remove('clean'); else if (vo?.open) vo.open = false; else if (!$('help').hidden) $('help').hidden = true; else if (drawerOpen) closeDrawer(); else if (dio?.roam) setRoam(false); else stopFollow(); }
   const tgt = e.target;
   const typing = (tgt instanceof HTMLInputElement && tgt.type !== 'checkbox') || tgt instanceof HTMLSelectElement;
   if (!typing && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1132,6 +1312,62 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.key === '?' || (e.key === 'h' && !(e.target instanceof HTMLInputElement))) $('help').hidden = !$('help').hidden;
 });
+// ---------------------------------------------------------------- gezgin: dünyanın içinde serbest dolaşma
+const HINT0 = $('hint').innerHTML;
+function setRoam(v: boolean) {
+  if (!dio || mode !== '3d') return;
+  if (v) { if (cine) setCine(false); stopFollow(); dio.enterRoam(); } else dio.exitRoam();
+}
+function roamUI() {
+  const on = !!dio?.roam, walk = !!dio?.fly.walk;
+  document.body.classList.toggle('roam', on);
+  $('roam').setAttribute('aria-pressed', String(on));
+  $('roambar').hidden = !on;
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-roam]')) b.setAttribute('aria-pressed', String((b.dataset.roam === 'walk') === walk));
+  $('hint').innerHTML = !on ? HINT0 : walk
+    ? 'Sürükle: bak · <b>WASD</b> yürü · <b>Shift</b> koş · <b>Boşluk</b> zıpla · <b>V</b> uç · <b>U</b> arayüz · <b>G</b> çık'
+    : 'Sürükle: bak · <b>WASD</b> uç · <b>Boşluk/E</b> yüksel · <b>C/Q</b> alçal · <b>Shift</b> hızlı · <b>V</b> yürü · <b>U</b> arayüz · <b>G</b> çık';
+  lastCompass = 0;
+}
+if (dio) dio.onRoam = roamUI;
+if (dio) dio.onThunder = (delay, power) => amb.thunder(delay, power);
+$('roam').addEventListener('click', (e) => { setRoam(!dio?.roam); (e.currentTarget as HTMLElement).blur(); });
+$('roamx').addEventListener('click', (e) => { setRoam(false); (e.currentTarget as HTMLElement).blur(); });
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-roam]')) b.addEventListener('click', () => { dio?.fly.setWalk(b.dataset.roam === 'walk'); b.blur(); });
+window.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if ((t instanceof HTMLInputElement && t.type !== 'checkbox') || t instanceof HTMLSelectElement || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  if (e.code === 'KeyG') setRoam(!dio?.roam);
+  else if (e.code === 'KeyP') togglePause();
+  else if (e.code === 'KeyU' && mode === '3d') { const on = document.body.classList.toggle('clean'); if (on) feedPush({ id: -3, day: sim.day, kind: 'world', text: 'Arayüz gizlendi: geri getirmek için U.', major: true }); }
+});
+/** pusula: yön harfleri + en yakın kasabalar; üst şeritte */
+const DIRS = ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'];
+let lastCompass = 0;
+function compassTick(now: number) {
+  if (!dio?.roam || now - lastCompass < 50) return;
+  lastCompass = now;
+  const W = 190, PX = 1.55;
+  const head = ((-dio.fly.yaw * 180) / Math.PI % 360 + 360) % 360;
+  const at = (b: number) => { let d = ((b - head + 540) % 360) - 180; return W / 2 + d * PX; };
+  let h = '';
+  for (let k = 0; k < 8; k++) { const x = at(k * 45); if (x > -20 && x < W + 20) h += `<span class="${k % 2 ? '' : 'c'}" style="left:${x.toFixed(1)}px">${DIRS[k]}</span>`; }
+  for (let d = 15; d < 360; d += 15) if (d % 45) { const x = at(d); if (x > 0 && x < W) h += `<span style="left:${x.toFixed(1)}px;opacity:.35">·</span>`; }
+  const cp = dio.camera.position;
+  const near = sim.w.settlements.filter((q) => q.alive).map((q) => { const [x, z] = dio!.pos(q.tile); return { q, x, z, d: Math.hypot(x - cp.x, z - cp.z) }; }).filter((o) => o.d > 2.5 && o.d < 70).sort((a, b) => a.d - b.d).slice(0, 3);
+  const used: number[] = [];
+  for (const o of near) {
+    const b = ((Math.atan2(o.x - cp.x, -(o.z - cp.z)) * 180) / Math.PI + 360) % 360;
+    const x = at(b);
+    // aynı yöndeki kasabalar üst üste binmesin: en yakını yazılır
+    if (used.some((u) => Math.abs(u - x) < 70)) continue;
+    used.push(x);
+    if (x > 10 && x < W - 10) h += `<span class="t" style="left:${x.toFixed(1)}px">${sim.capital(sim.w.civs[o.q.civ])?.id === o.q.id ? '♛' : '•'}${esc(o.q.name)}</span>`;
+  }
+  $('cstrip').innerHTML = h;
+  const alt = dio.camAlt();
+  $('roamalt').textContent = dio.fly.walk ? (dio.fly.swimming ? 'yüzüyor' : 'yürüyor') : `${Math.max(0, Math.round(alt * 5.7))} m`;
+}
 // ortam sesi
 const amb = new Ambience();
 let lastSnd = 0;
@@ -1143,8 +1379,8 @@ try { if (localStorage.getItem('fd-sound') === '1') { amb.enabled = true; window
 sndUI();
 $('helpbtn').addEventListener('click', () => { $('help').hidden = !$('help').hidden; });
 $('help').addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-closehelp]') || e.target === $('help')) $('help').hidden = true; });
-$('follow').addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('[data-unfollow]')) stopFollow(); });
-$('feed').addEventListener('click', (e) => { const it = (e.target as HTMLElement).closest<HTMLElement>('[data-tile]'); if (it && dio) { stopFollow(); if (cine) cinePause = performance.now() + 25000; dio.shot(Number(it.dataset.tile), 12, 0.95); } });
+$('follow').addEventListener('click', (e) => { const el = e.target as HTMLElement; if (el.closest('[data-unfollow]')) stopFollow(); const io = el.closest<HTMLElement>('[data-inn-open]'); if (io) openInn(Number(io.dataset.innOpen)); });
+$('feed').addEventListener('click', (e) => { const wt = (e.target as HTMLElement).closest<HTMLElement>('[data-watch]'); if (wt) { openTheater(Number(wt.dataset.watch)); return; } const it = (e.target as HTMLElement).closest<HTMLElement>('[data-tile]'); if (it && dio) { stopFollow(); if (cine) cinePause = performance.now() + 25000; dio.shot(Number(it.dataset.tile), 12, 0.95); } });
 $('cine').addEventListener('click', () => setCine(!cine));
 const QN = ['Düşük', 'Orta', 'Yüksek'];
 ($('quality') as HTMLSelectElement).addEventListener('change', (e) => {
@@ -1166,7 +1402,7 @@ if (dio) {
     lastQ = q;
   };
 }
-let lastFps = 0;
+let lastFps = 0, lastStep = 0;
 if (dio) dio.onFollowEnd = () => { $('follow').hidden = true; };
 let lastFollow = 0;
 
@@ -1205,7 +1441,7 @@ function frame(now: number) {
     while (acc >= 1 && n < 30) { sim.step(); acc -= 1; n++; }
     if (n >= 30) acc = 0;
   }
-  if (mode === '3d' && dio) { festivalTick(); cineTick(now); dio.render(now); if (amb.enabled && now - lastSnd > 100) { lastSnd = now; amb.update(now, dio.soundInfo()); } feedTick(now); if (now - lastFps > 500) { lastFps = now; $('fps').textContent = `${dio.fps} fps · ${QN[dio.quality]}${dio.autoQuality ? ' (oto)' : ''}`; document.body.classList.toggle('lowq', dio.quality === 0); } if (dio.follow && now - lastFollow > 300) { lastFollow = now; renderFollow(); } } else draw(now);
+  if (theater) { /* savaş tiyatrosu açıkken dünya çizimi bekler */ } else if (mode === '3d' && dio) { festivalTick(); cineTick(now); dio.render(now); compassTick(now); if (dio.roam && dio.fly.walk && dio.fly.steps !== lastStep) { lastStep = dio.fly.steps; if (amb.enabled) amb.step(dio.stepSurface()); } if (amb.enabled && now - lastSnd > 100) { lastSnd = now; amb.update(now, dio.soundInfo()); } feedTick(now); if (now - lastFps > 500) { lastFps = now; $('fps').textContent = `${dio.fps} fps · ${QN[dio.quality]}${dio.autoQuality ? ' (oto)' : ''}`; document.body.classList.toggle('lowq', dio.quality === 0); } if (dio.follow && now - lastFollow > 300) { lastFollow = now; renderFollow(); } } else draw(now);
   const due = drawerOpen && (tab === 'log' ? dirty && !paneHover : (dirty || !paused) && !paneHover);
   if (due && now - lastPanel > 600) { lastPanel = now; renderPanel(); }
   if (now - lastHud > 500) { lastHud = now; renderHud(); }

@@ -70,7 +70,8 @@ export interface DepositDef {
 }
 export type Terrain = 'grass' | 'forest' | 'oldforest' | 'hill' | 'mountain' | 'water' | 'swamp' | 'tundra';
 export const TERRAIN_TR: Record<Terrain, string> = { grass: 'Çayır', forest: 'Orman', oldforest: 'Kadim orman', hill: 'Tepe', mountain: 'Dağ', water: 'Nehir/göl', swamp: 'Bataklık', tundra: 'Karlı tundra' };
-export const MOVE_COST: Record<Terrain, number> = { grass: 1, forest: 1.6, oldforest: 2, hill: 2, mountain: 5, water: 3.5, swamp: 3, tundra: 1.5 };
+/** dağ kütlesi geçilmez (RimWorld gibi); dağı aşan yollar worldgen'de açılan geçitlerden (tepe) geçer */
+export const MOVE_COST: Record<Terrain, number> = { grass: 1, forest: 1.6, oldforest: 2, hill: 2, mountain: Infinity, water: 3.5, swamp: 3, tundra: 1.5 };
 
 export const DEPOSITS: Record<DepositKind, DepositDef> = {
   fertile: { kind: 'fertile', name: 'Verimli ova', good: 'grain', rate: 0.36, reserve: 0, terrain: ['grass'], size: [4, 8], count: 16, building: 'farm', color: '#e3cf6e' },
@@ -101,7 +102,7 @@ export const EXTRACTS: Record<ExtractKind, ExtractDef> = {
   farm: { kind: 'farm', names: ['Tarla', 'Sulamalı Tarla', 'Çiftlik'], tech: ['agriculture', 'irrigation', 'rotation'] },
   lumber: { kind: 'lumber', names: ['Oduncu Kulübesi', 'Bıçkıhane', 'Ormancılık Evi'], tech: [null, 'woodwork', 'forestry'] },
   hunt: { kind: 'hunt', names: ['Avcı Kampı', 'Av Köşkü', ''], tech: [null, 'husbandry', null] },
-  dock: { kind: 'dock', names: ['İskele', 'Balıkçı Limanı', ''], tech: ['fishing', 'shipbuilding', null] },
+  dock: { kind: 'dock', names: ['İskele', 'Balıkçı Limanı', 'Balıkçı Filosu'], tech: ['fishing', 'boatbuilding', 'navigation'] },
   quarry: { kind: 'quarry', names: ['Taş Ocağı', 'Kesme Taş Ocağı', ''], tech: ['stonework', 'architecture', null] },
   claypit: { kind: 'claypit', names: ['Kil Çukuru', '', ''], tech: ['pottery', null, null] },
   mine: { kind: 'mine', names: ['Açık Ocak', 'Galeri Madeni', 'Derin Maden'], tech: ['mining', 'bronzetools', 'deepmine'] },
@@ -113,7 +114,7 @@ export const EXTRACTS: Record<ExtractKind, ExtractDef> = {
 };
 export const LEVEL_SLOTS = [0, 3, 5, 7];
 export const LEVEL_MULT = [0, 1, 2, 3.5];
-const EXT_POSS: Record<string, string> = { 'Tarla': 'tarlası', 'Sulamalı Tarla': 'sulamalı tarlası', 'Çiftlik': 'çiftliği', 'Bıçkıhane': 'bıçkıhanesi', 'İskele': 'iskelesi', 'Açık Ocak': 'açık ocağı', 'Derin Maden': 'derin madeni', 'Ağıl': 'ağılı', 'Haras': 'harası', 'Öz Toplama': 'öz toplama yeri', 'Kutsal Koru': 'kutsal korusu' };
+const EXT_POSS: Record<string, string> = { 'Tarla': 'tarlası', 'Balıkçı Limanı': 'balıkçı limanı', 'Balıkçı Filosu': 'balıkçı filosu', 'Sulamalı Tarla': 'sulamalı tarlası', 'Çiftlik': 'çiftliği', 'Bıçkıhane': 'bıçkıhanesi', 'İskele': 'iskelesi', 'Açık Ocak': 'açık ocağı', 'Derin Maden': 'derin madeni', 'Ağıl': 'ağılı', 'Haras': 'harası', 'Öz Toplama': 'öz toplama yeri', 'Kutsal Koru': 'kutsal korusu' };
 /** "X'in ___" kalıbı için yapı adının iyelik hâli: tarlası, iskelesi, avcı kampı */
 export function extPoss(kind: ExtractKind, level: number) { const n = EXTRACTS[kind].names[level - 1] || EXTRACTS[kind].names.find(Boolean)!; return EXT_POSS[n] ?? n.toLocaleLowerCase('tr'); }
 export const LEVEL_COST: Stock[] = [{}, { wood: 8 }, { wood: 20, stone: 15, bronze: 4 }, { stone: 30, steel: 12, gold: 20 }];
@@ -153,7 +154,7 @@ export const WORKSHOPS: Record<WorkshopKind, WorkshopDef> = {
 export const WORKSHOP_IDS = Object.keys(WORKSHOPS) as WorkshopKind[];
 
 // ---- Yerleşim yapıları ----
-export type CivicKind = 'hut' | 'house' | 'stonehouse' | 'tavern' | 'market' | 'temple' | 'palisade' | 'stonewall' | 'castle' | 'library' | 'mint' | 'guild' | 'unique' | 'wonder';
+export type CivicKind = 'hut' | 'house' | 'stonehouse' | 'tavern' | 'market' | 'temple' | 'palisade' | 'stonewall' | 'castle' | 'library' | 'mint' | 'guild' | 'unique' | 'wonder' | 'shipyard' | 'lighthouse';
 export interface CivicDef { kind: CivicKind; name: string; tech?: string; cost: Stock; work: number; housing?: number; max?: number }
 export const CIVICS: Record<CivicKind, CivicDef> = {
   hut: { kind: 'hut', name: 'Kulübe', cost: { wood: 4 }, work: 4, housing: 3 },
@@ -170,4 +171,13 @@ export const CIVICS: Record<CivicKind, CivicDef> = {
   guild: { kind: 'guild', name: 'Lonca Salonu', tech: 'guilds', cost: { bricks: 12, planks: 8, tools: 2 }, work: 22, max: 1 },
   unique: { kind: 'unique', name: 'Sınıf yapısı', cost: { stone: 20, planks: 10 }, work: 25, max: 1 },
   wonder: { kind: 'wonder', name: 'Harika', cost: { stone: 110, bricks: 30, gold: 90, tools: 8 }, work: 200, max: 1 },
+  shipyard: { kind: 'shipyard', name: 'Tersane', tech: 'boatbuilding', cost: { planks: 10, wood: 12 }, work: 22, max: 1 },
+  lighthouse: { kind: 'lighthouse', name: 'Fener Kulesi', tech: 'seatrade', cost: { stone: 30, bricks: 8 }, work: 30, max: 1 },
+};
+
+// ---- Gemiler (tersanede yapılır) ----
+export type ShipKind = 'hull' | 'galley';
+export const SHIPS: Record<ShipKind, { cost: Stock; work: number }> = {
+  hull: { cost: { planks: 10, wood: 6 }, work: 18 },
+  galley: { cost: { planks: 14, wood: 6, tools: 1 }, work: 26 },
 };

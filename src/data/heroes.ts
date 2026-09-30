@@ -63,5 +63,5 @@ export const TRAITS: Record<TraitId, { name: string; desc: string; icon: string 
   avenger: { name: 'İntikamcı', desc: 'Yuvasını yakanı kovalıyor', icon: '🔥' },
   legend: { name: 'Efsane', desc: 'Ozanlar şarkısını söylüyor', icon: '♪' },
 };
-export const INN_NAMES = ['Kırık Kupa', 'Üç Yol', 'Yaşlı Ejder', 'Kızıl Fener', 'Yorgun Katır', 'Gümüş Nal', 'Dolunay', 'Kara Kazan', 'Uyuyan Dev', 'Tilki Yuvası'];
-export const KEEPER_NAMES = ['Barnabas', 'Hilde', 'Osric', 'Marta', 'Gundren', 'Tobin', 'Yelda', 'Rahmi', 'Ottilie', 'Fenwick'];
+export const INN_NAMES = ['Kırık Kupa', 'Üç Yol', 'Yaşlı Ejder', 'Kızıl Fener', 'Yorgun Katır', 'Gümüş Nal', 'Dolunay', 'Kara Kazan', 'Uyuyan Dev', 'Tilki Yuvası', 'Sarhoş Baykuş', 'Yeşil Meşe', 'Taş Köprü', 'Kanatlı Fıçı', 'Kör Kurt', 'Altın Başak', 'Dumanlı Ocak', 'Son Durak'];
+export const KEEPER_NAMES = ['Barnabas', 'Hilde', 'Osric', 'Marta', 'Gundren', 'Tobin', 'Yelda', 'Rahmi', 'Ottilie', 'Fenwick', 'Dursun', 'Gülizar', 'Bertram', 'Nimet', 'Hamza', 'Wilda'];

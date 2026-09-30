@@ -5,10 +5,10 @@ import { ek } from './tr';
 import { mod } from './rng';
 import { CLASSES, type RaceId } from '../data/classes';
 import { HERO_CLASSES, HERO_CLASS_IDS, HERO_NAMES, EPITHETS, HERO_ORIGINS, HERO_DRIVES, RACE_STAT, STATS, XP_LEVELS, type HeroClass, type Stat } from '../data/heroes';
-import { heroAc, heroCombatant, powerOf, type Combatant } from './combat';
+import { heroAc, heroCombatant, powerOf, powerVs, type Combatant } from './combat';
 import { monsterSide, campAway } from './monsters';
-import { civTroops, drawSoldiers } from './agents';
-import type { Camp, Civ, Hero, Quest, Settlement } from './types';
+import { civTroops, drawSoldiers, probeAllies, agentCombatants, etaDays, MUSTER_CAMP } from './agents';
+import type { Agent, Camp, Civ, Hero, Quest, Settlement } from './types';
 import { YEAR } from './sim';
 import { rollWill, willTick, growFromExperience, becomeLegend, heroWillServe, note, maybeRetire, returnToBase, innById } from './will';
 
@@ -48,7 +48,7 @@ export function makeHero(s: Sim, o: { race: RaceId; cls: HeroClass; level: numbe
   const will = rollWill(s, cls);
   const h: Hero = {
     id: s.id(), name, race, cls, level, xp: XP_LEVELS[level - 1], stats, maxHp, hp: maxHp, ac: heroAc(cls, dex, level), civ: -1, pos: o.tile, tavern: o.base,
-    state: 'tavern', born: s.day, idleSince: s.day, kills: 0, gold: 0, bio: `${s.rng.pick(HERO_ORIGINS)}, ${s.rng.pick(HERO_DRIVES)}.`,
+    state: 'tavern', born: s.day, idleSince: s.day, kills: 0, gold: s.rng.int(3, 12), bio: `${s.rng.pick(HERO_ORIGINS)}, ${s.rng.pick(HERO_DRIVES)}.`,
     align: will.align, path: will.path, traits: [], tally: {}, bonus: { atk: 0 }, rep: {}, journal: [], base: o.base, baseInn: o.baseInn, birth: o.base,
   };
   note(s, h, `${o.baseInn ? (innById(s, o.base)?.name ?? '') + ' Hanı' : (s.settlement(o.base)?.name ?? '') + ' tavernası'}nda doğdu`);
@@ -115,14 +115,16 @@ export function sendHero(s: Sim, h: Hero, tile: number, then: Hero['state']) {
   s.w.agents.push({ id: s.id(), kind: 'hero', civ: h.civ, path, step: 0, progress: 0, speed: 0.9, heroes: [h.id], purpose: then });
 }
 
-export function campPower(s: Sim, cp: Camp) { return powerOf(monsterSide(cp.kind, cp.count + campAway(s, cp), cp.boss, 'B')); }
+/** kampın gücü; vsAc: saldıranların ortalama zırhı */
+export function campPower(s: Sim, cp: Camp, vsAc = 15) { return powerOf(campForce(s, cp), vsAc); }
+export function campForce(s: Sim, cp: Camp): Combatant[] { return monsterSide(cp.kind, cp.count + campAway(s, cp), cp.boss, 'B'); }
 
 /** Bir medeniyeti en çok tehdit eden kamp */
 export function threatCamp(s: Sim, c: Civ): Camp | undefined {
   const ss = s.civSettlements(c);
   let best: Camp | undefined, bd = 1e9;
   for (const cp of s.w.camps) {
-    if (!cp.alive) continue;
+    if (!cp.alive || (cp.kind === 'pirate' && s.w.tiles[cp.tile].isle)) continue; // ada korsanı: korsan avı (sea.ts)
     const d = Math.min(...ss.map((x) => s.g.dist(x.tile, cp.tile)));
     if (d < bd && d <= 18) { bd = d; best = cp; }
   }
@@ -133,7 +135,7 @@ export function considerQuest(s: Sim, c: Civ) {
   // hedef: tehdit eden kamp ya da topraklarındaki bir yatağı işgal eden kamp
   const ss = s.civSettlements(c);
   const hunt = s.e(c, 'favoredHunt') > 0 || c.cls === 'ranger';
-  const occ = s.w.camps.filter((x) => x.alive && s.w.tiles[x.tile].deposit >= 0 && ss.some((st) => s.g.dist(st.tile, x.tile) <= 9))
+  const occ = s.w.camps.filter((x) => x.alive && !s.w.tiles[x.tile].isle && s.w.tiles[x.tile].deposit >= 0 && ss.some((st) => s.g.dist(st.tile, x.tile) <= 9))
     .sort((x, y) => Math.min(...ss.map((st) => s.g.dist(st.tile, x.tile))) - Math.min(...ss.map((st) => s.g.dist(st.tile, y.tile))))[0];
   const tc = threatCamp(s, c);
   const near = tc && ss.some((st) => s.g.dist(st.tile, tc.tile) <= 11) ? tc : undefined;
@@ -145,13 +147,20 @@ export function considerQuest(s: Sim, c: Civ) {
   if (!s.w.agents.some((a) => a.civ === c.id && a.purpose === 'expedition')) {
     const soldiers = Math.floor(s.civSettlements(c).reduce((a, x) => a + x.soldiers, 0) * 0.6);
     const side: Combatant[] = [...home.map((h) => heroCombatant(h, 'A')), ...civTroops(s, c, soldiers, 'A')];
-    if ((home.length || soldiers >= 6) && powerOf(side) >= campPower(s, cp) * (hunt ? 0.8 : 0.95)) {
+    const path0 = s.path(cap.tile, cp.tile);
+    // aynı kampa yaklaşık aynı anda varacak dost gruplar (ilanı alan parti, av partisi) hesaba katılır
+    const probe = { id: -1, kind: 'army', civ: c.id, path: path0 ?? [cap.tile], step: 0, progress: 0, speed: 0.6, heroes: home.map((h) => h.id), to: cp.id, purpose: 'expedition' } as Agent;
+    const allies = path0 ? probeAllies(s, probe, etaDays(s, probe), MUSTER_CAMP) : [];
+    const allyCs = allies.flatMap((b) => agentCombatants(s, b, cp.kind));
+    const [pa, pb] = powerVs([...side, ...allyCs], campForce(s, cp));
+    if ((home.length || soldiers >= 6 || (allies.length && soldiers >= 3)) && pa >= pb * (hunt ? 0.8 : 0.95)) {
       const pop = drawSoldiers(s, c, soldiers);
-      const path = s.path(cap.tile, cp.tile);
+      const path = path0;
       if (path) {
         for (const h of home) h.state = 'army';
         s.w.agents.push({ id: s.id(), kind: 'army', civ: c.id, path, step: 0, progress: 0, speed: 0.6, heroes: home.map((h) => h.id), troops: soldiers, pop, from: cap.id, to: cp.id, purpose: 'expedition' });
-        s.log('quest', `${c.name}${home.length ? `, ${home.map((h) => h.name).join(' ve ')} önderliğinde` : ''} ${soldiers} askerle ${ek(cp.name, 'a')} sefer başlattı.`, { civ: c.id, tile: cap.tile, cause: motive, major: true });
+        s.log('quest', `${c.name}${home.length ? `, ${home.map((h) => h.name).join(' ve ')} önderliğinde` : ''} ${soldiers} askerle ${ek(cp.name, 'a')} sefer başlattı.`, { civ: c.id, tile: cap.tile, cause: allies.length ? `${motive}; yoldaki ${allies.length} dost grupla birlikte saldıracak` : motive, major: true });
+        if (allies.length) s.metric('jointPlanned');
         return;
       }
       s.mergePop(cap, pop);
@@ -161,7 +170,7 @@ export function considerQuest(s: Sim, c: Civ) {
   if (open || s.w.quests.some((q) => !q.open && q.camp === cp.id && q.civ === c.id && q.takenBy.length && s.w.agents.some((a) => a.quest === q.id && !a.dead))) return;
   if (s.st(c, 'gold') < 25) return;
   if (c.threat < 0.35 && cp !== occ && (cp !== near || s.st(c, 'gold') < 60)) return;
-  const kindF = cp.kind === 'hobgoblin' ? 1.5 : cp.kind === 'bugbear' ? 2 : 1;
+  const kindF = cp.kind === 'hobgoblin' ? 1.5 : cp.kind === 'bugbear' || cp.kind === 'pirate' ? 2 : 1;
   const bounty = Math.round(Math.min(s.st(c, 'gold') * 0.6, (30 + c.threat * 50) * kindF + (cp === occ ? 15 : 0)));
   s.add(c, 'gold', -bounty);
   const inn = s.w.inns.filter((i) => i.alive).sort((a, b) => s.g.dist(a.tile, cp.tile) - s.g.dist(b.tile, cp.tile))[0];

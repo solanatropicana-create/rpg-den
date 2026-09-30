@@ -10,7 +10,8 @@ import { heroCombatant, powerOf, unit } from './combat';
 import { regrowForests } from './economy';
 import { blockedByGate, chooseResearch } from './research';
 import { emptyRel, makeCiv, makeSettlement } from './worldgen';
-import type { Civ } from './types';
+import type { Civ, Settlement, War } from './types';
+import { civPath, hasSea, navPath, ports, freeHulls, freeGalleys, hullName } from './sea';
 
 const GATE_GOOD: Record<string, Good[]> = { copper: ['copper'], tin: ['tin'], iron: ['iron'], coal: ['coal'], gold: ['gold'], mana: ['mana'], mithril: ['mithril'], horses: ['horses'], herbs: ['herbs'], clay: ['clay'] };
 const DEP_FOR: Partial<Record<Good, string[]>> = { copper: ['copper'], tin: ['tin'], iron: ['iron'], coal: ['coal'], gold: ['gold', 'silver'], mana: ['mana'], mithril: ['mithril'], horses: ['horses'], herbs: ['herbs'], salt: ['salt'], heartwood: ['heartwood'], clay: ['clay'] };
@@ -154,12 +155,13 @@ function warPeace(s: Sim, o: Civ, t: Civ) {
     r.war = war; s.rel(t.id, o.id).war = war;
     s.metric('war');
     s.log('war', `${o.name}, ${ek(t.name, 'a')} SAVAŞ İLAN ETTİ! Hedef: ${target.name}.`, { civ: o.id, tile: target.tile, cause: `İlişki ${rv}: ${r.mods.filter((m) => m.value < 0).map((m) => m.text.toLocaleLowerCase('tr')).join(', ')}`, major: true });
+    callAllies(s, o, t, war, target);
     // Paladin kutsal seferi: iyi medeniyetler kötüye karşı yakınlaşır
     return;
   }
   if (r.war.attacker !== o.id) return;
   const tgt = s.settlement(r.war.target);
-  const won = !tgt || !tgt.alive || tgt.civ === o.id;
+  const won = !tgt || !tgt.alive || tgt.civ !== t.id;   // hedef artık düşmanın değil (biz ya da müttefik aldı)
   const long = s.day - r.war.since > 300, tired = r.war.attacks >= 3;
   if (won || long || tired) {
     const why = won ? 'Savaş hedefi ele geçirildi' : tired ? 'Ordular yıprandı' : 'Savaş uzadı, halk yoruldu';
@@ -181,19 +183,57 @@ export function considerWarAction(s: Sim, c: Civ) {
     if (s.w.agents.some((a) => a.kind === 'army' && a.civ === c.id && a.purpose === 'war')) continue;
     if (s.day - war.lastArmy < 50) continue;
     const tgt = s.settlement(war.target);
-    if (!tgt || !tgt.alive || tgt.civ === c.id) continue;
+    if (!tgt || !tgt.alive || tgt.civ !== o.id) continue;
     const sol = Math.floor(s.civSettlements(c).reduce((a, x) => a + x.soldiers, 0) * 0.75);
     const heroes = s.civHeroes(c).filter((h) => h.state === 'home' && h.hp > h.maxHp * 0.6);
     if (sol + heroes.length * 3 < 4) continue;
     const cap = s.capital(c)!;
-    const path = s.path(cap.tile, tgt.tile);
-    if (!path) continue;
+    const route = armyRoute(s, c, cap.tile, tgt.tile);
+    if (!route) continue;
     const pop = drawSoldiers(s, c, sol);
     for (const h of heroes) h.state = 'army';
     war.lastArmy = s.day; war.attacks++;
-    s.w.agents.push({ id: s.id(), kind: 'army', civ: c.id, path, step: 0, progress: 0, speed: 0.55, heroes: heroes.map((h) => h.id), troops: sol, pop, from: cap.id, to: tgt.id, purpose: 'war' });
-    s.log('war', `${c.name} ordusu (${sol} asker${heroes.length ? ', ' + heroes.map((h) => h.name).join(', ') : ''}) ${tgt.name} üzerine yürüyor.`, { civ: c.id, tile: cap.tile, cause: war.goal });
+    const gal = route.hull ? Math.min(3, freeGalleys(s, route.hull)) : 0;
+    s.w.agents.push({ id: s.id(), kind: 'army', civ: c.id, path: route.path, step: 0, progress: 0, speed: 0.55, heroes: heroes.map((h) => h.id), troops: sol, pop, from: cap.id, to: tgt.id, purpose: 'war', hull: route.hull?.id, galleys: gal || undefined });
+    if (route.hull) {
+      s.metric('seaInvasion');
+      s.log('sea', `${c.name} donanması${gal ? ` (${gal} kadırga)` : ''} ${sol} askerle ${ek(route.hull.name, 'dan')} denize açıldı. Hedef: ${tgt.name}.`, { civ: c.id, tile: route.hull.port, cause: war.goal, major: true });
+    } else s.log('war', `${c.name} ordusu (${sol} asker${heroes.length ? ', ' + heroes.map((h) => h.name).join(', ') : ''}) ${tgt.name} üzerine yürüyor.`, { civ: c.id, tile: cap.tile, cause: war.goal });
   }
+}
+
+/** Ortak düşman: saldırganla arası iyi, hedefe kin duyan bir komşu savaşa katılır ve aynı şehri hedefler */
+function callAllies(s: Sim, o: Civ, t: Civ, war: War, target: Settlement) {
+  const cands = s.w.civs.filter((y) => y.alive && y.id !== o.id && y.id !== t.id && !s.inWar(y)
+    && s.rel(y.id, t.id).contact && s.rel(y.id, o.id).contact && s.day - (y.lastWarEnd ?? -9999) >= YEAR);
+  const scored: [Civ, number, number][] = [];
+  for (const y of cands) {
+    const hate = s.relValue(y.id, t.id), love = s.relValue(y.id, o.id);
+    if (hate > warThreshold(s, y) + 18 || hate > -8 || love < 12) continue;
+    if (y.cls === 'paladin' && (s.rel(y.id, t.id).treaty || s.rel(t.id, y.id).treaty)) continue;
+    if (s.civSettlements(y).reduce((n, x) => n + x.soldiers, 0) < 4) continue;
+    const cap = s.capital(y);
+    if (!cap || s.g.dist(cap.tile, target.tile) > 40 || !armyRoute(s, y, cap.tile, target.tile)) continue;
+    scored.push([y, hate, love]);
+  }
+  scored.sort((a, b) => (b[2] - b[1]) - (a[2] - a[1]));
+  const pick = scored[0];
+  if (!pick) return;
+  const [y, hate, love] = pick;
+  const w2: War = { since: s.day, attacker: y.id, target: target.id, attacks: 0, lastArmy: -999, goal: `${ek(o.name, 'in')} yanında: ${war.goal}`, ally: o.id };
+  s.rel(y.id, t.id).war = w2; s.rel(t.id, y.id).war = w2;
+  s.setMod(y.id, o.id, 'brothers', 'Silah arkadaşlığı', 14, 0.01);
+  s.metric('coalition');
+  s.log('war', `${y.name}, ${ek(o.name, 'in')} yanında ${ek(t.name, 'a')} savaş ilan etti! Ortak hedef: ${target.name}.`, { civ: y.id, tile: target.tile, cause: `${t.name} ile ilişki ${hate}, ${o.name} ile ${love}`, major: true });
+}
+
+/** ordu yolu: karadan; Donanma varsa (ve daha kısaysa) denizden */
+function armyRoute(s: Sim, c: Civ, from: number, to: number): { path: number[]; hull?: Settlement } | null {
+  const land = s.path(from, to);
+  if (!s.has(c, 'navy')) return land ? { path: land } : null;
+  const r = civPath(s, c, from, to);
+  if (r && r.hull && hasSea(s, r.path) && (!land || r.path.length < land.length * 0.8)) return r;
+  return land ? { path: land } : null;
 }
 
 /** Saldırgan sınıfların savaş ilan etmeden yaptığı yağma akınları */
@@ -202,38 +242,49 @@ export function considerRaid(s: Sim, c: Civ) {
   const sol = s.civSettlements(c).reduce((a, x) => a + x.soldiers, 0);
   if (sol < 5 || s.w.agents.some((a) => a.civ === c.id && a.purpose === 'plunder')) return;
   const cap = s.capital(c)!;
+  const reach = s.has(c, 'navy') ? 34 : 20;
   const targets = s.w.settlements.filter((x) => x.alive && x.civ !== c.id && s.rel(c.id, x.civ).contact && s.relValue(c.id, x.civ) < 0
-    && s.day - s.rel(c.id, x.civ).lastRaid > 180 && s.g.dist(x.tile, cap.tile) <= 20 && !(s.rel(c.id, x.civ).treaty));
+    && s.day - s.rel(c.id, x.civ).lastRaid > 180 && s.g.dist(x.tile, cap.tile) <= reach && !(s.rel(c.id, x.civ).treaty));
   if (!targets.length) return;
   const st = targets.sort((a, b) => (a.soldiers * 3 + s.pop(a) * 0.4) - (b.soldiers * 3 + s.pop(b) * 0.4))[0];
   const n = Math.floor(sol * 0.5);
   if (n * 3 < st.soldiers * 3 + s.pop(st) * 0.3) return;
-  const path = s.path(cap.tile, st.tile);
-  if (!path) return;
+  const route = armyRoute(s, c, cap.tile, st.tile);
+  if (!route) return;
   s.rel(c.id, st.civ).lastRaid = s.day;
   const pop = drawSoldiers(s, c, n);
-  s.w.agents.push({ id: s.id(), kind: 'army', civ: c.id, path, step: 0, progress: 0, speed: 0.8, troops: n, pop, from: cap.id, to: st.id, purpose: 'plunder' });
-  s.log('war', `${c.name} akıncıları ${ek(st.name, 'a')} doğru yola çıktı.`, { civ: c.id, tile: cap.tile, cause: `${CLASSES[c.cls].feature}: ganimet ve şan`, major: true });
+  const gal = route.hull ? Math.min(2, freeGalleys(s, route.hull)) : 0;
+  s.w.agents.push({ id: s.id(), kind: 'army', civ: c.id, path: route.path, step: 0, progress: 0, speed: 0.8, troops: n, pop, from: cap.id, to: st.id, purpose: 'plunder', hull: route.hull?.id, galleys: gal || undefined });
+  if (route.hull) {
+    s.metric('seaRaid');
+    s.log('sea', `${c.name} deniz akıncıları ${ek(route.hull.name, 'dan')} ${ek(st.name, 'a')} doğru yelken açtı.`, { civ: c.id, tile: route.hull.port, cause: `${CLASSES[c.cls].feature}: ganimet ve şan`, major: true });
+  } else s.log('war', `${c.name} akıncıları ${ek(st.name, 'a')} doğru yola çıktı.`, { civ: c.id, tile: cap.tile, cause: `${CLASSES[c.cls].feature}: ganimet ve şan`, major: true });
 }
 
 export function considerExpansion(s: Sim, c: Civ) {
   const ss = s.civSettlements(c);
   const cap = s.capital(c);
   if (!cap || !s.has(c, 'roads')) return;
-  if (ss.length >= 5 || s.pop(cap) < 12 + ss.length * 5 || s.foodTotal(c) < 30 || s.day - c.lastExpand < 160) return;
+  // anakarada 5 yerleşim; Gemicilik ve Seyir birer denizaşırı koloni hakkı daha açar
+  const over = ss.filter((x) => x.overseas).length;
+  const landOk = ss.length - over < 5;
+  const seaOk = s.has(c, 'shipbuilding') && over < (s.has(c, 'navigation') ? 2 : 1) && ports(s, c).some((x) => freeHulls(s, x) > 0);
+  if (!landOk && !seaOk) return;
+  if (s.pop(cap) < 12 + ss.length * 5 || s.foodTotal(c) < 30 || s.day - c.lastExpand < 160) return;
   if (s.w.agents.some((a) => a.kind === 'settlers' && a.civ === c.id)) return;
-  const target = pickSettleTarget(s, c);
+  const target = pickSettleTarget(s, c, landOk, seaOk, cap);
   if (!target) return;
-  const path = s.path(cap.tile, target.tile);
-  if (!path) return;
   const pop = s.removePop(cap, 5);
   s.add(c, 'grain', -15); s.add(c, 'wood', -10);
   c.lastExpand = s.day;
-  s.w.agents.push({ id: s.id(), kind: 'settlers', civ: c.id, path, step: 0, progress: 0, speed: 0.5, pop, from: cap.id, targetTile: target.tile, purpose: target.why });
-  s.log('settle', `${c.name} 5 öncüyü yeni bir yerleşim kurmaya gönderdi.`, { civ: c.id, tile: cap.tile, cause: target.why });
+  s.w.agents.push({ id: s.id(), kind: 'settlers', civ: c.id, path: target.path, step: 0, progress: 0, speed: 0.5, pop, from: cap.id, targetTile: target.tile, purpose: target.why, hull: target.hull?.id });
+  if (target.hull) {
+    s.metric('seaVoyage');
+    s.log('sea', `${c.name} 5 öncüyü ${ek(target.hull.name, 'dan')} bir ${hullName(s, c)} ile denizaşırı topraklara gönderdi.`, { civ: c.id, tile: target.hull.port, cause: target.why, major: true });
+  } else s.log('settle', `${c.name} 5 öncüyü yeni bir yerleşim kurmaya gönderdi.`, { civ: c.id, tile: cap.tile, cause: target.why });
 }
 
-function pickSettleTarget(s: Sim, c: Civ): { tile: number; why: string } | null {
+function pickSettleTarget(s: Sim, c: Civ, landOk: boolean, seaOk: boolean, cap: Settlement): { tile: number; why: string; path: number[]; hull?: Settlement } | null {
   const w = s.w;
   const own = s.civSettlements(c);
   const all = w.settlements.filter((x) => x.alive);
@@ -241,17 +292,26 @@ function pickSettleTarget(s: Sim, c: Civ): { tile: number; why: string } | null 
   const desires = CLASSES[c.cls].desires;
   const needGoods = new Set<string>();
   for (const t of blockedByGate(s, c)) for (const k of t.gate ?? []) needGoods.add(k);
+  const seaMax = s.has(c, 'navigation') ? 45 : 26;
+  const cands: { i: number; sc: number; why: string; sea: boolean }[] = [];
   let best = -1, bs = -Infinity, bwhy = '';
   for (let i = 0; i < w.tiles.length; i++) {
     const t = w.tiles[i];
-    if (t.terrain === 'water' || t.terrain === 'mountain' || t.owner >= 0 || t.camp !== undefined || t.deposit >= 0 || t.isle) continue;
+    if (t.terrain === 'water' || t.terrain === 'mountain' || t.sea || t.owner >= 0 || t.camp !== undefined || t.deposit >= 0) continue;
+    if (t.isle && !seaOk) continue;
     if (w.inns.some((inn) => s.g.dist(inn.tile, i) < 4)) continue;
     const dOwn = Math.min(...own.map((x) => s.g.dist(x.tile, i)));
-    if (dOwn < 5 || dOwn > 16) continue;
+    if (dOwn < 5) continue;
+    // denizaşırı aday yalnız adalar: anakaranın ıssız kıyıları canavarlara ve yeni kabilelere kalır
+    const coastal = s.g.neighbors(i).some((n) => w.tiles[n].sea);
+    const sea = !!t.isle;
+    if (sea ? !seaOk || dOwn > seaMax : !landOk || dOwn > 16) continue;
     if (all.some((x) => s.g.dist(x.tile, i) < 5)) continue;
     if (w.camps.some((cp) => cp.alive && s.g.dist(cp.tile, i) < 5)) continue;
-    let sc = -dOwn * 0.7 + s.rng.next() * 2;
-    let why = 'Verimli topraklar', whyV = 0;
+    let sc = -dOwn * (sea ? 0.3 : 0.7) + s.rng.next() * 2 + (sea ? 3 : 0);
+    let why = sea ? 'Bakir bir ada' : 'Verimli topraklar', whyV = 0;
+    // liman kurulabilecek kıyı yeri, denizci medeniyetler için değerli
+    if (coastal && s.has(c, 'fishing')) sc += 1.5 * (CLASSES[c.cls].prefer.deniz ?? 1);
     const seenDep = new Set<number>();
     for (const n of s.g.within(i, 2)) {
       const tt = w.tiles[n];
@@ -266,11 +326,19 @@ function pickSettleTarget(s: Sim, c: Civ): { tile: number; why: string } | null 
       if (needGoods.has(d.kind) || (d.kind === 'silver' && needGoods.has('gold'))) v += 22;
       if (!s.ownsDeposit(c, d.kind)) v *= 1.5;
       sc += v;
-      if (v > whyV) { whyV = v; why = `${DEPOSITS[d.kind].name} için`; }
+      if (v > whyV) { whyV = v; why = `${sea ? 'Ada: ' : ''}${DEPOSITS[d.kind].name} için`; }
     }
-    if (sc > bs) { bs = sc; best = i; bwhy = why; }
+    if (sea) cands.push({ i, sc, why, sea });
+    else if (sc > bs) { bs = sc; best = i; bwhy = why; }
   }
-  return best >= 0 ? { tile: best, why: bwhy } : null;
+  if (best >= 0) cands.push({ i: best, sc: bs, why: bwhy, sea: false });
+  cands.sort((a, b) => b.sc - a.sc);
+  for (const cd of cands.slice(0, 6)) {
+    if (!cd.sea) { const p = s.path(cap.tile, cd.i); if (p) return { tile: cd.i, why: cd.why, path: p }; continue; }
+    const r = civPath(s, c, cap.tile, cd.i);
+    if (r && r.hull && hasSea(s, r.path)) return { tile: cd.i, why: cd.why, path: r.path, hull: r.hull };
+  }
+  return null;
 }
 
 export function considerTrade(s: Sim, c: Civ) {
@@ -290,6 +358,51 @@ export function considerTrade(s: Sim, c: Civ) {
     s.w.routes.push({ id: s.id(), a: src.id, b: theirs.id, kind: 'trade', path, nextDepart: s.day + 5, trips: 0, alive: true, since: s.day });
     s.metric('tradeRoute');
     s.log('trade', `${src.name} ile ${theirs.name} arasında ticaret yolu açıldı.`, { civ: c.id, tile: src.tile, cause: `Pazar kuruldu; ${o.name} ile ilişki ${s.relValue(c.id, o.id)}`, major: true });
+  }
+  considerSeaTrade(s, c);
+}
+
+/** deniz ticaret yolu: kara yoluyla ulaşılamayan (ya da çok uzak) limanlar arasında */
+function considerSeaTrade(s: Sim, c: Civ) {
+  if (!s.has(c, 'boatbuilding')) return;
+  const mine = ports(s, c).filter((x) => (x.ships ?? 0) > 0);
+  if (!mine.length) return;
+  const maxD = s.has(c, 'seatrade') ? 80 : s.has(c, 'navigation') ? 60 : s.has(c, 'shipbuilding') ? 42 : 24;
+  const alive = s.w.routes.filter((rt) => rt.alive && rt.kind === 'trade');
+  for (const o of s.w.civs) {
+    if (o.id === c.id || !o.alive) continue;
+    const r = s.rel(c.id, o.id);
+    if (!r.contact || r.war || s.relValue(c.id, o.id) < -5 || s.day - (r.seaTry ?? -9999) < 90) continue;
+    const between = alive.filter((rt) => [rt.a, rt.b].some((x) => s.settlement(x)?.civ === c.id) && [rt.a, rt.b].some((x) => s.settlement(x)?.civ === o.id));
+    if (between.some((rt) => rt.sea) || between.length >= 1 && !s.has(c, 'shipbuilding')) continue;
+    r.seaTry = s.day; s.rel(o.id, c.id).seaTry = s.day;
+    const theirs = ports(s, o);
+    let pa: Settlement | undefined, pb: Settlement | undefined, bd = Infinity;
+    for (const a of mine) for (const b of theirs) { const d = s.g.dist(a.port!, b.port!); if (d < bd) { bd = d; pa = a; pb = b; } }
+    if (!pa || !pb || bd > maxD || bd < 6) continue;
+    // kara yolu kısaysa deniz yoluna gerek yok
+    const land = s.path(pa.tile, pb.tile);
+    if (land && land.length <= bd * 1.25 && between.length) continue;
+    const path = navPath(s, pa.tile, pb.tile, { embark: [pa.port!], open: s.has(c, 'navigation'), landOnly: [pb.port!] });
+    if (!path || !hasSea(s, path)) continue;
+    s.w.routes.push({ id: s.id(), a: pa.id, b: pb.id, kind: 'trade', path, nextDepart: s.day + 5, trips: 0, alive: true, since: s.day, sea: true });
+    s.metric('seaRoute');
+    s.log('sea', `${pa.name} ile ${pb.name} arasında deniz ticaret yolu açıldı.`, { civ: c.id, tile: pa.port, cause: `${bd} karo deniz; ${o.name} ile ilişki ${s.relValue(c.id, o.id)}`, major: true });
+  }
+  // denizaşırı kolonilere ikmal gemileri
+  if (!s.has(c, 'shipbuilding')) return;
+  for (const col of s.civSettlements(c)) {
+    if (!col.overseas || alive.some((rt) => rt.sea && (rt.a === col.id || rt.b === col.id))) continue;
+    if (c.yearly['supply' + col.id] === s.year) continue;
+    c.yearly['supply' + col.id] = s.year;
+    const home = mine.filter((x) => x.id !== col.id && !x.overseas).sort((a, b) => s.g.dist(a.port!, col.tile) - s.g.dist(b.port!, col.tile))[0];
+    if (!home) continue;
+    const land = col.civics.shipyard && col.port !== undefined ? [col.port] : undefined;
+    const path = navPath(s, home.tile, col.tile, { embark: [home.port!], open: s.has(c, 'navigation'), landOnly: land });
+    if (!path || !hasSea(s, path)) continue;
+    s.w.routes.push({ id: s.id(), a: home.id, b: col.id, kind: 'trade', path, nextDepart: s.day + 5, trips: 0, alive: true, since: s.day, sea: true });
+    s.metric('seaRoute');
+    s.log('sea', `${home.name} ile denizaşırı ${col.name} arasında ikmal gemileri işlemeye başladı.`, { civ: c.id, tile: home.port, major: false });
   }
 }
 

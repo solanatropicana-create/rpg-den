@@ -83,7 +83,7 @@ export function findPath(g: HexGrid, from: number, to: number, cost: (i: number)
   return null;
 }
 
-class MinHeap {
+export class MinHeap {
   private a: number[] = [];
   private p: number[] = [];
   get size() { return this.a.length; }

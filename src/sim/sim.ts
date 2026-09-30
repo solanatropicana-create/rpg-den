@@ -15,6 +15,7 @@ import { tavernsTick, heroesTick, considerHero, considerQuest } from './heroes';
 import { innsTick, considerInnBids } from './inns';
 import { returnToBase, heroLabel } from './will';
 import { agentsTick, routesTick, roadsTick } from './agents';
+import { seaTick } from './sea';
 
 export const FOOD_PER_POP = 0.1;
 export const YEAR = 120;
@@ -29,6 +30,9 @@ export class Sim {
   g: HexGrid;
   rng: Rng;
   private pathCache = new Map<string, number[] | null>();
+  /** kara + deniz yolları (liman ve teknolojiye göre anahtarlanır; yol yapımıyla temizlenmez) */
+  navCache = new Map<string, number[] | null>();
+  shoreW?: Uint8Array;
   onEvent?: (e: GameEvent) => void;
 
   constructor(seed: number) {
@@ -84,7 +88,7 @@ export class Sim {
   extWorking(t: { ext?: { depleted?: boolean; burned?: number } }) { return !!t.ext && !t.ext.depleted && !t.ext.burned; }
   slotsUsed(s: Settlement) {
     let n = 0;
-    for (const k in s.civics) if (!['hut', 'house', 'stonehouse'].includes(k)) n += s.civics[k as keyof typeof s.civics] ?? 0;
+    for (const k in s.civics) if (!['hut', 'house', 'stonehouse', 'shipyard', 'lighthouse'].includes(k)) n += s.civics[k as keyof typeof s.civics] ?? 0;
     for (const k in s.workshops) n += s.workshops[k as keyof typeof s.workshops] ?? 0;
     return n;
   }
@@ -128,6 +132,7 @@ export class Sim {
   /** Kaynak kapısı: kendi yatağı ya da stok */
   access(c: Civ, key: string): boolean {
     if (key === 'water') return this.civSettlements(c).some((s) => this.g.within(s.tile, this.radiusOf(s)).some((t) => this.w.tiles[t].terrain === 'water'));
+    if (key === 'coast') return this.civSettlements(c).some((s) => this.g.within(s.tile, this.radiusOf(s)).some((t) => this.w.tiles[t].sea));
     const map: Record<string, string[]> = { gold: ['gold', 'silver'] };
     const kinds = map[key] ?? [key];
     if (kinds.some((k) => this.ownsDeposit(c, k))) return true;
@@ -187,6 +192,9 @@ export class Sim {
   path(from: number, to: number) {
     const k = from + ':' + to;
     if (this.pathCache.has(k)) return this.pathCache.get(k)!;
+    // ayrı kara parçaları (ada ↔ anakara) arasında kara yolu yok: bütün haritayı taramadan dön
+    const A = this.w.tiles[from], B = this.w.tiles[to];
+    if (!A.sea && !B.sea && (A.isle ?? 0) !== (B.isle ?? 0)) return null;
     const p = findPath(this.g, from, to, this.moveCost);
     if (this.pathCache.size > 6000) this.pathCache.clear();
     this.pathCache.set(k, p);
@@ -254,6 +262,7 @@ export class Sim {
     innsTick(this);
     if (w.day % 5 === 0) heroesTick(this);
     agentsTick(this);
+    seaTick(this);
     routesTick(this);
     roadsTick(this);
     for (const c of w.civs) c.threat = Math.min(1.5, Math.max(0, c.threat - 0.0015));

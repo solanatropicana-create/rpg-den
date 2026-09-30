@@ -14,6 +14,8 @@ export interface SoundInfo {
   battle: number;  // 0..1 yakında çarpışma
   fire: number;    // 0..1 yakında yangın
   tavern: number;  // 0..1 gece meyhane
+  /** kameranın zeminden yüksekliği (gezgin uçarken rüzgâr artar) */
+  alt?: number;
 }
 
 const PENTA = [0, 2, 4, 7, 9, 12, 14];
@@ -79,7 +81,8 @@ export class Ambience {
     const day = 1 - s.night;
     const set = (k: string, v: number) => this.g[k].gain.setTargetAtTime(v, T, 0.6);
     // yükseldikçe rüzgâr artar
-    set('wind', 0.05 + (1 - close) * 0.16 + Math.sin(now / 5300) * 0.025 + s.rain * 0.05);
+    const high = s.alt !== undefined ? Math.min(1, Math.max(0, (s.alt - 2) / 40)) : 1 - close;
+    set('wind', 0.05 + high * 0.2 + Math.sin(now / 5300) * 0.025 + s.rain * 0.05);
     set('sea', s.water * (0.1 + close * 0.22) * (0.75 + Math.sin(now / 2100) * 0.25));
     set('rain', s.rain * 0.16);
     set('fire', s.fire * close * 0.1 * (0.6 + Math.random() * 0.8));
@@ -99,6 +102,31 @@ export class Ambience {
     if (p(s.town * close * day * 0.05)) this.bell(T);
   }
 
+  /** gezgin yürürken ayak sesi: çimen yumuşak hışırtı, taş/kaya tık, kar gıcırtı, su şıpırtı */
+  step(surface: 'grass' | 'stone' | 'snow' | 'water' | 'wood') {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled || ctx.state !== 'running') return;
+    const t = ctx.currentTime + 0.005, v = 0.8 + Math.random() * 0.4;
+    switch (surface) {
+      case 'grass': this.noiseBurst(t, 'bandpass', 900 + Math.random() * 500, 0.035 * v, 0.07); this.noiseBurst(t + 0.02, 'lowpass', 300, 0.03 * v, 0.05); break;
+      case 'stone': this.noiseBurst(t, 'bandpass', 1800 + Math.random() * 600, 0.03 * v, 0.03); this.osc('triangle', 180 + Math.random() * 60, t, 0.05, this.env(t, 0.03 * v, 0.002, 0.04)); break;
+      case 'snow': this.noiseBurst(t, 'highpass', 2600, 0.03 * v, 0.1); this.noiseBurst(t + 0.03, 'bandpass', 1200, 0.02 * v, 0.08); break;
+      case 'water': this.noiseBurst(t, 'lowpass', 700 + Math.random() * 400, 0.06 * v, 0.18); this.noiseBurst(t + 0.05, 'highpass', 3000, 0.015 * v, 0.1); break;
+      case 'wood': this.osc('triangle', 240 + Math.random() * 80, t, 0.06, this.env(t, 0.04 * v, 0.002, 0.05)); this.noiseBurst(t, 'bandpass', 1400, 0.015 * v, 0.03); break;
+    }
+  }
+  /** gök gürültüsü: derin, uzun gürleme (şimşekten sonra gecikmeli) */
+  thunder(delay: number, power: number) {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled || ctx.state !== 'running') return;
+    const t = ctx.currentTime + delay;
+    const src = ctx.createBufferSource(); src.buffer = this.noise; src.loop = true; // tampon 3 sn: döngü olmadan gürleme kesiliyordu
+    const fl = ctx.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.setValueAtTime(420, t); fl.frequency.exponentialRampToValueAtTime(90, t + 2.8);
+    const gn = ctx.createGain(); gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.35 * power, t + 0.08); gn.gain.exponentialRampToValueAtTime(0.12 * power, t + 0.7); gn.gain.exponentialRampToValueAtTime(0.0001, t + 3.4);
+    src.connect(fl); fl.connect(gn); gn.connect(this.master);
+    src.start(t, Math.random() * 1.5, 3.6);
+    this.noiseBurst(t, 'bandpass', 900, 0.08 * power, 0.25);
+  }
   private env(t: number, peak: number, a: number, d: number) {
     const gn = this.ctx!.createGain();
     gn.gain.setValueAtTime(0.0001, t);

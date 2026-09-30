@@ -4,13 +4,15 @@ import { ek } from './tr';
 import { CLASSES, RACES, UNITS } from '../data/classes';
 import { GOODS, GOOD_IDS, EXTRACTS, extPoss, type Good, type Stock } from '../data/goods';
 import { TECH } from '../data/techs';
-import { unit, heroCombatant, resolveBattle, type Combatant, type BattleOpts } from './combat';
+import { unit, heroCombatant, resolveBattle, powerOf, avgAc, REPLAY_KEEP, type Combatant, type BattleOpts } from './combat';
 import { monsterSide, monsterName } from './monsters';
 import { gainXp, tryRevive, sendHero, questFailed } from './heroes';
+import { caravanPassInn, keeperArrive, travelerArrive, supplyArrive, innDetour } from './innlife';
 import { arriveGoal, returnToBase, heroSide, afterCampFight, onHomeBurned, innAt, note } from './will';
 import { innMonsterRaid, innRaidArrive } from './inns';
 import { makeSettlement } from './worldgen';
-import type { Agent, Battle, Camp, Civ, Pop, Settlement } from './types';
+import type { Agent, Battle, Camp, Civ, Pop, ReplayGroup, Settlement } from './types';
+import { shipSpeed, disembark, seaReturnPath, exploreSight, exploreTurn, freeHulls, fleetArrive, isFleet, pirateReturnPath, pirateSmuggle } from './sea';
 
 // ------------------------------------------------------------ birlik kompozisyonu
 export function civTroops(s: Sim, c: Civ, n: number, side: 'A' | 'B'): Combatant[] {
@@ -93,6 +95,9 @@ function civOpts(s: Sim, c: Civ | undefined, side: 'A' | 'B', o: Partial<BattleO
 export function recordBattle(s: Sim, b: Battle) {
   s.w.battles.push(b);
   if (s.w.battles.length > 250) s.w.battles.shift();
+  // ayrıntılı tekrar yalnızca son savaşlarda tutulur (bellek)
+  const old = s.w.battles.length - 1 - REPLAY_KEEP;
+  if (old >= 0 && s.w.battles[old].replay) s.w.battles[old].replay = undefined;
   s.metric('battles');
   return b.id;
 }
@@ -143,16 +148,25 @@ export function agentsTick(s: Sim) {
   const w = s.w;
   for (const a of w.agents) {
     if (a.dead) continue;
+    // handa konaklayan kervan sabah yola çıkar
+    if (a.restUntil !== undefined) { if (s.day < a.restUntil) continue; a.restUntil = undefined; }
     if (a.step < a.path.length - 1) {
       const next = a.path[a.step + 1];
-      let cost = s.moveCost(next);
-      if (a.civ >= 0 && s.e(w.civs[a.civ], 'forestMove') > 0 && ['forest', 'oldforest'].includes(w.tiles[next].terrain)) cost = 0.5;
-      a.progress += a.speed / cost;
+      if (w.tiles[next].sea) a.progress += shipSpeed(s, a);
+      else {
+        let cost = s.moveCost(next);
+        if (a.civ >= 0 && s.e(w.civs[a.civ], 'forestMove') > 0 && ['forest', 'oldforest'].includes(w.tiles[next].terrain)) cost = 0.5;
+        a.progress += a.speed / cost;
+      }
       while (a.progress >= 1 && a.step < a.path.length - 1) {
         a.progress -= 1; a.step++;
-        if (a.kind === 'hero' || a.kind === 'party') for (const hid of a.heroes ?? []) s.hero(hid).pos = a.path[a.step];
+        const here = a.path[a.step], prev = a.path[a.step - 1];
+        if (w.tiles[prev].sea && !w.tiles[here].sea) disembark(s, a, prev, here);
+        if (a.kind === 'hero' || a.kind === 'party') for (const hid of a.heroes ?? []) s.hero(hid).pos = here;
         if (a.kind === 'scout') scoutSight(s, a);
-        if (a.kind === 'army' && (a.purpose === 'war' || a.purpose === 'plunder') && !a.returning) pillageTile(s, a, a.path[a.step]);
+        if (a.kind === 'ship' && a.purpose?.startsWith('explore')) exploreSight(s, a);
+        if (a.kind === 'army' && (a.purpose === 'war' || a.purpose === 'plunder') && !a.returning) pillageTile(s, a, here);
+        if (a.kind === 'caravan' && caravanPassInn(s, a)) { a.progress = 0; break; }
       }
     }
     if (a.kind === 'raid' && a.purpose === 'caravan' && !a.returning) {
@@ -173,7 +187,7 @@ export function tileOf(a: Agent) { return a.path[Math.min(a.step, a.path.length 
 
 function reroute(s: Sim, a: Agent, to: number) { const p = s.path(tileOf(a), to); a.path = p ?? [tileOf(a)]; a.step = 0; a.progress = 0; }
 
-function scoutSight(s: Sim, a: Agent) {
+export function scoutSight(s: Sim, a: Agent) {
   const c = s.w.civs[a.civ];
   const here = tileOf(a);
   for (const d of s.w.deposits) {
@@ -243,8 +257,13 @@ function arrive(s: Sim, a: Agent): boolean {
       return true;
     }
     case 'caravan': return caravanArrive(s, a);
+    case 'keeper': return keeperArrive(s, a);
+    case 'traveler': return travelerArrive(s, a);
+    case 'supply': return supplyArrive(s, a);
+    case 'ship': return a.purpose === 'explore' ? exploreTurn(s, a) : isFleet(a) ? fleetArrive(s, a) : true;
     case 'raid': {
       if (a.returning) { raidHome(s, a); return true; }
+      if (a.purpose === 'prey') return false; // korsan avını kovalıyor (sea.ts)
       if (a.purpose === 'ext') { raidExt(s, a, a.targetTile ?? tile); return !a.returning; }
       if (a.purpose === 'inn') { innMonsterRaid(s, a); return !a.returning; }
       const st = s.settlement(a.to!);
@@ -255,20 +274,21 @@ function arrive(s: Sim, a: Agent): boolean {
     case 'party': {
       if (a.returning) { partyHome(s, a); return true; }
       const cp = w.camps.find((x) => x.id === a.to);
-      if (!cp || !cp.alive) { partyReturn(s, a); return false; }
-      fightCamp(s, a, cp); return false;
+      if (!cp || !cp.alive) { a.muster = undefined; partyReturn(s, a); return false; }
+      engage(s, a); return false;
     }
     case 'army': {
       if (a.returning) { armyHome(s, a); return true; }
       if (a.purpose === 'innraid') { innRaidArrive(s, a); return false; }
       if (a.purpose === 'expedition') {
         const cp = w.camps.find((x) => x.id === a.to);
-        if (!cp || !cp.alive) { armyReturn(s, a); return false; }
-        fightCamp(s, a, cp); return false;
+        if (!cp || !cp.alive) { a.muster = undefined; armyReturn(s, a); return false; }
+        engage(s, a); return false;
       }
       const st = s.settlement(a.to!);
-      if (!st || !st.alive || st.civ === a.civ) { armyReturn(s, a); return false; }
-      if (a.purpose === 'plunder') plunder(s, a, st); else siege(s, a, st);
+      // hedef el değiştirdiyse ya da barış yapıldıysa ordu geri döner
+      if (!st || !st.alive || st.civ === a.civ || (a.purpose === 'war' && !s.atWar(a.civ, st.civ))) { a.muster = undefined; armyReturn(s, a); return false; }
+      if (a.purpose === 'plunder') plunder(s, a, st); else engage(s, a);
       return false;
     }
   }
@@ -300,12 +320,17 @@ function foundSettlement(s: Sim, a: Agent): boolean {
   const used = new Set(w.settlements.map((x) => x.name));
   const name = CLASSES[c.cls].towns.find((n) => !used.has(n)) ?? townName(s, t, used);
   const st = makeSettlement(s.id(), c.id, name, t, a.pop ?? {}, s.day);
+  if (a.landing !== undefined) st.overseas = true;
   w.settlements.push(st);
   s.updateTerritory();
   s.discover();
   s.metric('settle');
   s.metric(`settle_${c.id}`);
-  s.log('settle', `${c.name} yeni yerleşimi ${ek(name, 'i')} kurdu.`, { civ: c.id, tile: t, cause: a.purpose, major: true });
+  if (st.overseas) {
+    s.metric('seaColony');
+    const isl = w.tiles[t].isle ? w.isles?.find((x) => x.id === w.tiles[t].isle) : undefined;
+    s.log('settle', `${c.name}${isl ? `, ${ek(isl.name, 'da')}` : ''} denizaşırı koloni ${ek(name, 'i')} kurdu.`, { civ: c.id, tile: t, cause: a.purpose, major: true });
+  } else s.log('settle', `${c.name} yeni yerleşimi ${ek(name, 'i')} kurdu.`, { civ: c.id, tile: t, cause: a.purpose, major: true });
   return true;
 }
 
@@ -319,6 +344,8 @@ export function routesTick(s: Sim) {
     const src = reverse ? B : A, dst = reverse ? A : B;
     const cs = s.w.civs[src.civ], cd = s.w.civs[dst.civ];
     if (cs.id !== cd.id && s.atWar(cs.id, cd.id) && !(s.e(cs, 'blackMarket') > 0)) { r.nextDepart = s.day + 30; continue; }
+    // deniz yolu: kalkış limanında boş gemi yoksa sıra öbür uca geçer
+    if (r.sea && (!src.civics.shipyard || src.port === undefined || freeHulls(s, src) < 1)) { r.trips++; r.nextDepart = s.day + 12; continue; }
     r.nextDepart = s.day + (r.kind === 'treaty' ? 35 : 40);
     let cargo: Stock = {};
     if (r.kind === 'treaty') {
@@ -326,6 +353,12 @@ export function routesTick(s: Sim) {
       if (s.rel(cs.id, cd.id).treaty !== g && s.rel(cd.id, cs.id).treaty !== g) { r.alive = false; continue; }
       const q = Math.min(10, Math.floor(s.st(cs, g) * 0.4));
       if (q < 2) { r.trips++; continue; }
+      s.add(cs, g, -q); cargo = { [g]: q };
+    } else if (cs.id === cd.id) {
+      // ikmal: koloniye kereste, tahıl ve alet (stok medeniyet çapında; yük görünür taşınır)
+      const g = (['planks', 'grain', 'tools', 'wood'] as Good[]).find((x) => s.st(cs, x) >= 12);
+      if (!g) { r.trips++; continue; }
+      const q = Math.floor(Math.min(10, s.st(cs, g) * 0.1));
       s.add(cs, g, -q); cargo = { [g]: q };
     } else {
       let best: Good | null = null, bv = 0;
@@ -338,13 +371,15 @@ export function routesTick(s: Sim) {
         if (v > bv) { bv = v; best = g; }
       }
       if (!best) { r.trips++; continue; }
-      const q = Math.floor(Math.min(12, s.st(cs, best) * 0.25));
+      const hold = r.sea ? (s.has(cs, 'seatrade') ? 24 : 18) : 12;
+      const q = Math.floor(Math.min(hold, s.st(cs, best) * 0.25));
       s.add(cs, best, -q); cargo = { [best]: q };
     }
     const guards = s.has(cs, 'training') ? 3 : 2;
-    const path = reverse ? r.path.slice().reverse() : r.path;
+    const base = reverse ? r.path.slice().reverse() : r.path;
+    const path = r.sea ? base : innDetour(s, base); // deniz yolu hana uğramaz
     const speed = s.st(cs, 'horses') >= 2 ? 0.9 : 0.65;
-    s.w.agents.push({ id: s.id(), kind: 'caravan', civ: cs.id, path, step: 0, progress: 0, speed, cargo, troops: guards, from: src.id, to: dst.id, route: r.id });
+    s.w.agents.push({ id: s.id(), kind: 'caravan', civ: cs.id, path, step: 0, progress: 0, speed, cargo, troops: guards, from: src.id, to: dst.id, route: r.id, hull: r.sea ? src.id : undefined });
   }
 }
 
@@ -359,16 +394,18 @@ function caravanArrive(s: Sim, a: Agent): boolean {
     s.add(cd, g as Good, q);
     value += q * (s.price(cs, g as Good) + s.price(cd, g as Good)) / 2;
   }
+  r.trips++;
+  if (cs.id === cd.id) { s.metric('supplyTrips'); return true; } // iç ikmal: kazanç yok
   const pay = Math.min(s.st(cd, 'gold'), value);
   s.add(cd, 'gold', -pay);
   s.add(cs, 'gold', pay + 3 * (1 + s.e(cs, 'tradeGold')));
   s.add(cd, 'gold', 2 * (1 + s.e(cd, 'tradeGold')));
   cs.stats.traded++; cd.stats.traded++;
   if (cs.id !== cd.id) s.addMod(cs.id, cd.id, 'trade', 'Süren ticaret', 3, 30, 0.015);
-  r.trips++;
   s.metric('caravanTrips');
-  if (r.trips === 4) {
-    for (const t of r.path) if (!s.w.tiles[t].road) s.w.tiles[t].road = 1;
+  if (r.sea) { s.metric('seaTrips'); s.add(cs, 'gold', 2 * (1 + s.e(cs, 'tradeGold'))); }
+  if (r.trips === 4 && !r.sea) {
+    for (const t of r.path) if (!s.w.tiles[t].road && !s.w.tiles[t].sea) s.w.tiles[t].road = 1;
     s.clearPaths();
     s.log('trade', `${src.name}–${dst.name} kervan yolu çiğnenip gerçek bir yola dönüştü.`, { civ: cs.id, tile: dst.tile });
   }
@@ -400,9 +437,11 @@ export function raidReturn(s: Sim, a: Agent) {
   const cp = s.w.camps.find((x) => x.id === a.from);
   a.returning = true; a.purpose = 'return';
   if (!cp || !cp.alive) { a.path = [tileOf(a)]; a.step = 0; return; }
+  if (a.monster === 'pirate') { const p = pirateReturnPath(s, a, cp.tile); if (p) { a.path = p; a.step = 0; a.progress = 0; return; } }
   reroute(s, a, cp.tile);
 }
 function raidHome(s: Sim, a: Agent) {
+  if (a.monster === 'pirate') pirateSmuggle(s, a);
   const cp = s.w.camps.find((x) => x.id === a.from);
   if (cp && cp.alive) { cp.count = Math.min(18, cp.count + (a.troops ?? 0)); if (a.boss) cp.boss = true; cp.loot += a.loot ?? 0; }
 }
@@ -415,7 +454,7 @@ function raidSettlement(s: Sim, a: Agent, st: Settlement) {
   const fight = () => {
     const def = defenders(s, st, 'A', true);
     const mcopy = mons.map((m) => ({ ...m, uses: {}, kills: 0 }));
-    const b = resolveBattle(s.rng, def, mcopy, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} baskını`, sideA: `${st.name} savunucuları`, sideB: monsterName(kind), moraleA: 0.7, moraleB: kind === 'hobgoblin' ? 0.6 : 0.45 }) as BattleOpts);
+    const b = resolveBattle(s.rng, def, mcopy, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} baskını`, sideA: `${st.name} savunucuları`, sideB: monsterName(kind), moraleA: 0.7, moraleB: kind === 'hobgoblin' ? 0.6 : 0.45, timeoutWinner: 'A', civA: c.id }) as BattleOpts);
     (b as unknown as { _def: Combatant[]; _m: Combatant[] })._def = def;
     (b as unknown as { _def: Combatant[]; _m: Combatant[] })._m = mcopy;
     return b;
@@ -426,9 +465,10 @@ function raidSettlement(s: Sim, a: Agent, st: Settlement) {
   applyDefLosses(s, st, def, 0.15);
   a.troops = mc.filter((x) => x.kind === 'monster' && x.hp > 0).length;
   const bossAlive = mc.some((x) => x.boss && x.hp > 0);
-  if (a.boss && !bossAlive) { if (cp) cp.hadBoss = false; s.log('raid', `${kind === 'goblin' ? 'Goblin şefi' : 'Hobgoblin yüzbaşısı'} ${ek(st.name, 'da')} öldürüldü!`, { civ: c.id, tile: st.tile, battle: b.id, major: true }); }
+  if (a.boss && !bossAlive) { if (cp) cp.hadBoss = false; s.log('raid', `${kind === 'goblin' ? 'Goblin şefi' : kind === 'pirate' ? 'Korsan kaptanı' : 'Hobgoblin yüzbaşısı'} ${ek(st.name, 'da')} öldürüldü!`, { civ: c.id, tile: st.tile, battle: b.id, major: true }); }
   a.boss = bossAlive;
   c.lastRaidedDay = s.day;
+  if (kind === 'pirate') c.yearly.pirateHit = s.year;
   s.metric('raids');
   if (b.winner === 'B') {
     const food = Math.floor(s.st(c, 'grain') * 0.25), gold = Math.floor(s.st(c, 'gold') * 0.3);
@@ -462,7 +502,7 @@ function raidExt(s: Sim, a: Agent, tile: number) {
   const near = s.g.dist(tile, st.tile) <= 2 ? Math.min(st.soldiers, 3) : 0;
   def.push(...civTroops(s, c, near, 'A'));
   const mons = monsterSide(kind, a.troops ?? 0, !!a.boss, 'B');
-  const b = resolveBattle(s.rng, def, mons, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile, title: `${ek(st.name, 'in')} ${extName} baskını`, sideA: `${st.name} işçileri`, sideB: monsterName(kind), moraleA: 0.45, moraleB: 0.5 }) as BattleOpts);
+  const b = resolveBattle(s.rng, def, mons, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile, title: `${ek(st.name, 'in')} ${extName} baskını`, sideA: `${st.name} işçileri`, sideB: monsterName(kind), moraleA: 0.45, moraleB: 0.5, timeoutWinner: 'A', civA: c.id }) as BattleOpts);
   recordBattle(s, b);
   const deadW = def.filter((x) => x.kind === 'militia' && x.hp <= 0).length;
   const deadS = def.filter((x) => x.kind !== 'militia' && x.hp <= 0).length;
@@ -471,6 +511,7 @@ function raidExt(s: Sim, a: Agent, tile: number) {
   a.troops = mons.filter((x) => x.kind === 'monster' && x.hp > 0).length;
   a.boss = mons.some((x) => x.boss && x.hp > 0);
   c.lastRaidedDay = s.day;
+  if (kind === 'pirate') c.yearly.pirateHit = s.year;
   s.metric('raids');
   if (b.winner === 'B') {
     t.ext.burned = s.day + s.rng.int(40, 90); t.ext.burnedAt = s.day; t.ext.workers = 0;
@@ -522,7 +563,7 @@ function ambush(s: Sim, a: Agent, target: Agent) {
   if (!side.length) { raidReturn(s, a); return; }
   const tile = tileOf(target);
   const name = target.kind === 'caravan' ? `${c?.name} kervanı` : target.kind === 'scout' ? `${c?.name} kâşifleri` : (target.heroes ?? []).map((h) => s.hero(h).name).join(', ');
-  const b = resolveBattle(s.rng, side, mons, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile, title: `${kind === 'bugbear' ? 'Bugbear' : 'Yol'} pususu`, sideA: name, sideB: monsterName(kind), moraleA: 0.5, moraleB: 0.45 }) as BattleOpts);
+  const b = resolveBattle(s.rng, side, mons, civOpts(s, c, 'A', { id: s.id(), day: s.day, tile, title: `${kind === 'bugbear' ? 'Bugbear' : 'Yol'} pususu`, sideA: name, sideB: monsterName(kind), moraleA: 0.5, moraleB: 0.45, civA: c?.id }) as BattleOpts);
   recordBattle(s, b);
   syncHeroes(s, side);
   a.troops = mons.filter((x) => x.kind === 'monster' && x.hp > 0).length;
@@ -545,54 +586,193 @@ function ambush(s: Sim, a: Agent, target: Agent) {
   raidReturn(s, a);
 }
 
-// ------------------------------------------------------------ kahramanlar ve seferler kamplara karşı
-export function fightCamp(s: Sim, a: Agent, cp: Camp) {
+// ------------------------------------------------------------ ortak saldırı: hedefte toplanma
+/** kamp baskınında dostların bekleneceği en uzun süre (gün) */
+export const MUSTER_CAMP = 16;
+/** kuşatmada müttefik ordunun bekleneceği en uzun süre (gün) */
+export const MUSTER_CITY = 30;
+
+/** aynı hedefe giden grupları eşleştiren anahtar: c<kamp> ya da s<yerleşim> */
+export function musterKey(a: Agent): string | null {
+  if (a.returning || a.dead || a.to === undefined) return null;
+  if (a.kind === 'party') return 'c' + a.to;
+  if (a.kind === 'army' && a.purpose === 'expedition') return 'c' + a.to;
+  if (a.kind === 'army' && a.purpose === 'war') return 's' + a.to;
+  return null;
+}
+function liveHeroes(s: Sim, a: Agent) { return (a.heroes ?? []).map((id) => s.hero(id)).filter((h) => h.state !== 'dead'); }
+/** iki grup omuz omuza saldırır mı */
+export function friendly(s: Sim, a: Agent, b: Agent): boolean {
+  const ha = liveHeroes(s, a), hb = liveHeroes(s, b);
+  // iyi ve kötü hizalı kahramanlar aynı safta vuruşmaz
+  if ((ha.some((x) => x.align === 'good') && hb.some((x) => x.align === 'evil')) || (ha.some((x) => x.align === 'evil') && hb.some((x) => x.align === 'good'))) return false;
+  if (a.civ >= 0 && b.civ >= 0) {
+    if (a.civ === b.civ) return true;
+    if (s.atWar(a.civ, b.civ)) return false;
+    return s.relValue(a.civ, b.civ) > -10;
+  }
+  const civ = a.civ >= 0 ? a.civ : b.civ;
+  if (civ >= 0) return !(a.civ >= 0 ? hb : ha).some((h) => h.grudge === civ);   // kin tutan kahraman o bayrağın yanına gelmez
+  return true;
+}
+export function atTarget(a: Agent) { return a.step >= a.path.length - 1; }
+/** hedefe kaç günde varır (yaklaşık) */
+export function etaDays(s: Sim, a: Agent): number {
+  let days = 0;
+  for (let i = a.step + 1; i < a.path.length; i++) {
+    const t = a.path[i];
+    const per = s.w.tiles[t].sea ? 1 / Math.max(0.1, shipSpeed(s, a)) : s.moveCost(t) / Math.max(0.05, a.speed);
+    days += i === a.step + 1 ? per * Math.max(0, 1 - a.progress) : per;
+  }
+  return days;
+}
+/** aynı hedefe giden dost gruplar (yoldakiler ve bekleyenler) */
+export function musterAllies(s: Sim, a: Agent): Agent[] {
+  const key = musterKey(a);
+  if (!key) return [];
+  return s.w.agents.filter((b) => b !== a && !b.dead && musterKey(b) === key && friendly(s, a, b));
+}
+export function bandName(s: Sim, a: Agent): string {
+  const civ = a.civ >= 0 ? s.w.civs[a.civ] : undefined;
+  if (a.kind === 'army') return civ ? `${civ.name} ${a.purpose === 'expedition' ? 'seferi' : 'ordusu'}` : 'Ordu';
+  const hs = liveHeroes(s, a);
+  return hs.length ? hs.map((h) => h.name).join(', ') : 'Macera grubu';
+}
+function joinNames(xs: string[]) { return xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ve ${xs[xs.length - 1]}`; }
+
+/** hedefe varan grup: yoldaki dostlarını bekler ya da bekleyenlerle birlikte saldırır */
+function engage(s: Sim, a: Agent) {
+  const key = musterKey(a)!;
   const w = s.w;
-  const heroes = (a.heroes ?? []).map((id) => s.hero(id)).filter((h) => h.state !== 'dead');
-  const civ = a.civ >= 0 ? w.civs[a.civ] : undefined;
-  const alone = heroes.length === 1 && !(a.troops ?? 0);
-  const side: Combatant[] = heroes.map((h) => heroSide(h, 'A', cp.kind, alone));
-  if (civ) side.push(...civTroops(s, civ, a.troops ?? 0, 'A'));
+  const allies = musterAllies(s, a);
+  const waiting = allies.filter((b) => b.muster && atTarget(b));
+  const camp = key[0] === 'c';
+  const cp = camp ? w.camps.find((x) => x.id === a.to) : undefined;
+  const st = camp ? undefined : s.settlement(a.to!);
+  const tname = camp ? cp!.name : st!.name;
+  if (!a.muster) {
+    const until = waiting.length ? Math.min(...waiting.map((b) => b.muster!.until)) : s.day + (camp ? MUSTER_CAMP : MUSTER_CITY);
+    a.muster = { since: s.day, until };
+    const coming0 = allies.filter((b) => !atTarget(b) && etaDays(s, b) <= until - s.day);
+    if (waiting.length) {
+      s.log(camp ? 'quest' : 'war', `${bandName(s, a)}, ${ek(tname, 'da')} bekleyen ${joinNames(waiting.map((b) => bandName(s, b)))} ile buluştu.`, { tile: tileOf(a), civ: a.civ >= 0 ? a.civ : undefined, cause: coming0.length ? `${coming0.length} grup daha yolda` : 'Ortak hücum başlıyor' });
+    } else if (coming0.length) {
+      s.metric('musterWait');
+      s.log(camp ? 'quest' : 'war', camp
+        ? `${bandName(s, a)}, ${ek(tname, 'in')} yakınında mola verdi: ${joinNames(coming0.map((b) => bandName(s, b)))} gelince birlikte saldıracaklar.`
+        : `${bandName(s, a)} ${ek(tname, 'in')} önünde karargâh kurdu; ${joinNames(coming0.map((b) => bandName(s, b)))} gelince hücum edecek.`,
+      { tile: tileOf(a), civ: a.civ >= 0 ? a.civ : undefined, major: !camp, cause: `En çok ${until - s.day} gün beklenir` });
+    }
+  }
+  const coming = allies.filter((b) => !atTarget(b) && etaDays(s, b) <= a.muster!.until - s.day);
+  if (coming.length && s.day < a.muster.until) return;   // bekle
+  const band = [a, ...waiting];
+  // ordu grubu öne (sefer etkileri onun medeniyetinden gelir)
+  band.sort((x, y) => (y.kind === 'army' ? 1 : 0) - (x.kind === 'army' ? 1 : 0));
+  for (const b of band) b.muster = undefined;
+  if (band.length > 1) s.metric('jointBattle');
+  if (cp) fightCamp(s, band, cp);
+  else if (st) siege(s, band, st);
+}
+
+/** yoldaki bir grubun savaşçıları (karar verirken güç tahmini için) */
+export function agentCombatants(s: Sim, a: Agent, vs?: Camp['kind']): Combatant[] {
+  const civ = a.civ >= 0 ? s.w.civs[a.civ] : undefined;
+  const cs: Combatant[] = liveHeroes(s, a).map((h) => vs ? heroSide(h, 'A', vs) : heroCombatant(h, 'A'));
+  if (civ) cs.push(...civTroops(s, civ, a.troops ?? 0, 'A'));
+  return cs;
+}
+/** henüz yola çıkmamış bir grup için: aynı hedefe gidip ~aynı zamanda varacak dostlar */
+export function probeAllies(s: Sim, probe: Agent, myEta: number, window: number): Agent[] {
+  return musterAllies(s, probe).filter((b) => Math.abs((atTarget(b) ? 0 : etaDays(s, b)) - myEta) <= window);
+}
+
+/** grupların savaşçıları; her savaşçı grubunun dizinini taşır */
+function bandSide(s: Sim, band: Agent[], vs?: Camp['kind']): { side: Combatant[]; groups: ReplayGroup[]; per: Combatant[][] } {
+  const side: Combatant[] = [], groups: ReplayGroup[] = [], per: Combatant[][] = [];
+  band.forEach((a, i) => {
+    const heroes = liveHeroes(s, a);
+    const civ = a.civ >= 0 ? s.w.civs[a.civ] : undefined;
+    const alone = band.length === 1 && heroes.length === 1 && !(a.troops ?? 0);
+    const cs: Combatant[] = heroes.map((h) => vs ? heroSide(h, 'A', vs, alone) : heroCombatant(h, 'A'));
+    if (civ) cs.push(...civTroops(s, civ, a.troops ?? 0, 'A'));
+    for (const c of cs) c.grp = i;
+    side.push(...cs); per.push(cs);
+    groups.push({ name: bandName(s, a), side: 'A', civ: civ?.id, kind: a.kind === 'party' ? 'party' : a.purpose });
+  });
+  return { side, groups, per };
+}
+
+// ------------------------------------------------------------ kahramanlar ve seferler kamplara karşı
+export function fightCamp(s: Sim, band: Agent[], cp: Camp) {
+  const w = s.w;
+  const lead = band[0];
+  const civ = lead.civ >= 0 ? w.civs[lead.civ] : undefined;
+  const { side, groups, per } = bandSide(s, band, cp.kind);
   const hadBoss = cp.boss;
   const mons = monsterSide(cp.kind, cp.count, cp.boss, 'B');
-  const who = heroes.length ? heroes.map((h) => h.name).join(', ') : `${civ?.name} askerleri`;
-  const b = resolveBattle(s.rng, side, mons, civOpts(s, civ, 'A', { id: s.id(), day: s.day, tile: cp.tile, title: `${cp.name} baskını`, sideA: who, sideB: monsterName(cp.kind), moraleA: 0.55, moraleB: cp.kind === 'hobgoblin' ? 0.65 : 0.5, maxRounds: 20 }) as BattleOpts);
+  for (const m of mons) m.grp = groups.length;
+  groups.push({ name: cp.name, side: 'B', kind: cp.kind });
+  // ganimet payı: grubun savaş gücü
+  const pw = per.map((cs) => powerOf(cs, avgAc(mons)));
+  const pwSum = pw.reduce((a, b) => a + b, 0) || 1;
+  const share = pw.map((p) => p / pwSum);
+  const joint = band.length > 1;
+  const whoBefore = joint ? joinNames(groups.filter((g) => g.side === 'A').map((g) => g.name)) : groups[0].name;
+  const b = resolveBattle(s.rng, side, mons, civOpts(s, civ, 'A', { id: s.id(), day: s.day, tile: cp.tile, title: `${cp.name} baskını`, sideA: whoBefore, sideB: monsterName(cp.kind), moraleA: 0.55, moraleB: cp.kind === 'hobgoblin' ? 0.65 : 0.5, maxRounds: 20, timeoutWinner: 'B', groups, civA: civ?.id }) as BattleOpts);
   recordBattle(s, b);
-  const q = a.quest ? w.quests.find((x) => x.id === a.quest) : undefined;
+  const qOf = (a: Agent) => a.quest ? w.quests.find((x) => x.id === a.quest) : undefined;
   syncHeroes(s, side, b.winner === 'A' ? 100 : 20);
   afterCampFight(s, side, cp, b.winner === 'A', hadBoss, b.rolls);
-  const deadS = side.filter((x) => (x.kind === 'soldier' || x.kind === 'unique') && x.hp <= 0).length;
-  if (a.troops) { a.troops -= deadS; removeFromPop(s, a.pop, deadS); }
-  a.heroes = heroes.filter((h) => h.state !== 'dead').map((h) => h.id);
+  band.forEach((a, i) => {
+    const deadS = per[i].filter((x) => (x.kind === 'soldier' || x.kind === 'unique') && x.hp <= 0).length;
+    if (a.troops) { a.troops -= deadS; removeFromPop(s, a.pop, deadS); }
+    a.heroes = liveHeroes(s, a).map((h) => h.id);
+  });
+  // zafer satırında yalnızca sağ kalanlar anılır
+  const who = joint ? whoBefore : (lead.heroes?.length ? liveHeroes(s, lead).map((h) => h.name).join(', ') : `${civ?.name} askerleri`) || whoBefore;
   if (b.winner === 'A') {
     cp.alive = false; cp.count = 0; cp.clearedDay = s.day;
     delete w.tiles[cp.tile].camp;
     const loot = Math.round(cp.loot);
     s.metric('campCleared');
-    const payer = q && q.civ >= 0 ? w.civs[q.civ] : !q ? civ : undefined;
-    if (q) {
-      q.done = s.day;
-      s.metric('questDone');
-      if (q.civ < 0) s.metric('innQuestDone');
-      const share = Math.floor((q.bounty + loot * 0.5) / Math.max(1, a.heroes.length));
-      for (const id of a.heroes) { const h = s.hero(id); h.gold += share; if (q.civ >= 0) h.rep[q.civ] = (h.rep[q.civ] ?? 0) + 1; }
-      if (payer) s.add(payer, 'gold', Math.round(loot * 0.5));
-      const poster = payer ? payer.name : 'Hancı';
-      s.log('lair', `${who}, ${ek(cp.name, 'i')} yerle bir etti! ${poster} ödülü ödedi.`, { tile: cp.tile, civ: payer?.id, battle: b.id, cause: `İlan: ${q.bounty} altın; ${loot} değerinde ganimet`, major: true });
-    } else if (civ) {
-      s.add(civ, 'gold', loot);
-      s.log('lair', `${civ.name} seferi ${ek(cp.name, 'i')} yerle bir etti ve ${loot} değerinde ganimetle döndü!`, { tile: cp.tile, civ: civ.id, battle: b.id, cause: 'Kahramanlar ve askerler omuz omuza', major: true });
-    } else {
-      const share = Math.floor(loot / Math.max(1, a.heroes.length));
-      for (const id of a.heroes) s.hero(id).gold += share;
-      s.metric('huntDone');
-      s.log('lair', `${who}, kimse istemeden ${ek(cp.name, 'i')} yerle bir etti ve ${loot} değerinde ganimeti paylaştı.`, { tile: cp.tile, battle: b.id, cause: 'Kahramanın kendi yolu', major: true });
+    const helped = new Set<Civ>();
+    band.forEach((a, i) => {
+      const q = qOf(a);
+      const part = loot * share[i];
+      const acv = a.civ >= 0 ? w.civs[a.civ] : undefined;
+      const hs = a.heroes ?? [];
+      if (q) {
+        q.done = s.day;
+        s.metric('questDone');
+        if (q.civ < 0) s.metric('innQuestDone');
+        const payer = q.civ >= 0 ? w.civs[q.civ] : undefined;
+        const each = Math.floor((q.bounty + part * 0.5) / Math.max(1, hs.length));
+        for (const id of hs) { const h = s.hero(id); h.gold += each; if (q.civ >= 0) h.rep[q.civ] = (h.rep[q.civ] ?? 0) + 1; }
+        if (payer) { s.add(payer, 'gold', Math.round(part * 0.5)); helped.add(payer); }
+        if (!joint) s.log('lair', `${who}, ${ek(cp.name, 'i')} yerle bir etti! ${payer ? payer.name : 'Hancı'} ödülü ödedi.`, { tile: cp.tile, civ: payer?.id, battle: b.id, cause: `İlan: ${q.bounty} altın; ${loot} değerinde ganimet`, major: true });
+      } else if (acv) {
+        s.add(acv, 'gold', Math.round(part));
+        helped.add(acv);
+        if (!joint) s.log('lair', `${acv.name} seferi ${ek(cp.name, 'i')} yerle bir etti ve ${loot} değerinde ganimetle döndü!`, { tile: cp.tile, civ: acv.id, battle: b.id, cause: 'Kahramanlar ve askerler omuz omuza', major: true });
+      } else {
+        const each = Math.floor(part / Math.max(1, hs.length));
+        for (const id of hs) s.hero(id).gold += each;
+        s.metric('huntDone');
+        if (!joint) s.log('lair', `${who}, kimse istemeden ${ek(cp.name, 'i')} yerle bir etti ve ${loot} değerinde ganimeti paylaştı.`, { tile: cp.tile, battle: b.id, cause: 'Kahramanın kendi yolu', major: true });
+      }
+    });
+    if (joint) {
+      s.metric('jointWin');
+      const first = [...helped][0];
+      s.log('lair', `Ortak saldırı! ${whoBefore} birlikte ${ek(cp.name, 'i')} yerle bir etti.`, { tile: cp.tile, civ: first?.id, battle: b.id, cause: `${band.length} grup aynı hedefte buluştu; ${loot} değerindeki ganimet güç payına göre bölüşüldü (${groups.filter((g) => g.side === 'A').map((g, i) => `${g.name} %${Math.round(share[i] * 100)}`).join(', ')})`, major: true });
     }
-    const helped = payer ?? (civ ? civ : undefined);
-    if (helped) {
-      helped.threat *= 0.4;
-      for (const o of w.civs) if (o.alive && o.id !== helped.id && s.rel(o.id, helped.id).contact && s.g.dist(s.capital(o)?.tile ?? 0, cp.tile) <= 20)
-        s.addMod(o.id, helped.id, 'camphelp', `${helped.name} bir canavar kampını temizletti`, 10, 20, 0.02);
+    if (helped.size) {
+      for (const hc of helped) {
+        hc.threat *= 0.4;
+        for (const o of w.civs) if (o.alive && o.id !== hc.id && s.rel(o.id, hc.id).contact && s.g.dist(s.capital(o)?.tile ?? 0, cp.tile) <= 20)
+          s.addMod(o.id, hc.id, 'camphelp', `${hc.name} bir canavar kampını temizletti`, 10, 20, 0.02);
+      }
     } else {
       // ilansız temizlenen kamp: yakındaki herkes rahatlar
       for (const o of w.civs) if (o.alive && s.civSettlements(o).some((x) => s.g.dist(x.tile, cp.tile) <= 18)) o.threat *= 0.6;
@@ -604,13 +784,15 @@ export function fightCamp(s: Sim, a: Agent, cp: Camp) {
   } else {
     cp.count = mons.filter((x) => x.kind === 'monster' && x.hp > 0).length;
     cp.boss = mons.some((x) => x.boss && x.hp > 0);
-    if (q) questFailed(s, q);
-    s.log('lair', `${who}, ${ek(cp.name, 'da')} püskürtüldü.`, { tile: cp.tile, civ: a.civ >= 0 ? a.civ : q && q.civ >= 0 ? q.civ : undefined, battle: b.id, cause: `${monsterName(cp.kind)} ${cp.count} kişiyle kampı tuttu${q ? `; ilan ${q.bounty} altına çıktı` : ''}`, major: true });
+    const qs = band.map(qOf).filter((q): q is NonNullable<typeof q> => !!q);
+    for (const q of qs) questFailed(s, q);
+    const lc = band.find((a) => a.civ >= 0)?.civ ?? qs.find((q) => q.civ >= 0)?.civ;
+    s.log('lair', `${joint ? 'Ortak saldırı: ' : ''}${whoBefore}, ${ek(cp.name, 'da')} püskürtüldü.`, { tile: cp.tile, civ: lc !== undefined && lc >= 0 ? lc : undefined, battle: b.id, cause: `${monsterName(cp.kind)} ${cp.count} kişiyle kampı tuttu${b.replay?.end === 'timeout' ? ' (gün battı, kamp düşmedi)' : ''}${qs.length ? `; ilan ${qs.map((q) => q.bounty).join('/')} altına çıktı` : ''}`, major: true });
   }
-  if (a.kind === 'army') armyReturn(s, a); else partyReturn(s, a);
+  for (const a of band) { if (a.kind === 'army') armyReturn(s, a); else partyReturn(s, a); }
 }
 
-function removeFromPop(s: Sim, p: Pop | undefined, n: number) {
+export function removeFromPop(s: Sim, p: Pop | undefined, n: number) {
   if (!p) return;
   for (let i = 0; i < n; i++) {
     const rs = Object.keys(p).filter((r) => (p[r as keyof Pop] ?? 0) > 0) as (keyof Pop)[];
@@ -632,7 +814,10 @@ export function armyReturn(s: Sim, a: Agent) {
   const c = s.w.civs[a.civ];
   const cap = c && s.capital(c);
   a.returning = true;
-  if (cap) reroute(s, a, cap.tile); else a.path = [tileOf(a)];
+  if (!cap) { a.path = [tileOf(a)]; a.step = 0; a.progress = 0; return; }
+  // denizaşırı seferden dönüş: kıyıda bekleyen kogalara binilir
+  const sp = seaReturnPath(s, a, cap.tile);
+  if (sp) { a.path = sp; a.step = 0; a.progress = 0; } else reroute(s, a, cap.tile);
 }
 function armyHome(s: Sim, a: Agent) {
   const c = s.w.civs[a.civ];
@@ -642,50 +827,76 @@ function armyHome(s: Sim, a: Agent) {
 }
 
 // ------------------------------------------------------------ savaş, kuşatma, yağma
-function siege(s: Sim, a: Agent, st: Settlement) {
+function siege(s: Sim, band: Agent[], st: Settlement) {
   const w = s.w;
-  const att = w.civs[a.civ], dfc = w.civs[st.civ];
-  const heroes = (a.heroes ?? []).map((id) => s.hero(id)).filter((h) => h.state !== 'dead');
+  const lead = band[0];
+  const att = w.civs[lead.civ], dfc = w.civs[st.civ];
+  const civsIn = [...new Set(band.map((a) => w.civs[a.civ]))];
   const isCap = s.capital(dfc)?.id === st.id;
+  const joint = band.length > 1;
+  const nameA = civsIn.length > 1 ? `${joinNames(civsIn.map((c) => c.name))} orduları` : joint ? `${att.name} orduları` : `${att.name} ordusu`;
+  let per: Combatant[][] = [];
   const fight = () => {
-    const side: Combatant[] = [...heroes.map((h) => heroCombatant(h, 'A')), ...civTroops(s, att, a.troops ?? 0, 'A')];
+    const bs = bandSide(s, band);
+    per = bs.per;
+    const side = bs.side, groups = bs.groups;
     const def = defenders(s, st, 'B', false);
-    if (s.has(att, 'siege')) for (const d of def) d.ac -= 2;
-    let o: Partial<BattleOpts> = { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} kuşatması`, sideA: `${att.name} ordusu`, sideB: `${st.name} savunucuları`, moraleA: 0.55, moraleB: 0.65, maxRounds: 20 };
+    if (civsIn.some((c) => s.has(c, 'siege'))) for (const d of def) d.ac -= 2;
+    for (const d of def) d.grp = groups.length;
+    groups.push({ name: `${st.name} savunucuları`, side: 'B', civ: dfc.id });
+    let o: Partial<BattleOpts> = { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} kuşatması`, sideA: nameA, sideB: `${st.name} savunucuları`, moraleA: 0.55, moraleB: 0.65, maxRounds: 20, timeoutWinner: 'B', groups, civA: att.id, civB: dfc.id };
     o = civOpts(s, att, 'A', o, dfc); o = civOpts(s, dfc, 'B', o, att);
     const b = resolveBattle(s.rng, side, def, o as BattleOpts);
-    Object.assign(b, { _side: side, _def: def });
+    Object.assign(b, { _side: side, _def: def, _per: per });
     return b;
   };
   let b = withLuck(s, att, fight, (x) => x.winner === 'B');
   if (b.winner === 'A' && dfc.eff.luck && dfc.yearly.luck !== s.year) { dfc.yearly.luck = s.year; b = fight(); b.lines.unshift({ t: `Talih ${dfc.name} tarafına döndü!`, crit: true }); }
   const side = (b as unknown as { _side: Combatant[] })._side, def = (b as unknown as { _def: Combatant[] })._def;
+  per = (b as unknown as { _per: Combatant[][] })._per;
+  delete (b as unknown as Record<string, unknown>)._side; delete (b as unknown as Record<string, unknown>)._def; delete (b as unknown as Record<string, unknown>)._per;
   recordBattle(s, b);
   syncHeroes(s, side, b.winner === 'A' ? 100 : 20);
   applyDefLosses(s, st, def);
-  const dead = side.filter((x) => (x.kind === 'soldier' || x.kind === 'unique') && x.hp <= 0).length;
-  const back = Math.floor(dead * Math.min(0.8, s.e(att, 'healBack')));
-  a.troops = (a.troops ?? 0) - dead + back; removeFromPop(s, a.pop, dead - back);
-  a.heroes = heroes.filter((h) => h.state !== 'dead').map((h) => h.id);
+  let deadAll = 0;
+  band.forEach((a, i) => {
+    const c = w.civs[a.civ];
+    const dead = per[i].filter((x) => (x.kind === 'soldier' || x.kind === 'unique') && x.hp <= 0).length;
+    const back = Math.floor(dead * Math.min(0.8, s.e(c, 'healBack')));
+    a.troops = (a.troops ?? 0) - dead + back; removeFromPop(s, a.pop, dead - back);
+    a.heroes = liveHeroes(s, a).map((h) => h.id);
+    deadAll += dead;
+  });
   if (b.winner === 'A') { st.burnedHouses = (st.burnedHouses ?? 0) + s.rng.int(2, 4); st.burnedAt = s.day; onHomeBurned(s, st, undefined, att); }
   if (b.winner === 'A') {
-    att.stats.battlesWon++; dfc.stats.battlesLost++;
+    for (const c of civsIn) c.stats.battlesWon++;
+    dfc.stats.battlesLost++;
+    if (joint) s.metric('jointWin');
     if (!isCap) {
-      st.civ = att.id; st.soldiers = 0;
-      s.mergePop(st, a.pop); a.pop = {}; a.troops = 0;
+      // şehir, en çok askeri ayakta kalan orduya geçer
+      const win = band.slice().sort((x, y) => (y.troops ?? 0) - (x.troops ?? 0) || (x === lead ? -1 : 1))[0];
+      const wc = w.civs[win.civ];
+      st.civ = wc.id; st.soldiers = 0;
+      s.mergePop(st, win.pop); win.pop = {}; win.troops = 0;
       s.updateTerritory();
       s.metric('conquest');
-      s.log('war', `${att.name}, ${ek(st.name, 'i')} fethetti! Halkı (${s.raceStr(st.pop)}) artık onların bayrağı altında.`, { civ: att.id, tile: st.tile, battle: b.id, cause: s.rel(att.id, dfc.id).war?.goal, major: true });
+      if (joint) s.log('war', `${nameA} birlikte ${ek(st.name, 'i')} düşürdü! Şehir ${ek(wc.name, 'in')} bayrağı altına geçti.`, { civ: wc.id, tile: st.tile, battle: b.id, cause: `Ortak kuşatma: ${joinNames(band.map((a) => `${bandName(s, a)} (${a.troops ?? 0} asker kaldı)`))}`, major: true });
+      else s.log('war', `${att.name}, ${ek(st.name, 'i')} fethetti! Halkı (${s.raceStr(st.pop)}) artık onların bayrağı altında.`, { civ: att.id, tile: st.tile, battle: b.id, cause: s.rel(att.id, dfc.id).war?.goal, major: true });
     } else {
-      const loot = lootFrom(s, att, dfc, 0.35);
-      s.log('war', `${att.name} ordusu ${ek(st.name, 'i')} yağmaladı: ${loot}.`, { civ: att.id, tile: st.tile, battle: b.id, major: true });
+      // başkent yağması: her orduya ayakta kalan gücü oranında pay
+      const weight = civsIn.map((c) => band.filter((a) => a.civ === c.id).reduce((n, a) => n + (a.troops ?? 0) + (a.heroes?.length ?? 0) * 3, 0) + 0.01);
+      const tot = weight.reduce((x, y) => x + y, 0);
+      const parts = civsIn.map((c, i) => `${civsIn.length > 1 ? c.name + ': ' : ''}${lootFrom(s, c, dfc, 0.35 * weight[i] / tot)}`);
+      s.log('war', `${nameA} ${ek(st.name, 'i')} yağmaladı: ${parts.join(' · ')}.`, { civ: att.id, tile: st.tile, battle: b.id, major: true, cause: joint ? 'Ortak kuşatma' : undefined });
     }
   } else {
-    att.stats.battlesLost++; dfc.stats.battlesWon++;
-    s.log('war', `${st.name}, ${ek(att.name, 'in')} saldırısını püskürttü! Saldıranlar ${dead} kayıp verdi.`, { civ: dfc.id, tile: st.tile, battle: b.id, major: true });
+    for (const c of civsIn) c.stats.battlesLost++;
+    dfc.stats.battlesWon++;
+    s.log('war', `${st.name}, ${ek(nameA, 'in')} saldırısını püskürttü! Saldıranlar ${deadAll} kayıp verdi.`, { civ: dfc.id, tile: st.tile, battle: b.id, major: true, cause: b.replay?.end === 'timeout' ? 'Gün battı, surlar düşmedi' : undefined });
   }
-  s.addMod(att.id, dfc.id, 'blood', 'Dökülen kan', -8, -30, 0.02);
-  armyReturn(s, a);
+  for (const c of civsIn) s.addMod(c.id, dfc.id, 'blood', 'Dökülen kan', -8, -30, 0.02);
+  if (civsIn.length > 1) for (const x of civsIn) for (const y of civsIn) if (x !== y) s.setMod(x.id, y.id, 'brothers', 'Silah arkadaşlığı', 14, 0.01);
+  for (const a of band) armyReturn(s, a);
 }
 
 function plunder(s: Sim, a: Agent, st: Settlement) {
@@ -693,7 +904,7 @@ function plunder(s: Sim, a: Agent, st: Settlement) {
   const att = w.civs[a.civ], dfc = w.civs[st.civ];
   const side = civTroops(s, att, a.troops ?? 0, 'A');
   const def = defenders(s, st, 'B', false);
-  let o: Partial<BattleOpts> = { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} yağması`, sideA: `${att.name} akıncıları`, sideB: `${st.name} savunucuları`, moraleA: 0.5, moraleB: 0.6 };
+  let o: Partial<BattleOpts> = { id: s.id(), day: s.day, tile: st.tile, title: `${st.name} yağması`, sideA: `${att.name} akıncıları`, sideB: `${st.name} savunucuları`, moraleA: 0.5, moraleB: 0.6, timeoutWinner: 'B', civA: att.id, civB: dfc.id };
   o = civOpts(s, att, 'A', o, dfc);
   const b = resolveBattle(s.rng, side, def, o as BattleOpts);
   recordBattle(s, b);

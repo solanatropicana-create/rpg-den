@@ -3,13 +3,14 @@ import type { Sim } from './sim';
 import { FOOD_PER_POP, TIER_SLOTS, TIER_CROWD, YEAR } from './sim';
 import {
   GOODS, GOOD_IDS, DEPOSITS, EXTRACTS, LEVEL_SLOTS, LEVEL_MULT, LEVEL_COST, WORKSHOPS, WORKSHOP_IDS, CIVICS,
-  FOREST_REGROW_DAYS, extPoss, type Good, type Stock, type ExtractKind, type WorkshopKind, type CivicKind,
+  FOREST_REGROW_DAYS, SHIPS, extPoss, type Good, type Stock, type ExtractKind, type WorkshopKind, type CivicKind, type ShipKind,
 } from '../data/goods';
 import { CLASSES, RACES, WONDERS, type RaceId } from '../data/classes';
 import { ek } from './tr';
 import { TECH, techCost, type TechDef } from '../data/techs';
 import type { Civ, Settlement, Tile } from './types';
 import { onTechDone } from './research';
+import { pickPort, hullName, fleet } from './sea';
 
 const SEASON_FARM = [1.0, 1.3, 1.1, 0.25];
 const SEASON_WILD = [1.0, 1.2, 1.1, 0.5];
@@ -344,9 +345,27 @@ function pickInputs(s: Sim, c: Civ, a: Stock, b?: Stock): Stock | null {
 export function finishProject(s: Sim, c: Civ, st: Settlement) {
   const p = st.project!;
   st.project = null;
+  if (p.type === 'ship') {
+    const k = p.kind as ShipKind;
+    const first = k === 'galley' ? !fleet(s, c).galleys : !fleet(s, c).ships;
+    if (k === 'galley') st.galleys = (st.galleys ?? 0) + 1; else st.ships = (st.ships ?? 0) + 1;
+    s.metric(k === 'galley' ? 'galleysBuilt' : 'shipsBuilt');
+    const nm = k === 'galley' ? 'kadırga' : hullName(s, c);
+    const acc: Record<string, string> = { kadırga: 'kadırgasını', koga: 'kogasını', tekne: 'teknesini' };
+    s.log('sea', first ? `${c.name} ilk ${acc[nm]} ${ek(st.name, 'da')} denize indirdi.` : `${ek(st.name, 'da')} yeni bir ${nm} denize indirildi.`, { civ: c.id, tile: st.port ?? st.tile, major: first });
+    return;
+  }
   if (p.type === 'civic') {
     const k = p.kind as CivicKind;
     st.civics[k] = (st.civics[k] ?? 0) + 1;
+    if (k === 'shipyard') {
+      const pt = pickPort(s, st);
+      st.port = pt >= 0 ? pt : undefined;
+      const first = !s.civSettlements(c).some((x) => x.id !== st.id && x.civics.shipyard);
+      s.log('sea', `${ek(st.name, 'da')} Tersane kuruldu${first ? `: ${c.name} denize açılıyor` : ''}.`, { civ: c.id, tile: st.port ?? st.tile, major: first });
+      return;
+    }
+    if (k === 'lighthouse') { s.log('sea', `${ek(st.name, 'da')} Fener Kulesi yükseldi; gece gemilere yol gösterecek.`, { civ: c.id, tile: st.port ?? st.tile, major: true }); return; }
     if (k === 'wonder') {
       s.recomputeEff(c);
       const first = !(s.w.metrics.wonder ?? 0);
@@ -466,11 +485,31 @@ function buildCandidates(s: Sim, c: Civ, st: Settlement, isCap: boolean, war: bo
     const def = EXTRACTS[t.ext.kind];
     const nl = t.ext.level + 1;
     if (!def.names[nl - 1] || !def.tech[nl - 1] || !s.has(c, def.tech[nl - 1]!)) continue;
+    if (t.ext.kind === 'dock' && nl === 3 && !s.g.neighbors(ti).some((n) => W.tiles[n].sea)) continue; // balıkçı filosu açık denize açılır
     if (t.ext.workers < LEVEL_SLOTS[t.ext.level] - 1) continue;
     const cur = extractYield(s, c, t);
     const nxt = extractYield(s, c, t, nl);
     const gain = (nxt.y * LEVEL_SLOTS[nl] - cur.y * t.ext.workers) * s.price(c, cur.good);
     out.push({ score: gain * 10 + 8, cost: LEVEL_COST[nl], work: 10 + nl * 8, project: { type: 'upgrade', kind: t.ext.kind, tile: ti, level: nl } });
+  }
+  // Denizcilik: tersane, fener, gemiler (yerleşim yuvası kullanmaz); filo medeniyet çapında hedeflenir
+  const yards = s.civSettlements(c).filter((x) => x.civics.shipyard && x.port !== undefined);
+  if (s.has(c, 'boatbuilding') && !st.civics.shipyard && pickPort(s, st) >= 0) {
+    const near = yards.some((x) => s.g.dist(x.tile, st.tile) <= 10);
+    const sc = !yards.length ? 30 + (CLASSES[c.cls].prefer.deniz ?? 1) * 6 : st.overseas || (st.tier >= 2 && !near) ? 12 : 0;
+    if (sc > 0) out.push({ score: sc, cost: CIVICS.shipyard.cost, work: CIVICS.shipyard.work, project: { type: 'civic', kind: 'shipyard' } });
+  }
+  if (st.civics.shipyard && st.port !== undefined) {
+    if (s.has(c, 'seatrade') && !st.civics.lighthouse && (st.tier >= 2 || !yards.some((x) => x.civics.lighthouse))) out.push({ score: 14, cost: CIVICS.lighthouse.cost, work: CIVICS.lighthouse.work, project: { type: 'civic', kind: 'lighthouse' } });
+    const routes = W.routes.filter((r) => r.alive && r.sea && [r.a, r.b].some((x) => s.settlement(x)?.civ === c.id)).length;
+    const want = Math.min(7, 1 + (s.has(c, 'shipbuilding') ? 1 : 0) + (s.has(c, 'navigation') ? 1 : 0) + (s.has(c, 'seatrade') ? 1 : 0) + routes);
+    const fl = fleet(s, c), n = Math.max(1, yards.length);
+    const have = st.ships ?? 0;
+    if (fl.ships < want && have < Math.ceil(want / n)) out.push({ score: 22 + (fl.ships === 0 ? 14 : 0) + routes * 3, cost: SHIPS.hull.cost, work: SHIPS.hull.work, project: { type: 'ship', kind: 'hull' } });
+    if (s.has(c, 'navy')) {
+      const gw = 2 + (war ? 2 : 0) + (CLASSES[c.cls].aggression >= 0.5 ? 1 : 0);
+      if (fl.galleys < gw && (st.galleys ?? 0) < Math.ceil(gw / n)) out.push({ score: 20 + (war ? 16 : 0) + CLASSES[c.cls].aggression * 10, cost: SHIPS.galley.cost, work: SHIPS.galley.work, project: { type: 'ship', kind: 'galley' } });
+    }
   }
   if (slotsFree > 0) {
     // Atölyeler

@@ -95,15 +95,35 @@ export function registerFigures(r: Reg, std: (flat?: boolean, extra?: THREE.Mesh
   r('t_sack', sack, base);
   const cape = new THREE.BoxGeometry(0.15, 0.2, 0.012); cape.translate(0, -0.1, 0);
   r('t_cape', cape, std(true, { side: THREE.DoubleSide }));
-  // at
-  const hb = new THREE.BoxGeometry(0.11, 0.11, 0.3); hb.translate(0, 0.2, 0);
-  r('horse_body', hb, base);
-  const hh = new THREE.BoxGeometry(0.07, 0.16, 0.09); hh.rotateX(0.5); hh.translate(0, 0.3, 0.18);
-  r('horse_head', hh, base);
-  const hl = new THREE.BoxGeometry(0.035, 0.16, 0.035); hl.translate(0, -0.08, 0);
-  r('horse_leg', hl, base);
+  // saç ve sakal (şapkasız kafalarda)
+  const hair = new THREE.SphereGeometry(0.089, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.55); hair.rotateX(-0.35); hair.translate(0, 0.008, -0.008);
+  r('f_hair', hair, base);
+  const beard = new THREE.ConeGeometry(0.055, 0.09, 6); beard.rotateX(Math.PI); beard.translate(0, -0.06, 0.05);
+  r('f_beard', beard, base);
+  // at: gövde (göğüs ve sağrı yuvarlatılmış), boyun ve baş tek parça; yele ve kuyruk koyu renkte ayrı
+  const nonIdx = (g: THREE.BufferGeometry) => { const n = g.index ? g.toNonIndexed() : g; if (n.getAttribute('uv')) n.deleteAttribute('uv'); return n; };
+  const hparts: THREE.BufferGeometry[] = [];
+  { const b = new THREE.BoxGeometry(0.1, 0.1, 0.24); b.translate(0, 0.2, 0); hparts.push(nonIdx(b)); }
+  { const c = new THREE.IcosahedronGeometry(0.062, 0); c.scale(0.9, 1, 1); c.translate(0, 0.205, 0.105); hparts.push(nonIdx(c)); }
+  { const c = new THREE.IcosahedronGeometry(0.066, 0); c.scale(0.95, 0.95, 1); c.translate(0, 0.215, -0.1); hparts.push(nonIdx(c)); }
+  { const n = new THREE.BoxGeometry(0.055, 0.15, 0.07); n.rotateX(0.55); n.translate(0, 0.29, 0.15); hparts.push(nonIdx(n)); }
+  { const h = new THREE.BoxGeometry(0.05, 0.06, 0.12); h.rotateX(0.35); h.translate(0, 0.35, 0.215); hparts.push(nonIdx(h)); }
+  for (const e of [-1, 1]) { const ear = new THREE.ConeGeometry(0.01, 0.035, 3); ear.translate(e * 0.018, 0.39, 0.18); hparts.push(nonIdx(ear)); }
+  const hbody = mergeGeometries(hparts)!; hbody.computeVertexNormals();
+  r('horse_body', hbody, base);
+  const mparts: THREE.BufferGeometry[] = [];
+  { const m = new THREE.BoxGeometry(0.02, 0.05, 0.15); m.rotateX(0.55); m.translate(0, 0.33, 0.125); mparts.push(nonIdx(m)); }
+  { const tl = new THREE.BoxGeometry(0.025, 0.14, 0.03); tl.rotateX(-0.35); tl.translate(0, 0.17, -0.18); mparts.push(nonIdx(tl)); }
+  const mane = mergeGeometries(mparts)!; mane.computeVertexNormals();
+  r('horse_head', mane, base);
+  const hl = new THREE.BoxGeometry(0.03, 0.16, 0.032); hl.translate(0, -0.08, 0);
+  const hoof = new THREE.BoxGeometry(0.036, 0.022, 0.04); hoof.translate(0, -0.155, 0.003);
+  const leg2 = mergeGeometries([nonIdx(hl), nonIdx(hoof)])!; leg2.computeVertexNormals();
+  r('horse_leg', leg2, base);
 }
 
+const HAIR = [0x3a2a1e, 0x2a1e16, 0x5a3a22, 0x8a5a2a, 0xc89a5a, 0x1c1814, 0x6a4a30, 0xa0602a, 0x8a8480];
+const DWARF_BEARD = [0x8a3a1a, 0x5a3a22, 0xa0602a, 0x9a948a, 0x3a2a1e];
 const TOOL_LEN: Record<Tool, number> = { axe: 0.3, pick: 0.3, hoe: 0.36, shovel: 0.33, sword: 0.06, spear: 0.52, staff: 0.46, mace: 0.2, dagger: 0.04, club: 0, rod: 0.62, basket: 0, none: 0 };
 const UPRIGHT: Partial<Record<Tool, true>> = { spear: true, staff: true };
 
@@ -159,6 +179,13 @@ export function drawFigure(add: AddFn, x: number, y: number, z: number, face: nu
   add('f_head', hx, headY, hz, W * 0.95, H * 0.95, W * 0.95, face, look.skin);
   if (scale < 0.9 || look.race !== 'bugbear') add('f_eyes', hx, headY, hz, W * 0.95, H * 0.95, W * 0.95, face, 0x1c1612);
   const hc = look.hatColor ?? look.body;
+  // şapkası saçı örtmeyenlerde saç; cücelerde (ve bazı insanlarda) sakal
+  const bald = look.race === 'goblin' || look.race === 'hobgoblin' || look.race === 'bugbear' || look.race === 'dragonborn' || look.race === 'halforc' && (id % 3 === 0);
+  if (!bald && (!look.hat || look.hat === 'none' || look.hat === 'ears' || look.hat === 'horns' || look.hat === 'leaf')) {
+    const hcol = HAIR[(id * 7 + (look.race === 'elf' ? 3 : 0)) % HAIR.length];
+    add('f_hair', hx, headY, hz, W * 0.95, H * 0.95, W * 0.95, face, look.race === 'elf' && id % 2 ? 0xe8d9a0 : hcol);
+  }
+  if (look.race === 'dwarf' || (look.race === 'human' && id % 5 === 0 && scale > 0.8)) add('f_beard', hx, headY, hz, W * 0.95, H * (look.race === 'dwarf' ? 1.3 : 0.8), W * 0.95, face, look.race === 'dwarf' ? DWARF_BEARD[id % DWARF_BEARD.length] : HAIR[(id * 7) % HAIR.length]);
   switch (look.hat) {
     case 'hood': add('h_hood', hx, headY, hz, W, H, W, face, hc); break;
     case 'wizard': add('h_wiz', hx, headY, hz, W, H, W, face, hc, -0.15); add('h_brim', hx, headY, hz, W, H, W, face, hc); break;
@@ -213,12 +240,14 @@ export function drawFigure(add: AddFn, x: number, y: number, z: number, face: nu
   }
 }
 
+const _dc = new THREE.Color();
+const darker = (c: number) => _dc.setHex(c).multiplyScalar(0.45).getHex();
 /** koşan/duran at */
 export function drawHorse(add: AddFn, x: number, y: number, z: number, face: number, t: number, id: number, color: number, moving = true) {
   const ph = t * 10 + id;
   const bob = moving ? Math.abs(Math.sin(ph)) * 0.02 : 0;
   add('horse_body', x, y + bob, z, 1, 1, 1, face, color);
-  add('horse_head', x, y + bob, z, 1, 1, 1, face, color);
+  add('horse_head', x, y + bob, z, 1, 1, 1, face, darker(color));
   for (const [lx, lz, p] of [[-0.04, 0.11, 0], [0.04, 0.11, Math.PI], [-0.04, -0.11, Math.PI], [0.04, -0.11, 0]] as const) {
     const [px, pz] = tw(x, z, face, lx, lz);
     add('horse_leg', px, y + 0.16 + bob, pz, 1, 1, 1, face, color, moving ? Math.sin(ph + p) * 0.5 : 0);

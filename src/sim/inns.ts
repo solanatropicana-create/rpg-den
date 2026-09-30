@@ -3,13 +3,13 @@ import type { Sim } from './sim';
 import { YEAR } from './sim';
 import { ek } from './tr';
 import { CLASSES, UNITS, type RaceId } from '../data/classes';
-import { HERO_CLASS_IDS, KEEPER_NAMES } from '../data/heroes';
+import { HERO_CLASS_IDS } from '../data/heroes';
 import { powerOf, resolveBattle, unit, type Combatant } from './combat';
 import { monsterSide, monsterName } from './monsters';
 import { civTroops, drawSoldiers, recordBattle, syncHeroes, raidReturn, armyReturn } from './agents';
 import { makeHero, heroBaseCost } from './heroes';
 import { heroSide, heroWillServe, innById, maybeRetire, nearestRest, note, returnToBase } from './will';
-import { markInn } from './worldgen';
+import { innLifeTick, innIncome, innEvent, innScatter } from './innlife';
 import type { Agent, Civ, Hero, Inn } from './types';
 
 export const INN_POOL = 6;
@@ -39,13 +39,14 @@ function spawnInnHero(s: Sim, inn: Inn) {
 // ------------------------------------------------------------ tik
 export function innsTick(s: Sim) {
   const w = s.w;
+  innLifeTick(s);   // hancılar, inşaat, misafirler, kiler, defter (her gün)
   if (s.day % 5 !== 0) return;
   for (const inn of w.inns) {
-    if (!inn.alive) { if (s.day % 30 === 0) maybeRebuild(s, inn); continue; }
-    inn.gold += 0.6;   // yolcu parası
+    if (!inn.alive) continue;
     const pool = innPool(s, inn);
-    const p = pool.length === 0 ? 0.1 : pool.length < INN_POOL ? 0.045 : 0;   // yılda ~1–2
-    if (s.day >= 15 && s.rng.chance(p)) spawnInnHero(s, inn);
+    // yılda ~1–2; ünlü hana kahraman daha çok uğrar
+    const p = (pool.length === 0 ? 0.1 : pool.length < INN_POOL ? 0.045 : 0) * (0.8 + (inn.fame / 100) * 0.35);
+    if (s.rng.chance(p)) spawnInnHero(s, inn);
     for (const h of pool) {
       if (!h.auction && h.state === 'tavern' && h.tavern === inn.id) h.auction = { end: s.day + YEAR, bids: [] };
       else if (h.auction && s.day >= h.auction.end) closeAuction(s, inn, h);
@@ -57,19 +58,9 @@ export function innsTick(s: Sim) {
   // süresi dolan ilanlar ödülü iade eder
   for (const q of w.quests) if (q.open && q.expires !== undefined && s.day >= q.expires) {
     q.open = false;
-    if (q.civ >= 0) s.add(w.civs[q.civ], 'gold', q.bounty); else { const i = innById(s, q.inn); if (i) i.gold += q.bounty; }
+    if (q.civ >= 0) s.add(w.civs[q.civ], 'gold', q.bounty); else { const i = innById(s, q.inn); if (i) innIncome(s, i, q.bounty, `İlanın süresi doldu; ${q.bounty} altın ödül kasaya döndü`); }
     s.metric('questExpired');
   }
-}
-
-function maybeRebuild(s: Sim, inn: Inn) {
-  if (s.day - (inn.ruinedDay ?? 0) < 3 * YEAR) return;
-  if (s.w.camps.some((c) => c.alive && s.g.dist(c.tile, inn.tile) <= 10)) return;
-  inn.alive = true; inn.ruinedDay = undefined; inn.gold = 40;
-  inn.keeper = s.rng.pick(KEEPER_NAMES);
-  markInn(s.g, s.w.tiles, inn);
-  s.metric('innRebuilt');
-  s.log('inn', `${innName(inn)} küllerinden yeniden kuruldu; yeni hancı ${inn.keeper}.`, { tile: inn.tile, major: true, cause: 'Çevredeki canavarlar temizlendi' });
 }
 
 // ------------------------------------------------------------ açık artırma
@@ -112,7 +103,7 @@ function closeAuction(s: Sim, inn: Inn, h: Hero) {
   if (!ok.length) return;
   const b = ok[0], c = s.w.civs[b.civ];
   s.add(c, 'gold', -b.gold);
-  inn.gold += Math.round(b.gold * 0.1);
+  innIncome(s, inn, Math.round(b.gold * 0.1), `Açık artırma: ${c.name}, ${h.name} için ${b.gold} altın verdi; hanın payı %10`);
   for (const x of s.w.agents) if (!x.dead && x.kind === 'hero' && x.heroes?.includes(h.id)) x.dead = true;
   h.goal = undefined;
   h.civ = c.id;
@@ -149,13 +140,26 @@ function contractEnd(s: Sim, h: Hero) {
 // ------------------------------------------------------------ hanın panosu
 function postGuardQuest(s: Sim, inn: Inn) {
   const w = s.w;
-  if (inn.gold < 30) return;
-  const cp = w.camps.filter((c) => c.alive && s.g.dist(c.tile, inn.tile) <= 10).sort((a, b) => s.g.dist(a.tile, inn.tile) - s.g.dist(b.tile, inn.tile))[0];
-  if (!cp || w.quests.some((q) => q.open && q.camp === cp.id && q.civ === -1)) return;
-  const bounty = Math.round(Math.min(inn.gold * 0.6, 30 + (cp.kind === 'hobgoblin' ? 20 : cp.kind === 'bugbear' ? 30 : 0)));
+  // zengin han, panosundaki medeniyet ilanlarının ödülüne katkı koyar (yolları güvenli olsun, yolcu gelsin)
+  if (inn.gold > 220) for (const q of w.quests) {
+    if (!q.open || q.inn !== inn.id || q.civ < 0 || q.topped) continue;
+    const add = Math.round(Math.min(inn.gold * 0.15, q.bounty * 0.4));
+    if (add < 5) continue;
+    q.bounty += add; q.topped = add; inn.gold -= add;
+    innEvent(s, inn, `Hancı ${w.civs[q.civ].name} ilanının ödülüne ${add} altın ekledi`);
+  }
+  if (inn.gold < 40) return;
+  const mine = w.quests.filter((q) => q.open && q.civ === -1 && q.inn === inn.id);
+  if (mine.length >= Math.max(1, inn.level)) return;
+  const cp = w.camps.filter((c) => c.alive && !w.tiles[c.tile].isle && s.g.dist(c.tile, inn.tile) <= 12 && !w.quests.some((q) => q.open && q.camp === c.id && q.civ === -1))
+    .sort((a, b) => s.g.dist(a.tile, inn.tile) - s.g.dist(b.tile, inn.tile))[0];
+  if (!cp) return;
+  const base = 30 + (cp.kind === 'hobgoblin' ? 25 : cp.kind === 'bugbear' || cp.kind === 'pirate' ? 35 : 0);
+  const bounty = Math.round(Math.min(inn.gold * 0.35, base * (1 + (Math.max(1, inn.level) - 1) * 0.4)));
   inn.gold -= bounty;
   w.quests.push({ id: s.id(), civ: -1, camp: cp.id, bounty, posted: s.day, takenBy: [], open: true, inn: inn.id, expires: s.day + 3 * YEAR });
   s.metric('innQuest');
+  innEvent(s, inn, `Panoya ilan asıldı: ${cp.name} temizlensin (${bounty} altın)`);
   s.log('quest', `Hancı ${inn.keeper}, ${innName(inn)} panosuna ilan astı: "${cp.name} temizlensin, ödül ${bounty} altın."`, { tile: inn.tile, major: true, cause: `${cp.name} hana ${s.g.dist(cp.tile, inn.tile)} fersah` });
 }
 
@@ -206,7 +210,7 @@ export function innRaidArrive(s: Sim, a: Agent) {
   if (!inn || !inn.alive) { armyReturn(s, a); return; }
   const side = civTroops(s, c, a.troops ?? 0, 'A');
   const def = innDefenders(s, inn, 'B');
-  const b = resolveBattle(s.rng, side, def, { id: s.id(), day: s.day, tile: inn.tile, title: `${innName(inn)} baskını`, sideA: `${c.name} askerleri`, sideB: `${innName(inn)} misafirleri`, moraleA: 0.55, moraleB: 0.6 });
+  const b = resolveBattle(s.rng, side, def, { id: s.id(), day: s.day, tile: inn.tile, title: `${innName(inn)} baskını`, sideA: `${c.name} askerleri`, sideB: `${innName(inn)} misafirleri`, moraleA: 0.55, moraleB: 0.6, timeoutWinner: 'B', civA: c.id });
   recordBattle(s, b);
   syncHeroes(s, def, b.winner === 'B' ? 90 : 10);
   const dead = side.filter((x) => x.hp <= 0).length;
@@ -214,12 +218,16 @@ export function innRaidArrive(s: Sim, a: Agent) {
   inn.raids++;
   s.metric('innRaid');
   if (b.winner === 'A') {
-    const gold = Math.floor(inn.gold); inn.gold = 0;
+    const gold = Math.floor(Math.max(0, inn.gold)); inn.gold -= gold;
     s.add(c, 'gold', gold);
+    innScatter(s, inn, `${c.name} askerleri hanı bastı`, false);
+    innEvent(s, inn, `${c.name} askerleri hanı yağmaladı: ${gold} altın gitti`);
     s.log('war', `${c.name} askerleri ${ek(innName(inn), 'i')} yağmaladı: ${gold} altın ve misafirlerin kanı.`, { civ: c.id, tile: inn.tile, battle: b.id, major: true });
     for (const h of s.w.heroes) if (h.civ === -1 && h.state === 'tavern' && h.tavern === inn.id) { note(s, h, `${c.name} hanı bastı`); h.grudge = c.id; }
   } else {
     s.log('war', `${innName(inn)} misafirleri ${c.name} askerlerini kapıdan geri püskürttü.`, { civ: c.id, tile: inn.tile, battle: b.id, major: true });
+    inn.fame = Math.min(100, inn.fame + 4);
+    innEvent(s, inn, `${c.name} baskını kapıdan geri püskürtüldü`);
   }
   breakGuestRight(s, c, inn);
   armyReturn(s, a);
@@ -233,7 +241,7 @@ export function innMonsterRaid(s: Sim, a: Agent) {
   const cp = s.w.camps.find((x) => x.id === a.from);
   const def = innDefenders(s, inn, 'A');
   const mons = monsterSide(kind, a.troops ?? 0, !!a.boss, 'B');
-  const b = resolveBattle(s.rng, def, mons, { id: s.id(), day: s.day, tile: inn.tile, title: `${innName(inn)} baskını`, sideA: `${innName(inn)} misafirleri`, sideB: monsterName(kind), moraleA: 0.6, moraleB: 0.5 });
+  const b = resolveBattle(s.rng, def, mons, { id: s.id(), day: s.day, tile: inn.tile, title: `${innName(inn)} baskını`, sideA: `${innName(inn)} misafirleri`, sideB: monsterName(kind), moraleA: 0.6, moraleB: 0.5, timeoutWinner: 'A' });
   recordBattle(s, b);
   syncHeroes(s, def, b.winner === 'A' ? 80 : 10);
   a.troops = mons.filter((x) => x.kind === 'monster' && x.hp > 0).length;
@@ -246,12 +254,16 @@ export function innMonsterRaid(s: Sim, a: Agent) {
     ruinInn(s, inn, `${cp?.name ?? monsterName(kind)} baskını`, b.id);
   } else {
     for (const h of heroes) if (h.state !== 'dead') note(s, h, `${ek(innName(inn), 'i')} ${monsterName(kind).toLocaleLowerCase('tr')} baskınına karşı savundu`);
+    inn.fame = Math.min(100, inn.fame + 3);
+    innEvent(s, inn, `${monsterName(kind)} baskını püskürtüldü${heroes.length ? ` (${heroes.map((h) => h.name).join(', ')})` : ''}`);
     s.log('raid', `${innName(inn)} misafirleri ${monsterName(kind).toLocaleLowerCase('tr')} baskınını püskürttü${heroes.length ? `: ${heroes.map((h) => h.name).join(', ')}` : ''}.`, { tile: inn.tile, battle: b.id, major: heroes.length > 0, cause: `${cp?.name ?? 'Kamp'} hana yakın` });
   }
   raidReturn(s, a);
 }
 
 export function ruinInn(s: Sim, inn: Inn, why: string, battle?: number) {
+  innEvent(s, inn, `Han yandı: ${why}`);
+  innScatter(s, inn, 'han yanarken kaçtı', true);
   inn.alive = false; inn.ruinedDay = s.day; inn.teacher = undefined;
   s.metric('innRuined');
   s.log('inn', `${innName(inn)} yandı ve harabeye döndü.`, { tile: inn.tile, battle, major: true, cause: why });

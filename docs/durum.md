@@ -1,9 +1,9 @@
-# Fantastik Dünya — Durum (v0.22, 30 Eylül 2026)
+# Fantastik Dünya — Durum (v0.28, 30 Eylül 2026)
 
 Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tanımsız; amaç, dokunmadan onlarca dakika izlenebilen bir dünya.
 
 ## Simülasyon
-- **Dünya:** 110×75 hex, organik kıta: girintili kıyılar, yarımadalar, körfezler, iç göller, dağdan denize akan nehirler, açıkta adalar. Açık deniz geçilmez; kıyı hexleri açığa doğru derinleşir. 8 biyom. Aynı seed her ortamda aynı dünyayı üretir.
+- **Dünya:** 110×75 hex, organik kıta: girintili kıyılar, yarımadalar, körfezler, iç göller, dağdan denize akan nehirler, açıkta adalar. Denize yalnız gemiyle çıkılır; kıyı hexleri açığa doğru derinleşir. 8 biyom. Aynı seed her ortamda aynı dünyayı üretir. **Dağ kütleleri geçilmez (v0.27, RimWorld gibi):** ordu, kervan, kahraman ve canavar dağın çevresinden dolaşır; bir kara parçasını ikiye bölen dağda worldgen en az dağ karosu aşan yerden geçit açar (dağ → tepe, "dağ geçidi"; dünya başına 0–4 karo). Hobgoblinler dağdaki yatağı işgal etmez. Adalar v0.26'da seed'e göre üç denizden biriyle gelir (aşağıda); anakara ve erken tarih değişmez.
 - **Medeniyetler:** 12 D&D sınıfının hepsi oynanır; her dünyada 7–9'u seçilir. Her sınıfın:
   - kendi ırkı ve 8 düğümlü ağacı,
   - 3 alt sınıfı (kalıcı doktrin) ve uç gücü,
@@ -13,7 +13,7 @@ Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tan
   - Birkaç hex'e yayılmış, tükenen maden yatakları.
   - Çıkarma yapıları L1–L3 (araştırmayla açılır, kaynakla yükseltilir).
   - Atölye zincirleri, fiyata göre iş bölümü, depo sınırı, bozulma, kıtlık.
-- **Araştırma:** 38 düğümlü ana ağaç, 4 çağ (Kamp → Köy → Kasaba → Krallık). Kaynağı olmayan medeniyet pahalı yoldan ilerler.
+- **Araştırma:** 42 düğümlü ana ağaç, 4 çağ (Kamp → Köy → Kasaba → Krallık). Kaynağı olmayan medeniyet pahalı yoldan ilerler (denizcilik hariç: kıyısı olmayan onu hiç öğrenemez).
 - **İlişkiler:**
   - Kaynak çekişmesi ve antlaşmalar, toprak hırsı, savaş ve barış süresi.
   - Yağma akınları, casusluk, suikast.
@@ -22,22 +22,71 @@ Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tan
 - **Saldırıların kalıcı zararı:** Canavarlar tarlaya, iskeleye, madene tek tek saldırır. İşçiler ölür, mal çalınır, yapı yanar ve odunla yeniden kurulana dek üretim durur. Savaş orduları geçtikleri düşman topraklarını yakar, baskınlarda evler yanar ve konut azalır.
 - **Konut ve barakalar:** Nüfus konut kapasitesini aşarsa (göç, fetih, mülteci, yanan evler) fazlası sur dışında barakada yaşar. Barakalar salgın ve yangın riskini artırır, evsizler aynı medeniyette boş evi olan yerleşime yürür, inşaatçılar önce ev yapar.
 - **Dünya olayları:** Kalabalık kasabalarda salgın çıkar ve ticaret yollarıyla yayılır; hekimlik, şifa evi ve tapınak korur, ölüler kasaba dışındaki mezarlığı büyütür. Ahşap kasabalarda (özellikle yazın) yangın çıkar. Kıtlıkta aç halk yürüyerek komşu medeniyete sığınır.
-- **Tarafsız hanlar:** Sınır bölgelerinde, hiçbir medeniyete ait olmayan 2–4 han (medeniyet − 2). Sınır genişlemesi hanı ve çevresini alamaz.
+- **Tarafsız hanlar (v0.24, yaşayan han):** Dünya kurulurken han yoktur. Oyun başında (1–12. gün) 2–4 hancı (medeniyet − 2) yerleşimlerden öküz arabasıyla çıkar (`innlife.ts`).
+  - Yer seçimi göreceli rastgele: iki yerleşime yakın eşit uzaklıkta sınır bölgesi, yol, dere, orman ve taş yakınlığı puanlanır; en iyi 20 yerden biri ağırlıklı seçilir. Yol boyunca yer kapılırsa hancı 4 karo içinde başka yer arar, bulamazsa geri döner.
+  - İnşaat gerçek malzemeyle: arabada 16 kereste gelir; kalan kereste ve taş yakın ormandan / tepeden kesilir, yoksa en yakın yerleşimden satın alınıp arabayla getirilir. Hancı, çırak, bazen seyis ve kasa yettikçe gündelikçiler çalışır; kışın yavaşlar. Evreler: temel → iskelet → duvar → çatı. Açılış çoğunlukla 1. yılın yazında (47–123. gün).
+  - Kademe: Yol hanı (6 oda) → Han (10 oda, yan kanat; ün 28, Y3, 110 altın) → Kervansaray (16 oda, üçüncü kat, avlu duvarı, gözcü kulesi; ün 50, Y8, 260 altın). Genişleme, yer bulamayan yolcu ya da hep dolu odalar isterse başlar; malzeme ve emek yine gerçek.
+  - Misafirler: yolcular (tüccar, hacı, ozan, avcı, bilgin, asker, göçmen, gezgin, soylu) yerleşimlerden hana yürüyen gerçek ajanlardır. Gelme hızı çevredeki nüfus ve ticaret yoluna, ün, mevsim, yakındaki kampların tehlikesine ve kilere bağlı. Her birinin adı, ırkı, geldiği ve gideceği yer, sebebi, kesesi, kalacağı gece ve memnuniyeti var. Oda dolarsa ahırda yatar, o da doluysa yoluna devam eder. Göçmen gerçekten bir yerleşimden ötekine göç eder.
+  - Kervanlar hanın önünden geçecek şekilde yol seçer (az sapmayla) ve bir gece konaklar; tayfanın hesabını medeniyet hazinesi öder.
+  - Kahramanlar hanın müdavimi: parası olan hesabını öder, olmayan veresiye yazdırır ve emeğiyle öder (korucu avlanır, druid ot toplar, savaşçı nöbet tutar, rahip yara sarar, büyücü hikâye anlatır, hırsız zar masasında). Görevden altınla dönen borcunu kapatır.
+  - Kiler (porsiyon, bardak, odun yükü): misafir ve personel yer, kışın odun yanar, bahçe ve kümes biraz karşılar, bira biterse hancı tahıldan kendi birasını mayalar. Kiler azalınca erzak arabası en uygun yerleşimden (dolum oranı, uzaklık ve fiyata göre) gerçek alım yapar: medeniyetin stoğu azalır, altını artar. Satıcı kendi 40 günlük ambarına ve her malın %20'sinden fazlasına dokunmaz; kıtlıktaki ya da Han Bozan medeniyetten alınmaz.
+  - Tarife gümüşle (10 gümüş = 1 altın): oda 4–7, yemek 2–3, bira 2–3. Personel (çırak, aşçı, seyis, garson, bekçi) kademeye göre işe alınır, mevsimlik ücret alır; kasa boşsa son giren ayrılır. Servis kapasitesini aşan kalabalık memnuniyeti düşürür.
+  - Ün (0–100): memnuniyet, kademe, efsaneler ve savunulan baskınlarla artar; ünlü hana daha çok yolcu ve biraz daha çok kahraman gelir. Mevsimlik kasa defteri: oda, yemek, içki, yol parası/pay, erzak, ücret, inşaat.
+  - Kasa taşınca: hancı panoya büyük ödüllü ilan asar (kademe kadar), medeniyet ilanlarına katkı koyar, 450 altın üstünü kısmen memleketine yollar. Usta hanın çırağı 2 yıl sonra kendi hanını kurmaya gidebilir (Y12 sonrası en çok medeniyet − 1 han). Yıkılan hanı 3 yıl sonra yeni bir hancı gelip yeniden kurar.
+  - Sınır genişlemesi hanı ve çevresini alamaz.
   - Her han yılda 1–2 karışık ırklı serbest kahraman üretir (havuz 6). Kahraman hana girince 1 yıllık açık artırma açılır; kazanan medeniyet 5 yıllık sözleşme imzalar. Sözleşme sonunda sadakat zarı (d20 + yıl + ödeme, DC 12): tutmazsa kahraman hana döner. Medeniyet başına en çok 2 han kahramanı.
   - Hizalama kuralı: iyi kahraman Paktçı'ya, kötü kahraman paladine çalışmaz. İtibarı 3 olan kahraman o medeniyete %20 indirimli sayılır.
   - Görev panosu: medeniyetler canavar ilanını en yakın hana asar, hancı da hana yakın kampa ilan açar. İlan 3 yıl açık kalır; başarısız sefer ödülü %25 artırır.
   - Misafir hakkı: hanı basan medeniyet herkesle −30 (Paktçı −15) alır ve 5 yıl "Han Bozan" olarak kahraman kiralayamaz. Paktçı ara sıra han basar, bu paladinlerin Kutsal Sefer eşiğini düşürür. Canavarlar da hana saldırır; hanı handaki kahramanlar savunur, düşerse harabe olur ve 3 yıl sonra yeniden kurulur.
+- **Denizcilik (v0.25, `sea.ts`):**
+  - Araştırma dalı (hepsi deniz kıyısı ister): Tekne Yapımı (II; tersane, kıyı teknesi, Balıkçı Limanı L2) → Gemicilik (III; koga, ada kolonisi, deniz ticareti) → Seyir (III; açık deniz, keşif gemisi, Balıkçı Filosu L3) → Deniz Ticareti (IV; Fener Kulesi, geniş ambar, ticaret altını +%20) ve Donanma (IV; kadırga, denizaşırı sefer ve akın, deniz savaşı). Haydut, Barbar, Ozan ve Savaşçı denizciliğe yatkın.
+  - Tersane: yerleşimin denize komşu toprağına, surların dışına (tercihen iki karo öteye) kurulur; yuva kullanmaz. Gemiler burada yapılır (tekne/koga 10 kereste levha + 6 kereste, kadırga +1 alet). Filo medeniyet çapında hedeflenir: her deniz düğümü ve her deniz yolu için bir gemi daha (en çok 7); Donanma ile 2–5 kadırga. Fener Kulesi yakındaki fırtına riskini düşürür.
+  - Yol bulma: kara + deniz A*. Yalnız boş gemisi olan kendi limanından binilir; Seyir'e dek yalnız kıyı suları (karaya komşu deniz karosu), sonra açık deniz. Denizde günde ~0,85–1,15 karo (karada ordu 0,55).
+  - Gemi hesabı: yolculuğa çıkan her grup limandan bir gemi alır. Öncüleri ya da yükü indiren gemi boş olarak limanına döner; ordunun kogaları kıyıda demirli bekler, dönüşte ordu yeniden biner. Fırtınada batan ya da ele geçirilen gemi filodan düşer.
+  - Ada kolonileri: Gemicilik anakaradaki 5 yerleşimin üstüne bir, Seyir ikinci ada kolonisi hakkı verir. Anakaranın ıssız kıyıları canavarlara kalır. Kolonilere ikmal gemisi yolu açılır (yük görünür, kazanç yok).
+  - Deniz ticareti: kara yoluyla ulaşılamayan ya da çok uzak limanlar arasında (menzil: Tekne Yapımı 24, Gemicilik 42, Seyir 60, Deniz Ticareti 80 karo). Gemi 18–24 yük taşır (kervan 12), sefer başına ek altın. Deniz yolu hana uğramaz; canavarlar denizdeki kervanı pusuya düşüremez.
+  - Keşif gemisi: Seyir ile her medeniyet bir kez ufkun ötesine yelken açar; adaları, yatakları, kampları ve uzak halkları görür.
+  - Donanma: savaşta kadırgalar düşman limanına akın eder (limandaki gemileri yakar, ganimet alır) ve denizdeki düşman gemilerini ele geçirir. Ordu ve akıncılar denizden daha kısaysa gemiyle gider. Düşman limanının 3 karo yakınında kadırgalar çıkarsa deniz savaşı (d20; kadırga 26 can, AC 13; asker kogası batarsa askerlerin yarısı boğulur); yenilen donanma geri döner.
+  - Fırtına (v0.26'da çok seyrek): açık denizde ve kışın biraz daha olası; Seyir ve fener azaltır. Tekil gemilerin beşte dördü hasarla kurtulur; donanma asker ve kadırga kaybedebilir. 16 dünyada 25 yılda toplam 1 gemi battı (önce dünya başına 0–5).
+- **Adalar (v0.26):** Seed'e göre deniz profili: kıta ve birkaç ada (~%40), takımada (~%35: 2–3 kümede kümelenmiş 6–15 ada), büyük adalar (~%25: 40–95 karoluk 2–3 ada). Yeni adalar ayrı rastgele akışla, mevcut karaya en az iki deniz karosu uzakta, girintili şekilde büyür.
+  - Her adanın adı ve türü var: volkanik (ortada dağ, tepeler; demir, altın, kömür), ormanlık, çayırlık (verimli ova, at), kayalık (tuz, bakır), sisli bataklık (şifalı ot, mana, kömür), kumsal adacık (küçük, palmiyeli). Kuzey sırasındaki adalar buzlu.
+  - Ada büyüklüğüne göre 1–3 yatak (40 karo üstü 2–3). Volkanik adadaki koloni yılda %6 olasılıkla kül püskürmesi yaşar: 1–2 ev yanar, tarlalar küle gömülür.
+  - Olaylar adın adını anar: "…, Sisli Ada'da denizaşırı koloni … kurdu", "keşif gemisi Kül Adası'nı gördü: volkanik ada, 71 karo".
+- **Korsanlar (v0.26):** 5. yıldan sonra, denizde yeterli gemi (≥3) varsa sahipsiz bir adada (yoksa ıssız bir kıyıda) yılda %40 olasılıkla korsan koyu kurulur: 7 korsan ve adı olan bir kaptan. En çok 1 koy (kıta) ya da 2 koy (takımada / büyük adalar), deniz yolu çoksa +1; temizlenen koyun ardından 2 yıl boyunca yenisi gelmez.
+  - Korsan kayığı (günde 1,25 karo) 80–150 günde bir denize açılır: denizdeki sivil gemiyi (kervan gemisi, öncü gemisi, dönen gemi) rotasının önünü keserek avlar ya da iskeleye ve kıyı kasabasına çıkar. Yakaladığı gemiyi yükü ve öncüleriyle ele geçirir; kıyıda goblin baskını gibi yağmalar. Ganimet koyda birikir.
+  - Savunma: eşlik eden kadırgalar ve limandaki kadırgalar korsanı denizde karşılar; fener yakındaki gemilere AC +2 verir.
+  - Korsan avı: korsanların vurduğu (ya da 3 yıldır kıyısının dibinde koy barındıran) gemi sahibi medeniyet, güç üstünlüğü varsa asker, kahraman ve kadırgayla koya sefer düzenler.
+  - Haydut kaçakçıları: korsanlar Haydut gemilerine ve kıyılarına dokunmaz, ganimetin %30'unu Haydut limanlarında satar.
+  - Kaptan savaşta ölürse koy kalabalıklaşınca yenisini seçer. Ada korsanları kahraman ilanlarına ve avlarına girmez (kahramanlar yürüyerek adaya gidemez); anakara kıyısındaki koy sıradan kamp gibi ilan alır.
 - **Kahramanlar:** Handa ya da tavernada doğar. Kiralanana dek kendi yolunu izler; kiralanınca yolu askıya alınır.
   - Yollar: Avcı (kamp kovalar), Gezgin (harabe keşfi), Şifacı (salgınlı kasabaya şifa, hac), Bilge (kütüphaneler), Paralı (en yüksek ilan), Karanlık (kervan soyar; iyi kahramanlar onu düelloda avlar). Her mevsim hedef seçer: puan = yol uyumu × ödül / risk × mesafe.
   - Olaylar yolu değiştirir: doğduğu yer canavarca yakılan kahraman intikamcı olur; partisinin tek sağ kalanı Yalnız Kurt olur; art arda yenilen kötü kahraman karanlık yola sapar.
   - İzler: Goblin Kıran, Veba Yürüyüşçüsü, Yalnız Kurt, Harabe Kurdu, İntikamcı, Efsane. Kamp önderini nat 20 ile deviren lakap kazanır. Seviye atlarken bonus, yaşadıklarına göre seçilir.
   - Son: seviye tavanı ya da 5 kamp → efsane (ozan şarkısı, han önüne heykel). Yaşlı ünlü kahraman emekli olur: handa öğretmen (yetiştirdikleri +1 seviye doğar) ya da hancı. Ölen han kahramanı hanın mezarlığına gömülür.
-- **Savaş:** d20 tabanlı çarpışma; nat 20/1 anları, kahraman yetenekleri, sınıf etkileri.
-- **Test:** 15 yıllık koşularda test ölçütleri 16 dünyanın 15'inde geçer (kalan dünyada bazen hiçbir maden yatağı tükenmez). 25 yıllık koşularda hiçbir medeniyet yok olmaz ve eski ölçütlerin hepsi 16/16 geçer.
-  - Han ölçütleri (16 dünya, 25 yıl): her dünyada 4 han; hiçbir medeniyet han kiralamalarının yarısını almaz (16/16); Paktçılı dünyalarda en çok 2 han baskını. Tamamlanan ilan dünya başına ~4 (hedef 6; 3/16 geçer). Han kahramanlarının ~%29'u (%22–37) en az bir kez kiralanır (hedef %40). 25. yılda canavar kampı eskisine göre %5–24 az (dünyalar arası fark büyük).
+- **Savaş (v0.28, `combat.ts`):** d20 tabanlı çarpışma. Her tur herkes rastgele sırayla saldırır: d20 + saldırı bonusu ≥ hedefin AC'si → isabet; doğal 20 kritik (hasar zarları ×2; Şampiyon savaşçıda 19–20), doğal 1 ıska. Sınıf yetenekleri: ateş topu, yakan eller, iyileştirme, second wind, öfke, ayı biçimi, ilahi çarpış, sinsi saldırı, av işareti.
+  - Moral: tur sonunda kayıp oranı eşiği geçen taraf bozguna uğrar. Ayakta kahraman eşiği %15 yükseltir (eskiden bozgunu tamamen engelliyordu; tek kahraman yüz milisi ölümüne tutuyordu).
+  - Süre dolarsa kuşatmada, kamp baskınında, köy/han/yapı baskınında savunan kazanır (eskiden kalan can toplamı; golem gibi iri birlikler sonucu çarpıtıyordu). Açık alan çatışmalarında (pusu, deniz) can toplamı kuralı sürüyor.
+  - Güç tahmini karşı tarafın gerçek zırhıyla hesaplanır (eskiden sabit AC 15): hobgoblin karakolu (AC 18) ve surlu şehir hafife alınmıyor. Tahmini zafer şansı simülasyondan ölçülen lojistik eğriyle (`winChance`).
+  - **Ortak saldırı:** Aynı kampa ya da şehre giden dost gruplar hedefte birbirini bekler (kamp 16 gün, şehir 30 gün) ve tek savaşta birlikte saldırır: devlet seferi, ilanı alan parti, av partisi; şehirde müttefik ordular. Dost: aynı medeniyet ya da aralarında savaş olmayan, ilişkisi −10'un üstündeki medeniyetler. İyi ve kötü kahraman aynı safta vuruşmaz, medeniyete kin tutan kahraman onun seferine katılmaz. Ganimet güç payına göre bölüşülür, her ilan kendi partisine ödenir. Fethedilen şehir en çok askeri ayakta kalan orduya geçer; başkent yağması ordular arasında bölüşülür.
+  - Karar verirken dostlar hesaba katılır: kahraman önce tavernadan kendi grubunu kurmayı dener, yetmezse aynı anda varacak dostlarla birlikte yeterliyse yola çıkar. Medeniyet seferi yoldaki ilan partisini sayar (tek başına ≥3 asker ister).
+  - **Ortak düşman:** Bir medeniyet savaş ilan edince, saldırganla arası iyi (+12) ve hedefe kin duyan bir komşu savaşa katılıp aynı şehri hedefleyebilir. Savaş hedefi "düşmanın elinden çıkınca" biter (biz ya da müttefik aldı). Barış yapılınca yoldaki ordu geri döner (eskiden varınca yine saldırıyordu).
+  - Savaş kaydı: her savaş birlik listesi ve zar zar olay kaydıyla saklanır (son 40 savaş, ortalama ~4 KB). Kayıt RNG tüketmez; zarlar `rng.roll` ile tek tek, `dice()` ile aynı sırada atılır.
+- **Test (v0.27, 16 dünya × 25 yıl, önceki sürümle aynı koşu):** ana ölçütler 16/16. Geçilmez dağla yok olan medeniyet olmayan dünya 13/16 (önce 15/16; ölenler tek yerleşimli kalıp goblin baskınlarıyla eriyen erken medeniyetler), 25. yılda kamp kalan dünya 13/16 (16/16), açık hanların hepsi kârlı ve memnun 14/16 (16/16; iki hanın çevresinde gıda fazlası yok), ilan6 8/16 (aynı). Simülasyon hızı değişmedi.
+- **Test (eski):** 15 yıllık koşularda test ölçütleri 16 dünyanın 15'inde geçer (kalan dünyada bazen hiçbir maden yatağı tükenmez). 25 yıllık koşularda hiçbir medeniyet yok olmaz ve eski ölçütlerin hepsi 16/16 geçer.
+  - Han ölçütleri (16 dünya, 25 yıl, v0.24): ikinci han her dünyada 180. günden önce açılır (16/16); açık her hanın kasası artıda ve memnuniyeti %50 üstünde (16/16); hiçbir medeniyet han kiralamalarının yarısını almaz (16/16); Paktçılı dünyalarda en çok 2 han baskını. 25. yılda dünya başına 5–6 han (arada harabe olan), çoğu Kervansaray; dünya başına ~2.800–5.000 yolcu, 80–840 kervan konaklaması. Tamamlanan ilan dünya başına ~4,8 (hedef 6; 4/16 geçer, önce 3/16). Han kahramanlarının ~%23'ü kiralanır (hedef %40; han sayısı arttığı için önceki %29'dan düştü). Bir dünyada (seed 4) Barbar kampı erken goblin baskınlarıyla yok olup yeniden doğuyor; 25. yılda kamp kalmayan dünya 2/16 (önce 1/16).
+  - Simülasyon günü geç oyunda ~%5 daha pahalı (yolcu ve erzak ajanları: 25. yılda ~70 ajan, önce ~12).
+  - Korsan ve ada ölçümü (16 dünya, 25 yıl, v0.26): eski ölçütler 16/16; han ölçütleri (açılış, sağlık, tekel, baskın) 16/16; 25. yılda her dünyada kamp var (16/16). Deniz profili 9 kıta, 3 takımada, 4 büyük ada; dünya başına 3–17 ada, 2–12 ada kolonisi. Dünya başına 2–5 korsan koyu (25 yılda), 0–12 korsan seferi, 0–2 ele geçirilen gemi, 0–5 korsan avı. "Hiçbir medeniyet yok olmaz" 15/16: seed 3'te Paktçı 13. yılda 8 nüfusa düşmüş (önceki sürümlerde de aynı yerde zayıf), bu sefer goblin ve hobgoblin baskınlarından toparlanamadı.
+  - Denizcilik ölçümü (16 dünya, 25 yıl, v0.25): eski ölçütler ve "hiçbir medeniyet yok olmaz" 16/16; han ölçütleri korunur (açılış, tekel, baskın 16/16; han sağlığı 15/16, seed 11'de bir han %49 memnuniyetle sınırda); 25. yılda kamp kalmayan dünya 1/16. Dünya başına 3–15 tersane, 7–42 gemi, 3–23 kadırga; her dünyada 1–8 ada kolonisi; 1–10 deniz yolu (70–280 ikmal, 0–117 ticaret seferi); 1–6 keşif gemisi; 1–12 fırtına (0–5 gemi battı). Donanma çatışması (deniz savaşı, liman akını, çıkarma) iki denizci medeniyetin savaştığı 5/16 dünyada; en çok 9 deniz savaşı. Simülasyon süresi ölçüm gürültüsü içinde değişmedi.
 
 ## Görünüm (Three.js)
-- **Dünya:** Kesintisiz low-poly 3B arazi, silik hex ızgarası, çizgi sınırlar.
+- **Dünya (v0.23, sandbox rölyefi):** Kesintisiz low-poly 3B arazi, gerçek yükseklik alanı üstünde (`terrain.ts`).
+  - Zemin, hex ızgarasıyla hizalı üçgen bir kafes (1/3 aralık). Hex kenarları kafes çizgilerine düşer, ızgara zemine tam oturur. Nesneler çizilen üçgenlerle birebir aynı yüksekliğe konur.
+  - v0.27 düz zemin: ova, orman ve tundra neredeyse düz (yükseklik ölçeği 3,4 → 1,5; dalga genliği yarıya indi), tepeler alçak ve yuvarlak. Dağ, ovadan belirgin yükselen geçilmez bir kaya kütlesi: iğne zirve yerine kütleli sırtlar (en yüksek ~5 birim), baştan sona kaya rengi, tepesi karlı (kar sınırı yazın 4,4, kışın 2,7); çam yalnız eteklerde.
+  - v0.27 okunur orman: ağaçlar eskisinin ~%75'i boyunda. Yerleşim ve kamp karosu açıklık, çevresi seyrek; han ve avlusu, çıkarma yapıları ve yollar da açılır, kesilen ağacın yerinde kütük kalır. Kampın altında çiğnenmiş toprak var. Kamera ile bakılan nokta arasına giren ağaç tacı ve gövdesi kafes desenle saydamlaşır (gezginde ve çok uzaktan kapalı). Yeni kamp, han ya da büyüyen köy olunca orman 5 gün içinde yeniden dizilir.
+  - Göl ve nehir kıyıları vadi gibi alçalır. Deniz kıyısında kum var, deniz dibi derinleştikçe yatağa karışır.
+  - Kasaba, tarla ve madenlerin oturduğu karo ortası düzdür (tezgâh). Yamaçtaki yapılar kendi noktalarının zemin yüksekliğine konur.
+  - Mevsim renkleri bir kez hesaplanır, boşta diğer mevsimler hazırlanır. Kesim ya da yeniden ağaçlanmayla arazisi değişen karoların parçaları yeniden boyanır.
+  - Silik hex ızgarası ve çizgi sınırlar yukarıdan bakınca belirgin; yere indikçe silikleşir, gezginde hiç görünmez.
 - **Yerleşimler:**
   - Ev sayısı gerçek konut sayısı kadar. Atölyeler, pazar, taverna, tapınak ve kütüphane ayrı binalar; şantiyeler görünür.
   - Irka göre binalar ve harikalar.
@@ -50,7 +99,10 @@ Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tan
   - Görünür ekonomi: taşıyıcılar ürünü kasabaya götürür, iskelelerden balıkçı tekneleri açılır, tarlada ekin mevsime göre büyüyüp hasat edilir, meralarda koyunlar otlar.
   - Atlar, kervanlar, ordular.
   - Kamp ateşinde goblinler.
-  - Hanlarda: iki katlı taş-ahşap bina, tabela, kuyu, ahırda farklı renkte binekler, açık ilan kadar kâğıt asılı pano, arkada kahraman mezarlığı, efsane heykelleri. Serbest kahramanlar gündüz avluda talim eder, gece içeride kalır; hancı avluda dolaşır. Gece hanın yanında meyhane ezgisi çalar.
+  - Hanlarda: iki katlı taş-ahşap bina, tabela, kuyu, avluda masa ve sıralar, ahırda farklı renkte binekler, açık ilan kadar kâğıt asılı pano, arkada kahraman mezarlığı, efsane heykelleri. Han kademesiyle yan kanat, bira fıçıları; kervansarayda üçüncü kat, avlu duvarı, kapı, gözcü kulesi ve sancak. Pencereler dolu oda kadar yanar. Serbest kahramanlar gündüz avluda talim eder, gece içeride kalır; hancı avluda dolaşır, garson masaya taşır, seyis ahırda, aşçı arka kapıda, bekçi kapıda. Gündüz misafirler masada (ozan çalar), gece bir iki kişi fenerin dibinde. Gece hanın yanında meyhane ezgisi çalar.
+  - Hancı kafilesi: kereste ve fıçı yüklü öküz arabası, yanında hancı (önlüklü), arkada çuval taşıyan yardımcılar; üstünde "🔨 Hancı … → …" etiketi. İnşaat alanında kazıklar, kereste ve taş yığını, hancının çadırı ve arabası, "yakında" tabelası; temel, iskelet, duvarlar ve çatı ilerledikçe görünür, iskele ve kalaslar kurulur. Gündüz hancı çekiç sallar, çırak yığından iskeleye kereste taşır, gündelikçiler kazar; gece çadırın önünde ateş başında otururlar. Genişlemede yeni kanat / üçüncü kat iskelesi.
+  - Yolcular türüne göre: tüccar mor cüppe, heybe ve yük atı; hacı ak başlık ve asa; ozan renkli pelerin; asker miğfer ve medeniyet renginde kalkan; göçmen ailesi (çocuklar küçük) çuvallarla; soylu atlı maiyetle. Erzak arabası çuval ve fıçı yüklü. Konaklayan kervanın arabası gece avlunun kenarında durur.
+  - Handaki hancı, personel ve misafirlerin üstüne gelince adı, işi ve ne yaptığı görünür.
   - Yollarda yolcular, çuvallı köylüler, öküz arabaları.
 - **Kasaba hayatı:**
   - Meydanda kuyu, pazar tezgâhları, çamaşır ipleri.
@@ -76,26 +128,84 @@ Kendi kendine akan, D&D ruhlu fantastik medeniyet simülasyonu. Oyuncu rolü tan
   - Alçak açıda uzak kasaba etiketleri gizlenir (başkent ve savaş hedefi daha uzaktan görünür). Aynı gün başlayan bayramlar akışta tek satır.
   - Üst şeritte günün saati (şafak, sabah, öğle, ikindi, akşam, gece).
   - Ekran kartı bağlamı düşerse uyarı çıkar, geri gelince sahne yeniden kurulur.
+- **Gezgin (v0.23):** `Gez` düğmesi ya da **G**: kamera dünyanın içine iner (`freecam.ts`).
+  - Uç: drone gibi. WASD yatay, Boşluk/E yüksel, C/Q alçal, Shift hızlı, tekerlek bakış yönünde süzülür. Hız, yere uzaklıkla artar.
+  - Yürü: göz hizasında zemini izler. Boşluk zıplar, suda yüzülür, dik yamaçta yavaşlanır. Evlere, atölyelere ve hana çarpılır. Surlardan geçilmez, kapıdan girilir.
+  - Sürükleyerek bakılır. **V** uç ↔ yürü; yürümeye geçince bakılan yere inilir. Çift tık oraya uçurur, olay kartı oraya götürür, kişiye tıklamak onu izletir. **G/Esc** çıkar.
+  - Üstte kip düğmesi, pusula (yön + en yakın kasabalar) ve yükseklik var. Medeniyet armaları geri çekilir, yalnız yakındaki yerlerin adı görünür.
+  - Kısayollar: **P** her zaman duraklatır (gezginde Boşluk zıplama/yükselmedir).
+- **Derinlik hissi (v0.23):** Mercek yere yaklaştıkça genişler (38° → 55°, gezginde 62–66°), yakın düzlem yüksekliğe göre ayarlanır. Gezginde yüksekliğe bağlı pus var, uzak dağlar göğe karışır. Açılış çekimi en kalabalık kasabaya alçak açıdan bakar, arkada kıtanın içi görünür. Orman sıklaştı, gövdeler uzadı (içinde yürürken tepeler göz hizasının üstünde). Yapraklar, çimen ve saz rüzgârda salınır (yağmurda daha çok). Yatık bakışta deniz göğü yansıtır (Fresnel). Bulutlar zirvelerin üstünde. Yollar zemini izleyecek kadar bölünür.
+- **Blender asset'leri:** İnsan evi artık Blender'da script'le üretilen model (`assets/blender/human_house.py` → `assets/models/human_house.glb`, build'e gömülü). İki varyant (bacalı/çiçeklikli, odunluklu/mor kepenkli), yarı ahşap çatkı, taş temel, kiremit sıralı çatı; çatı medeniyet renginde (köşe rengi maskesi), kışın karlanır. Yakın/uzak sürüm (3,1–3,3 bin / 68–80 üçgen). Kapı, ışıklı pencereler ve baca dumanı modeldeki yuvalara oturur. Kural ve iş akışı: `docs/art-pipeline.md`.
+- **Model kalitesi (v0.24, `models.ts`):**
+  - Yakın/uzak sürüm (LOD): yakın parçalarda ayrıntılı model, uzakta sade. İki sürüm aynı örnek tamponunu paylaşır, bir kez yazılır.
+  - Ağaçlar: katmanlı köknar ve çam, 4–5 topaklı yaprak taçları, kökü ve dalı olan gövde, çalı öbekleri, iki parçalı kayalar.
+  - Evler (insan, ejderdoğan, yarı-ork) ve atölyeler: taş temel, duvar renginde üçgen alın, saçaklı çatı kaplaması ve mahya. İnsan evinde yarı ahşap köşe dikmeleri, eşik taşı; bacalar daha sık ve başlıklı. Kışın çatılar karla örtülür, duvarlar rengini korur.
+  - Taş sur: koyu temel sırası, taş taş oynayan gövde rengi, üstte yürüme yolu, dış kenarda mazgallar. Kapıda iki yanda konik çatılı kule (çatı medeniyet renginde), üstte kemer kirişi, açık ahşap kanatlar. Gözcü kulelerinin bir kısmında çatı ve bayrak, kale kulelerinde mazgal pencereler.
+  - Sivri kazıklı çit ve iç kuşak kirişleri. Ağıl direk ve kirişle çevrili. Tarlada ekin sıraları toprak sırtı ve saplardan oluşur.
+  - At: yuvarlak göğüs ve sağrı, boyun, kulak, koyu yele ve kuyruk, toynak. Koyun: yün topakları, kara baş ve bacaklar.
+  - Figürler: şapkasızlarda saç (ırka ve kişiye göre renk), cücelerde ve bazı insanlarda sakal.
+- **Canlılık (v0.24):**
+  - Yaban hayatı yalnız kameranın çevresinde ve yerleşimden 3 karo uzakta. Ormanda ve kıyısında geyik sürüleri yürür ve otlar (bazısı boynuzlu). Çayırda tavşanlar seker. Göl ve kıyıda balık sıçrar, suda halka açılır. Yaz gecesi ormanda ateş böcekleri, ilkbahar-yaz gündüzü çayırda kelebekler.
+  - Gezginde ayak altı çimen: yürürken ve alçak uçarken kameranın çevresinde dünyaya sabit sık tutamlar ve çiçekler (tarla, yol, kasaba ve su dışında).
+  - Şafakta ve yağmurda göl, nehir ve alçak vadilerin üstünde sis süzülür. Yağmurlu dönemlerin bir kısmı fırtına: şimşek gökyüzünü ve ortamı bir an aydınlatır, gök gecikmeli gürler.
+  - Gökyüzünde güneş diski (yağmurda söner) ve gece ay.
+  - Ses: gezgin yürürken ayak sesi (çimen, taş, kar, su, iskele tahtası). Uçarken rüzgâr yükseklikle artar.
+  - **U**: arayüzü gizler, yalnız dünya kalır (U ya da Esc geri getirir).
+- **Denizcilik (v0.25):**
+  - Gemiler low-poly: sivri pruvalı gövde, medeniyet renginde küpeşte şeridi, direk, seren, rüzgârla şişen kare yelken, bayrak, dümenci; dalgayla yalpalar, arkasında köpük izi. Koga (kıç kasarası, sandık yükü), kıyı teknesi, kadırga (iki yanda çekişle salınan kürekler, mahmuz, renkli yelken), keşif teknesi (üçgen yelken). Öncü gemisinde aileler, asker kogasında miğferli askerler.
+  - Kıyıya yürüyen kervan, öncü ya da ordu denize girince gemiye dönüşür. Donanma kadırga düzeninde yol alır; karaya çıkan ordunun kogaları kıyıda yelkeni sarılı demirli bekler.
+  - Tersane: suya inen kızak ve tezgâhta yapılan gemi (omurga → kaburga → kaplama), vinç, ambar, iskele. Limandaki boş gemiler iskeleye bağlı ya da açıkta demirli. Fener Kulesi beyaz-kırmızı, gece yanar.
+  - Deniz savaşı: iki kadırga hattı yaklaşır, oklar uçuşur, yenilen gemiler alev ve dumanla yan yatıp batar.
+  - Korsan gemisi kara gövde, kara yelken, kafataslı bayrak, güvertede başörtülü korsanlar. Korsan koyu: kıyıya çekilip yan yatmış gemi, derme çatma kulübeler, fıçılar, kara bayrak, kaptanın hazine sandığı; etiket "☠ Koy · sayı". Korsan savaşında karşı tarafta kara yelkenli gemiler.
+  - Adalarda palmiye (kumsal adacıklarda bol, diğer adaların kıyısında seyrek), yanardağ zirvesinden kül dumanı, gece kızıl ışıltı. Ada adları haritada eğik yazıyla; adaya tıklayınca adı, türü ve büyüklüğü.
+  - Tersaneli kasabanın etiketinde ⚓. Kasabaya tıklayınca tersane, gemiler (limanda / denizde) ve kadırgalar; medeniyet panelinde filo; araştırma ağacında Denizcilik satırı; 2B haritada gemi simgesi.
 - **Kamera ve anlatım:**
-  - Serbest kamera (Tepe / Eğik / Alçak), takip kamerası, Sinema modu.
+  - Serbest kamera (Tepe / Eğik / Alçak / Gez), takip kamerası, Sinema modu (kasaba çekimleri daha alçak açıdan).
   - Olay akışı, yıl afişi.
-  - Etiketler: ♛ başkent, ⚔ savaş, kıtlık, 🍺 han (içerideki kahraman ★, açık ilan 📜). Kahramanın başında seviyesi, yakın planda adı da; efsaneyse ♪.
-- **Performans:** FPS göstergesi, otomatik kalite. Arazi ve yapılar dünya parçalarına bölünür; ekran dışı parçalar çizilmez, çimen ve çiçek yalnız kameraya yakın parçalarda görünür, açık denizin dibi çizilmez. Uzakta pencere ve kapı parçaları çizilmez, boş örnek kümeleri çizim çağrısı üretmez. Otomatik kalite kare hızı uzun süre rahat akarsa bir kademe geri çıkar (aynı kademeden iki kez düşülmüşse çıkmaz).
+  - Etiketler: ♛ başkent, ⚔ savaş, kıtlık, 🍺 han (misafir/oda, içerideki kahraman ★, açık ilan 📜, genişleme 🔨), 🔨 inşaattaki han ve yüzdesi. Kahramanın başında seviyesi, yakın planda adı da; efsaneyse ♪.
+- **Performans:** FPS göstergesi, otomatik kalite. Zemin ~325 bin üçgen, 40 kadar parça (dünya kurulurken ~0,5 sn). Seçim ve gezgin bakışı yükseklik alanında ışın yürütmeyle yapılır. Arazi ve yapılar dünya parçalarına bölünür; ekran dışı parçalar çizilmez, çimen ve çiçek yalnız kameraya yakın parçalarda görünür, açık denizin dibi çizilmez. Uzakta pencere ve kapı parçaları çizilmez, boş örnek kümeleri çizim çağrısı üretmez. Otomatik kalite kare hızı uzun süre rahat akarsa bir kademe geri çıkar (aynı kademeden iki kez düşülmüşse çıkmaz).
 - **Oyun içi arayüz (v0.21, Civ tarzı HUD):** Harita tam ekran; ayrı sağ panel kalktı.
-  - Üst şerit: tarih, rapor ikonları (Medeniyetler, Ağaç, Kıyas, Kahramanlar, Hanlar, Kronik; kısayol 1–6), hız, seed, ses, yardım.
+  - Üst şerit: tarih, rapor ikonları (Medeniyetler, Ağaç, Kıyas, Kahramanlar, Hanlar, Kronik, Cepheler; kısayol 1–7), hız, seed, ses, yardım.
   - Sağ üst: her medeniyet için sınıfının armasıyla yuvarlak rozet (kenar = sınır rengi, altta çağ, kırmızı kılıç = savaşta, gri + çizik = yok oldu). Üstüne gelince özet, tıklayınca ayrıntı paneli (‹ › ile medeniyetler arasında gezinir).
   - Raporlar oyunun üstünde yüzen koyu/altın panelde açılır; aynı ikon ya da Esc kapatır. Haritada kasabaya tıklamak o medeniyetin panelini açar.
-  - Raporların içeriği: Kahramanlar (yol, hizalama, izler, XP çubuğu, şu anki hedef, son 3 olay), Hanlar (pano, havuz, açık artırma teklifleri, mezarlık), Kronik (savaş raporları).
+  - Raporların içeriği: Kahramanlar (yol, hizalama, izler, XP çubuğu, şu anki hedef, son 3 olay), Hanlar (tüm hanların kartı: durum, kasa, ün; tıklayınca han paneli), Kronik (savaş raporları).
+  - **Han paneli (v0.24):** Haritada bir hana, etiketine ya da 2B haritada hanın karosuna tıklayınca sağda açılır, canlı güncellenir; hanın etrafında altın seçim halkası. ‹ › ile hanlar arası, "Tüm hanlar" ile listeye döner, "Hana git" kamerayı götürür.
+    - Baş: kademe, hancı (ırk, köken), konum, açılış tarihi, ün yıldızları ve memnuniyet.
+    - Yoldayken: hancının nereden nereye gittiği, kalan gün, arabadaki kereste ve azık, yanındakiler, "Hancıyı izle".
+    - İnşaatta: evre (temel kazılıyor, iskelet çatılıyor, duvarlar örülüyor, çatı kapatılıyor), yüzde, emek / kereste / taş, ekip, yoldaki malzeme arabası.
+    - Açıkken: kasa, dolu oda (ahırda yatan), bu mevsim net, yoldaki yolcu; kiler çubukları (kaç gün yeter), yoldaki erzak arabası (izlenebilir); tarife; servis kapasitesi ve yolcu akışı.
+    - Şu an handa: kahramanlar (sınıf, hizalama, yol, açık artırma, ne işle borcunu ödediği, veresiye; İzle) ve yolcular (tür, ırk, medeniyet, nereden → nereye, sebep, kaçıncı gece, harcadığı, memnuniyet).
+    - Yolda: hana gelen yolcular (kalan gün, İzle) ve yeni ayrılanlar.
+    - Gelen / giden defteri (son 16 satır: geliş, ayrılış, alım, inşaat, personel, pano, baskın), son 2 yılın misafir sayısı ve kasa grafikleri (ayrı, tek eksenli), mevsimlik kasa defteri (bu mevsim / son 4 mevsim / açıldığından beri), sonraki kademenin şartları, personel ve ücretleri, ilan panosu (hancının katkısı), açık artırma teklifleri, hanın hatırası (öğretmen, efsaneler, mezarlık).
   - Kamera ve görünüm düğmeleri sağ altta; alan derinliği, kalite, ızgara, gece/gündüz ve yataklar ⚙ menüsünde. Telefonda panel alttan açılır.
-  - 2B debug harita da duruyor; hanlar sarı elmas.
-- **Adres parametreleri:** `?gun=N` dünyayı N gün ileri sararak açar; `?debug` konsola `window.__fd` (sim, dio) verir.
+  - 2B debug harita da duruyor; hanlar sarı elmas (inşaattaki han boş elmas); hana tıklamak han panelini açar.
+- **Savaş takibi (v0.28):**
+  - **Cepheler** sekmesi (kısayol 7): süren savaşlar (amaç, hedef, gün, saldırı sayısı, müttefik); yoldaki ordu, parti ve akınlar hedefe göre gruplu (bileşim, ilerleme, kalan gün, şu anki güçlere göre zafer şansı, İzle); hedefte bekleyen ortak saldırılar ve "yetişemeyecek" uyarısı; son 14 savaş ve ▶ İzle.
+  - Haritada hedefte bekleyen gruplar için etiket: "⛺ Ortak saldırı · 2 hazır · 1 yolda · ≤12 gün".
+  - Olay kartlarında ve Kronik'teki savaş raporunda "▶ Zar zar izle". Seçenekler: büyük savaşları otomatik izle, izlerken zamanı durdur.
+  - **Savaş Tiyatrosu (`battleview.ts`):** Kaydı tur tur yeniden oynatır. Solda saldıranlar, sağda savunanlar (ortak saldırıda grup grup; kahraman, önder ve iri seçkin birlik kart, sıradan birlik can noktası), ortada keçe zar tepsisi. Üstte savaş öncesi tahmin çubuğu.
+  - Her saldırıda saldıranın renginde 3B d20 yuvarlanır, seker ve sonuç yüzü kameraya döner (`dice3d.ts`: gerçek d4/d6/d8/d10/d12/d20, cilalı reçine, yüzlere çizilmiş rakamlar, d6'da nokta). Altında denklem: `17 + 5 = 22 ≥ AC 18 → İSABET`, gereken zar ve isabet şansı. İsabette hasar zarları yuvarlanır (sinsi saldırı, av işareti, ilahi çarpış kendi renginde), can çubuğu düşer, hasar sayısı uçar. Doğal 20'de altın halka ve kıvılcım, doğal 1'de kırmızı halka. Ateş topu, iyileştirme, öfke, kaçış ve bozgunun kendi sahnesi var.
+  - Tur sayacı; iki tarafın moral çubuğu (kayıp oranı ve bozgun eşiği çentiği); olay çizelgesi (isabet, ıska, kritik, ölüm işaretli; tıklayınca o ana atlar); 1×/2×/4× hız, adım adım ileri/geri, sona atla; "yalnız önemli anlarda zar at" (sıradan askerlerin saldırıları hızlı geçer). Sonuç kutusu neden kazandığını söyler (bozgun turu, yok edilme, süre).
+  - Zar istatistiği: taraf başına saldırı, isabet oranı, kritik, doğal 20/1, ortalama d20 ve 10,5'ten sapması (şans), hasar, iyileştirme, devrilen; iki d20 dağılım grafiği (adil zar çizgisiyle) ve öne çıkanlar. "Zar nasıl işler?" sekmesi kuralları o savaşın eşikleriyle anlatır.
+  - Zar sesi (ortam sesi açıksa); klavye: Boşluk, ←/→, Home/End, 1/2/4, Esc. Tiyatro açıkken dünya çizimi durur. WebGL yoksa düz zar kartları. Telefonda tek sütun.
+- **Adres parametreleri:** `?gun=N` dünyayı N gün ileri sararak açar; `?debug` konsola `window.__fd` (sim, dio, `watch(savaşId)`) verir.
 
 ## Açık konular
+- v0.24'te zemin ve yakın plan üçgen sayısı arttı (yürürken ~0,4 M, genel bakışta ~0,86 M; gölge geçişi hariç). Gerçek ekran kartında ölçülmedi.
+- Gezgin v0.23 yeni: gerçek ekran kartında kare hızı ve his (hız, fare hassasiyeti) denenmedi. Dokunmatikte yalnız bakış var, yürüme yok. Ağaçlara ve kaya/kuleye çarpışma yok (evler, atölyeler, han ve surlar var).
 - Gerçek ekran kartında FPS ölçülmedi (MSAA sonrası özellikle). Büyük haritada simülasyon günü ~3–4 ms (60× hızda kare başına bir gün); Web Worker'a taşımak şimdilik gerekmedi.
-- Adalara ulaşılamıyor (gemi yok); ileride keşif ve kolonileşme için ayrıldı.
-- Saldırgan sınıfların bir arada olduğu dünyalarda savaş sayısı yüksek (25 yılda 20+).
+- Denizcilik v0.25 yeni: deniz savaşı nadir (iki denizci medeniyetin savaşması gerekiyor); savaşlar kısa sürdüğü için kadırga akınlarının bir kısmı barış haberiyle boşa dönüyor. Kıyısı olmayan medeniyetler (dünyada yaklaşık yarısı) denizcilikten yararlanamıyor. Gerçek ekran kartında gemilerin kare hızına etkisi ölçülmedi.
+- Korsan v0.26 yeni: av çoğu zaman ıskalanıyor (gemiler hızlı; dünya başına 0–2 ele geçirme), korsanlar en çok iskeleleri yağmalıyor. Seed 3'teki zayıf Paktçı (bkz. ölçüm) sürümden bağımsız bir kırılganlık.
+- Deniz sonraki fazları: deniz canavarı, abluka ile ticaret kesme, gemiyle kahraman seferleri (ada korsanına ilan), denizaşırı han, korsanın ada kolonisini ele geçirmesi.
+- Saldırgan sınıfların bir arada olduğu dünyalarda savaş sayısı yüksek (25 yılda 20+). v0.28'de biraz düştü (aşağıda).
+- **v0.28 savaş dengesi (16 dünya, 10 yıl, v0.27 → v0.28):** savaş ilanı 260 → 261, fetih 245 → 231, toplam savaş 2.581 → 2.316, temizlenen kamp 439 → 404, kahraman ölümü 707 → 558, tamamlanan ilan 102 → 238. 262 ortak savaş (257'si kazanıldı), 50 koalisyon. Ana ölçütler 16/16; han ölçütleri toplamda iyileşti; "hiçbir medeniyet yok olmaz" 13/16 → 15/16 (seed 2 ve 4'te tek yerleşimli erken medeniyetler goblin baskınıyla sönüyor); 10. yılda kamp kalan dünya 13 → 14. Simülasyon süresi ~%7 arttı (iki koşu paralel ölçüldü, dünya başına %−5…+19 gürültülü). Barıştan sonra varan ordu artık saldırmıyor (eskiden kuşatıyordu).
+- Ortak saldırı kamp savaşlarının yarıdan fazlasını oluşturuyor (v0.25 tabanlı ölçüm, 6 dünya, 8 yıl: 84 ortak, 63 tek grup; ortakların %94'ü, tek grupların %71'i kazanıyor; önce tüm kamp saldırılarının %63'ü kazanılıyordu): ilanı alan parti ile medeniyetin seferi çoğu zaman aynı kampa gidip birleşiyor. Tek başına kamp basan kahraman azaldı; istenirse bekleme süresi kısaltılabilir ya da kendi partisini kurabilen kahraman beklemeyebilir.
+- Kuşatma hâlâ tek atış: ordu tüm askerlerin %75'ini getirdiği için kuşatmaların ~%95'ini saldıran kazanıyor ve çoğu 1–2 turda bitiyor. Sıradaki adaylar: çok günlü kuşatma (erzak, sur hasarı, hücum), savunana takviye ve sahada karşılaşma, ön/arka hat (cephe), bozgunda takip kaybı, arazi etkisi.
+- Savaş Tiyatrosu v0.28 yeni: gerçek ekran kartında ikinci WebGL bağlamının maliyeti ölçülmedi (tiyatro açıkken dünya çizimi duruyor).
 - 25. yıldan sonra yeni hedef yok. Oyunun geç evresi için hedefler düşünülmeli: dünya olayları, ejderha, çağ sonrası.
 - Oyuncu rolü hâlâ tanımsız. Aday: hancı (ilan asar, kahramana sponsor olur).
-- Han denge açıkları: tamamlanan ilan azlığı (hobgoblin karakolları serbest partilere ağır geliyor, ilanların ~%40'ı süresi dolup iade ediliyor); 2 kişilik kontenjan ve yenilenen 5 yıllık sözleşmeler kiralama oranını %30 civarında tutuyor.
+- Han denge açıkları: tamamlanan ilan azlığı sürüyor (hobgoblin karakolları serbest partilere ağır geliyor); 2 kişilik kontenjan ve yenilenen 5 yıllık sözleşmeler, artan han sayısıyla birlikte kiralama oranını %23 civarına indirdi.
+- Yaşayan han v0.24 yeni: geç oyunda hanların çoğu Kervansaray'a ulaşıyor ve kasa ~800 altında dengeleniyor (panoya ilan, medeniyet ilanına katkı, memlekete para). Kış başında kiler kısa süre boşalabiliyor. Yolcular canavar pususuna düşmüyor, salgını taşımıyor (ileride eklenebilir). Gerçek ekran kartında yolcu figürlerinin kare hızına etkisi ölçülmedi.
+- Oyuncu rolü için han paneli hazır bir zemin: oyuncu hancı olursa tarife, alım, personel ve genişleme kararları buradan verilebilir.
 - Han sonraki fazları: handa diplomasi, casusluk, paralı bölükler; han büyümesi (kervansaray, serbest şehir); ejderha ilanı.
 - Tauri ile masaüstü paketleme yapılmadı.

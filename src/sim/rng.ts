@@ -43,6 +43,12 @@ export class Rng {
     for (let i = 0; i < n; i++) t += 1 + Math.floor(this.next() * sides);
     return t;
   }
+  /** NdS, zarları tek tek döndürür (dice() ile aynı sırada tüketir) */
+  roll(n: number, sides: number): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < n; i++) out.push(1 + Math.floor(this.next() * sides));
+    return out;
+  }
   d20(): number {
     return this.dice(1, 20);
   }

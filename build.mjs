@@ -1,6 +1,6 @@
 import { build } from 'esbuild';
 import fs from 'fs';
-const r = await build({ entryPoints: ['src/view/main.ts'], bundle: true, minify: true, format: 'iife', target: 'es2020', write: false });
+const r = await build({ entryPoints: ['src/view/main.ts'], bundle: true, minify: true, format: 'iife', target: 'es2020', write: false, loader: { '.glb': 'binary' } });
 const js = r.outputFiles[0].text.replace(/<\/script/g, '<\\/script');
 const tpl = fs.readFileSync('src/view/template.html', 'utf8');
 fs.mkdirSync('dist', { recursive: true });

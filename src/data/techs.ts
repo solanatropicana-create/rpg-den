@@ -1,4 +1,4 @@
-// Araştırma ağaçları: 38 düğümlü ana ağaç + sınıf ağaçları (GDD v0.3).
+// Araştırma ağaçları: 42 düğümlü ana ağaç + sınıf ağaçları (GDD v0.3).
 import type { ClassId } from './classes';
 
 export type Era = 1 | 2 | 3 | 4;
@@ -70,7 +70,7 @@ export interface TechDef {
   unit?: UnitId;
   subclass?: boolean;        // bu düğüm alt sınıf seçtirir
   capstone?: boolean;
-  chain?: 'gida' | 'metal' | 'yapi' | 'ticaret' | 'bilgi';
+  chain?: 'gida' | 'metal' | 'yapi' | 'ticaret' | 'bilgi' | 'deniz';
   cost?: number;
 }
 
@@ -98,6 +98,7 @@ export const MAIN_TECHS: TechDef[] = [
   T('training', 'Talim', 2, ['bronze'], 'Asker birliği, silahhane', 'yapi'),
   T('writing', 'Yazı', 2, ['faith', 'pottery'], 'Kütüphane (+araştırma)', 'bilgi', { eff: { research: 0.15 } }),
   T('riding', 'Binicilik', 2, ['husbandry'], 'Haras, hızlı kervan', 'gida', { gate: ['horses'] }),
+  T('boatbuilding', 'Tekne Yapımı', 2, ['fishing', 'woodwork'], 'Tersane, kıyı teknesi, balıkçı limanı', 'deniz', { gate: ['coast'] }),
   T('arcana1', 'Arcana I', 2, ['writing'], 'Mana kristali görünür; kristal kazısı', 'bilgi'),
   // III. Kasaba
   T('smithing', 'Demircilik', 3, ['bronzetools'], 'Demirci ocağı, çelik', 'metal', { gate: ['iron', 'coal'] }),
@@ -109,7 +110,8 @@ export const MAIN_TECHS: TechDef[] = [
   T('rotation', 'Nöbetleşe Ekim', 3, ['irrigation', 'husbandry'], 'Çiftlik (L3)', 'gida'),
   T('forestry', 'Ormancılık', 3, ['woodwork', 'rotation'], 'Orman L3, hızlı yenilenme', 'gida'),
   T('stonewalls', 'Taş Surlar', 3, ['architecture', 'training'], 'Taş sur, gözcü kulesi', 'yapi'),
-  T('shipbuilding', 'Gemicilik', 3, ['fishing', 'woodwork'], 'Liman, nehir taşımacılığı', 'gida', { gate: ['water'] }),
+  T('shipbuilding', 'Gemicilik', 3, ['boatbuilding'], 'Koga; denizaşırı koloni ve deniz ticareti', 'deniz', { gate: ['coast'] }),
+  T('navigation', 'Seyir', 3, ['shipbuilding', 'writing'], 'Açık denizde yön bulma; uzak adalar, keşif gemisi, balıkçı filosu', 'deniz', { gate: ['coast'] }),
   T('arcana2', 'Arcana II', 3, ['arcana1', 'architecture'], 'Kristal kulesi, parşömen', 'bilgi', { gate: ['mana'] }),
   // IV. Krallık
   T('deepmine', 'Derin Kazı', 4, ['smithing', 'architecture'], 'Maden L3; mithril görünür', 'metal'),
@@ -120,6 +122,8 @@ export const MAIN_TECHS: TechDef[] = [
   T('tradenet', 'Ticaret Ağları', 4, ['caravans', 'guilds'], 'Banka, yabancı şube', 'ticaret', { eff: { tradeGold: 0.5 } }),
   T('mithrilwork', 'Mithril İşçiliği', 4, ['deepmine', 'enchanting'], 'Mithril zırh', 'metal', { gate: ['mithril'] }),
   T('highmagic', 'Yüksek Büyü', 4, ['enchanting'], 'Ley odak taşı, anıt büyüler', 'bilgi', { eff: { research: 0.2 } }),
+  T('seatrade', 'Deniz Ticareti', 4, ['navigation', 'caravans'], 'Fener kulesi, geniş ambarlı gemiler; deniz yolu kazancı', 'deniz', { gate: ['coast'], eff: { tradeGold: 0.2 } }),
+  T('navy', 'Donanma', 4, ['shipbuilding', 'smithing'], 'Kadırga; denizaşırı sefer ve akın, deniz savaşı', 'deniz', { gate: ['coast'] }),
 ];
 
 const C = (tree: ClassId, id: string, name: string, era: Era, req: string[], unlock: string, extra: Partial<TechDef> = {}): TechDef =>

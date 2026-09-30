@@ -39,7 +39,7 @@ export interface ClassDef {
   towns: string[];
   color: string;
   // araştırma eğilimi: zincirlere ağırlık
-  prefer: Partial<Record<'gida' | 'metal' | 'yapi' | 'ticaret' | 'bilgi' | 'class', number>>;
+  prefer: Partial<Record<'gida' | 'metal' | 'yapi' | 'ticaret' | 'bilgi' | 'deniz' | 'class', number>>;
   terrainLike: Partial<Record<string, number>>;
   aggression: number;    // 0..1, savaş/baskın eğilimi
   subclasses: SubclassDef[];
@@ -91,7 +91,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     feature: 'Sinsi Hamle', featureDesc: 'Casusluk, kaçakçılık, bilgi çalma', base: { raidEvade: 0.2, tradeGold: 0.3 },
     desires: ['salt', 'gold'], heroClass: 'rogue', civName: 'Tatlıçayır Loncası', capital: 'Kavşakpazar',
     towns: ['Fıçıköy', 'Gölgeçarşı', 'Balköprü', 'Keseli', 'Kırkkapı'], color: '#c9722b',
-    prefer: { ticaret: 1.7, gida: 1.1, bilgi: 1.0, class: 1.2 }, terrainLike: { grass: 1.5, water: 1.2 }, aggression: 0.15,
+    prefer: { ticaret: 1.7, gida: 1.1, bilgi: 1.0, deniz: 1.4, class: 1.2 }, terrainLike: { grass: 1.5, water: 1.2 }, aggression: 0.15,
     subclasses: [
       S('thief', 'Hırsız', 'Yağma ve kaynak çalma', { lootMult: 0.5 }, 'Usta Hırsız', 'Efsanevi eşya çalar', { legendSteal: 1, lootMult: 0.5 }, () => 1),
       S('assassin', 'Suikastçı', 'Rakip kahramanlara suikast', { deathTouch: 0.1 }, 'Ölüm Vuruşu', 'Bir lideri ya da kahramanı tek hamlede düşürür', { deathTouch: 0.3 }, (c) => 0.5 + (c.war ? 1.2 : 0)),
@@ -115,7 +115,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     feature: 'Öfke', featureDesc: 'Savaşta hasar ve moral; yağma ekonomisi', base: { soldierDmg: 2, research: -0.25, lootMult: 0.5 },
     desires: ['horses', 'meat'], heroClass: 'barbarian', civName: 'Kanlıdiş Kabileleri', capital: 'Kemikçadır',
     towns: ['Kurtoba', 'Savaşçukur', 'Kızılyurt', 'Toynakbaş', 'Kafatepe'], color: '#b23b30',
-    prefer: { gida: 1.3, yapi: 1.3, metal: 1.1, bilgi: 0.6, class: 1.4 }, terrainLike: { grass: 1.6, tundra: 1.2, hill: 1 }, aggression: 0.8,
+    prefer: { gida: 1.3, yapi: 1.3, metal: 1.1, bilgi: 0.6, deniz: 1.4, class: 1.4 }, terrainLike: { grass: 1.6, tundra: 1.2, hill: 1 }, aggression: 0.8,
     subclasses: [
       S('berserker', 'Çılgın Yolu', 'Hasar çok yüksek, kayıplar da', { soldierDmg: 3, soldierAc: -1 }, 'Kan Fırtınası', 'İlk tur hasar ×2', { firstStrike: 2 }, (c) => 0.8 + (c.war ? 1 : 0)),
       S('totem', 'Totem Yolu', 'Ayı dayanıklılığı, kurt sürüsü, kartal gözü', { soldierHp: 4 }, 'Ruh Totemi', 'Hayvan gücü tüm ordulara', { soldierHp: 6, soldierAtk: 1 }, () => 1),
@@ -127,7 +127,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     feature: 'İlham', featureDesc: 'Şarkılarıyla komşuları yumuşatır, göç çeker, festivallerle altın toplar', base: { charm: 1, tradeGold: 0.15 },
     desires: ['gold', 'beer'], heroClass: 'rogue', civName: 'Lirsesi Şehirleri', capital: 'Nağmeköy',
     towns: ['Tamburlu', 'Kavalpınar', 'Şarkıdere', 'Neşeliova', 'Telliköprü'], color: '#d0668a',
-    prefer: { ticaret: 1.5, bilgi: 1.3, gida: 1.0, class: 1.3 }, terrainLike: { grass: 1.6, water: 1.3, forest: 0.8 }, aggression: 0.1,
+    prefer: { ticaret: 1.5, bilgi: 1.3, gida: 1.0, deniz: 1.3, class: 1.3 }, terrainLike: { grass: 1.6, water: 1.3, forest: 0.8 }, aggression: 0.1,
     subclasses: [
       S('lore', 'Bilgi Koleji', 'Kayıp ezgilerden bilgi; araştırma +', { research: 0.15, cheapKnown: 0.25 }, 'Sözün Gücü', 'Başkalarının bildiği her şey neredeyse bedava', { research: 0.2, cheapKnown: 0.25 }, () => 1.1),
       S('valor', 'Yiğitlik Koleji', 'Savaş marşları; askerlere ve kahramanlara güç', { soldierAtk: 1, heroLevel: 1 }, 'Destansı Marş', 'Ordular bozguna uğramaz, ilk hamle güçlü', { firstStrike: 1.5, noRout: 1 }, (c) => 0.5 + c.threat + (c.war ? 1 : 0)),
@@ -139,7 +139,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     feature: 'Aksiyon Dalgası', featureDesc: 'Disiplinli lejyonlar, zırh ustalığı; yıllık turnuva', base: { soldierAc: 1, prodMine: 0.1 },
     desires: ['iron', 'coal'], heroClass: 'fighter', civName: 'Pulzırh Lejyonu', capital: 'Ejderkale',
     towns: ['Pulkalkan', 'Közburç', 'Kılıçyurt', 'Demirkanat', 'Alevgeçit'], color: '#b0703a',
-    prefer: { metal: 1.5, yapi: 1.2, gida: 1.25, bilgi: 0.9, class: 1.3 }, terrainLike: { hill: 1.6, grass: 1.2, mountain: 0.8 }, aggression: 0.55,
+    prefer: { metal: 1.5, yapi: 1.2, gida: 1.25, bilgi: 0.9, deniz: 1.1, class: 1.3 }, terrainLike: { hill: 1.6, grass: 1.2, mountain: 0.8 }, aggression: 0.55,
     subclasses: [
       S('champion', 'Şampiyon', 'Kaba güç; saldırı ve hasar', { soldierAtk: 1, soldierDmg: 1 }, 'Yenilmez Şampiyon', 'Düşenlerin çoğu yeniden kalkar', { soldierAtk: 2, healBack: 0.3 }, () => 1),
       S('battlemaster', 'Savaş Ustası', 'Taktik; düşman morali kırılır, saflar dağılmaz', { enemyMorale: 0.1, noRout: 1 }, 'Kusursuz Taktik', 'Düşman ilk turda ezilir', { enemyMorale: 0.25, firstStrike: 1.5 }, (c) => 0.6 + c.law),
@@ -243,4 +243,6 @@ export const MONSTERS = {
   hobgoblin: { name: 'Hobgoblin', hp: 11, ac: 18, atk: 3, dmg: [1, 8, 1] as [number, number, number] },
   hobCaptain: { name: 'Hobgoblin Yüzbaşısı', hp: 39, ac: 17, atk: 4, dmg: [2, 6, 2] as [number, number, number], attacks: 2 },
   bugbear: { name: 'Bugbear', hp: 27, ac: 16, atk: 4, dmg: [2, 8, 2] as [number, number, number] },
+  pirate: { name: 'Korsan', hp: 9, ac: 13, atk: 4, dmg: [1, 6, 2] as [number, number, number] },
+  pirateCaptain: { name: 'Korsan Kaptanı', hp: 30, ac: 15, atk: 6, dmg: [1, 8, 3] as [number, number, number], attacks: 2 },
 };

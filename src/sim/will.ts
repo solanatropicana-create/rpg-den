@@ -5,10 +5,10 @@ import { YEAR } from './sim';
 import { ek } from './tr';
 import { GOODS, type Good } from '../data/goods';
 import { CLASS_PATH, PATH_TR, TRAITS, type HeroAlign, type HeroClass, type HeroPath, type TraitId } from '../data/heroes';
-import { heroCombatant, powerOf, resolveBattle, type Combatant } from './combat';
+import { heroCombatant, powerOf, powerVs, resolveBattle, type Combatant } from './combat';
 import { mod } from './rng';
-import { campPower, gainXp, sendHero } from './heroes';
-import { civTroops, recordBattle, syncHeroes, tileOf } from './agents';
+import { campForce, gainXp, sendHero } from './heroes';
+import { civTroops, recordBattle, syncHeroes, tileOf, probeAllies, agentCombatants, etaDays, MUSTER_CAMP } from './agents';
 import type { Agent, Camp, Civ, GoalKind, Hero, Inn, Quest, Settlement } from './types';
 
 // ------------------------------------------------------------ doğuş
@@ -188,9 +188,15 @@ export function willTick(s: Sim) {
 
 function distPen(s: Sim, a: number, b: number) { return 1 + s.g.dist(a, b) / 12; }
 
-function partyFor(s: Sim, h: Hero, need: number, greed: number): Hero[] | null {
-  const solo = powerOf([heroSide(h, 'A', undefined, true)]);
-  if (solo * greed >= need) return [h];
+/** kampa karşı yeterli grup: kendisi + tavernadaki arkadaşlar (+ aynı anda varacak dostlar) */
+function partyFor(s: Sim, h: Hero, cp: Camp, needMul: number, greed: number, allies: Combatant[]): Hero[] | null {
+  const mons = campForce(s, cp);
+  const enough = (crew: Hero[]) => {
+    const cs = crew.map((c) => heroSide(c, 'A', cp.kind, crew.length === 1 && !allies.length));
+    const [pa, pb] = powerVs([...cs, ...allies], mons);
+    return pa * greed >= pb * needMul;
+  };
+  if (enough([h])) return [h];
   if ((h.soloUntil ?? 0) > s.day) return null;
   const mates = s.w.heroes.filter((x) => x !== h && x.civ === -1 && x.state === 'tavern' && x.tavern === h.tavern && x.hp >= x.maxHp * 0.8
     && (x.soloUntil ?? 0) <= s.day && !(x.align === 'good' && h.align === 'evil') && !(x.align === 'evil' && h.align === 'good') && !x.auction?.bids.length)
@@ -199,10 +205,24 @@ function partyFor(s: Sim, h: Hero, need: number, greed: number): Hero[] | null {
   for (const m of mates) {
     if (crew.some((c) => (c.align === 'good' && m.align === 'evil') || (c.align === 'evil' && m.align === 'good'))) continue;
     crew.push(m);
-    if (powerOf(crew.map((c) => heroSide(c, 'A'))) * greed >= need) return crew;
+    if (enough(crew)) return crew;
     if (crew.length >= 4) break;
   }
   return null;
+}
+/** risk: kampın gücü / grubun (ve dostlarının) gücü */
+function campRisk(s: Sim, cp: Camp, crew: Hero[], allies: Combatant[]) {
+  const [pa, pb] = powerVs([...crew.map((c) => heroSide(c, 'A', cp.kind, crew.length === 1 && !allies.length)), ...allies], campForce(s, cp));
+  return pb / Math.max(0.01, pa);
+}
+const NO_ALLIES = { agents: [] as Agent[], cs: [] as Combatant[] };
+/** bu kampa, kahramanla yaklaşık aynı anda varacak dost gruplar */
+function campAllies(s: Sim, h: Hero, cp: Camp) {
+  const path = s.path(h.pos, cp.tile);
+  if (!path) return { agents: [], cs: [] as Combatant[] };
+  const probe = { id: -1, kind: 'party', civ: -1, path, step: 0, progress: 0, speed: 0.85, heroes: [h.id], to: cp.id, purpose: 'quest' } as Agent;
+  const agents = probeAllies(s, probe, etaDays(s, probe), MUSTER_CAMP);
+  return { agents, cs: agents.flatMap((b) => agentCombatants(s, b, cp.kind)) };
 }
 
 export function chooseGoal(s: Sim, h: Hero) {
@@ -216,22 +236,27 @@ export function chooseGoal(s: Sim, h: Hero) {
     const cp = w.camps.find((c) => c.id === q.camp && c.alive);
     if (!cp || s.g.dist(h.pos, cp.tile) > 30) continue;
     if (q.civ >= 0 && h.grudge === q.civ) continue;
-    const need = campPower(s, cp) * 1.0, greed = 1 + Math.min(0.4, q.bounty / 300);
-    const crew = partyFor(s, h, need, greed);
+    const greed = 1 + Math.min(0.4, q.bounty / 300);
+    // önce tavernadan kendi grubunu kurmayı dener; yetmezse yoldaki dostlara katılmayı hesaplar
+    let al = NO_ALLIES;
+    let crew = partyFor(s, h, cp, 1.0, greed, al.cs);
+    if (!crew) { al = campAllies(s, h, cp); if (al.agents.length) crew = partyFor(s, h, cp, 1.0, greed, al.cs); }
     if (!crew) continue;
-    const risk = need / powerOf(crew.map((c) => heroSide(c, 'A', cp.kind, crew.length === 1)));
+    const risk = campRisk(s, cp, crew, al.cs);
     const venge = h.vendetta === cp.id ? 3 : 1;
     const rep = q.civ >= 0 && (h.rep[q.civ] ?? 0) >= 3 ? 1.15 : 1;
     opts.push({ kind: 'quest', tile: cp.tile, score: fit('quest') * venge * rep * (q.bounty / crew.length + 30) / (Math.max(0.3, risk) * distPen(s, h.pos, cp.tile)), text: `${cp.name} ilanı`, crew, quest: q, camp: cp });
   }
   // 2) ilansız av
   if (fit('hunt') > 0 || h.vendetta !== undefined) for (const cp of w.camps) {
-    if (!cp.alive || s.g.dist(h.pos, cp.tile) > 22) continue;
+    if (!cp.alive || s.g.dist(h.pos, cp.tile) > 22 || w.tiles[cp.tile].isle) continue;
     if (w.quests.some((q) => q.camp === cp.id && q.open)) continue;
-    const need = campPower(s, cp) * (h.vendetta === cp.id ? 1.0 : 1.2);
-    const crew = partyFor(s, h, need, 1);
+    const needMul = h.vendetta === cp.id ? 1.0 : 1.2;
+    let al = NO_ALLIES;
+    let crew = partyFor(s, h, cp, needMul, 1, al.cs);
+    if (!crew) { al = campAllies(s, h, cp); if (al.agents.length) crew = partyFor(s, h, cp, needMul, 1, al.cs); }
     if (!crew) continue;
-    const risk = need / powerOf(crew.map((c) => heroSide(c, 'A', cp.kind, crew.length === 1)));
+    const risk = campRisk(s, cp, crew, al.cs) * needMul;
     const venge = h.vendetta === cp.id ? 4 : 1;
     opts.push({ kind: 'hunt', tile: cp.tile, score: Math.max(fit('hunt'), venge > 1 ? 1 : 0) * venge * (cp.loot / crew.length + 25) / (Math.max(0.3, risk) * distPen(s, h.pos, cp.tile)), text: venge > 1 ? `${ek(cp.name, 'dan')} intikam` : `${cp.name} avı`, crew, camp: cp });
   }
@@ -385,7 +410,7 @@ export function arriveGoal(s: Sim, h: Hero) {
 function progressGoal(s: Sim, h: Hero) {
   const g = h.goal!;
   if (g.kind === 'rob') {
-    const cv = s.w.agents.find((a) => a.kind === 'caravan' && !a.dead && s.g.dist(tileOf(a), h.pos) <= 2);
+    const cv = s.w.agents.find((a) => a.kind === 'caravan' && !a.dead && !s.w.tiles[tileOf(a)].sea && s.g.dist(tileOf(a), h.pos) <= 2);
     if (cv) { robCaravan(s, h, cv); return; }
   }
   if (g.stay !== undefined && s.day < g.stay) return;
