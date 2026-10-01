@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 // Headless ölçüm (Faz 1 A1): bir dünyanın yıllık istatistikleri.
@@ -64,6 +65,50 @@ public sealed class CollapseInfo
     public string CivName, Kind, Settlement, By;
 }
 
+// ------------------------------------------------------------ v3 (Faz 1b-4): durum değişimi kayıtları
+// Yol haritası v3: dünya büyüyerek değil, durum değiştirerek yaşar. Toplayıcı her yerleşimin durum değişimlerini gün gün kaydeder
+// (StateEvent), savaşların ve kuşatmaların süresini (WarSpan, SiegeSpan), büyük şehirlerin el değiştirmesini (BigFall) ve ejderhanın
+// vurduğu yerleşimleri (DragonHit); pencereler (bütün koşu, ısınmadan sonra) ve "100 günde" oranları raporda hesaplanır.
+
+/// <summary>Yerleşimin durum değişimi. Kind: capture (fetih), secede (bölünme), famine (açlık başladı), plague (salgın başladı), siege
+/// (kuşatma hücumu), burn (yakıldı/yandı: <see cref="Settlement.BurnedAt"/> arttı), tierUp, tierDown, abandon (terk: harabe), found
+/// (kuruldu), resettle (bir harabenin 2 fersah yakınına yeniden kuruldu). Tier: olaydan önceki (dünkü) kademe.</summary>
+public sealed class StateEvent { public int Day, Settlement, Tier; public string Kind; }
+
+/// <summary>Savaş: başlangıç (War.Since), bitiş (ilişkiden düştüğü gün; -1: koşu sonunda sürüyor), taraflar, hedef ve türü
+/// (War.Kind; null ise müttefik çağrısıyla "ally", değilse "plain").</summary>
+public sealed class WarSpan { public int Start, End = -1, Attacker, Defender, Target = -1, TargetTier; public string Kind; }
+
+/// <summary>Kuşatma: hedefin önünde ilk ordunun karargâh kurduğu gün (Muster; karargâh görülmediyse hücum günü), hücum günü,
+/// hedefin kademesi, sonuç (taken: el değiştirdi, sacked: saldıran kazandı ama tutmadı, repelled: püskürtüldü).</summary>
+public sealed class SiegeSpan { public int Start, Assault, Settlement, Tier; public string Outcome; }
+
+/// <summary>Büyük şehrin (dünkü kademesi ≥ Sim.BIG_TIER) el değiştirmesi: fetih ya da bölünme; uyarı süreleri (kuşatmanın başı →
+/// düşüş, savaşın başı → düşüş; bilinmiyorsa null).</summary>
+public sealed class BigFall { public int Day, Settlement, From, To, Tier; public string Name, Kind; public int? SiegeLead, WarLead; }
+
+/// <summary>Ejderhanın vurduğu yerleşim (akın kaydı): dünkü kademe, gün sonundaki kademe ve nüfus (akının doğrudan etkisi); sonraki
+/// <see cref="WorldStats.DRAGON_WATCH"/> günde kademe düşüşü, terk ya da el değiştirme (ejderhadan bağımsız da olabilir).</summary>
+public sealed class DragonHit { public int Day, Settlement, Tier, TierAfter; public double PopBefore, PopAfter; public int? TierDropDay, AbandonDay, CaptureDay; }
+
+/// <summary>Bir dünyanın v3 kayıtları (gün dizileri ve olay listeleri).</summary>
+public sealed class V3Log
+{
+    /// <summary>her gün (1..n) kademesi 0, 1, 2, 3 olan yaşayan yerleşim sayısı</summary>
+    public readonly List<int>[] TierDaily = { new(), new(), new(), new() };
+    public readonly List<StateEvent> Events = new();
+    public readonly List<WarSpan> Wars = new();
+    public readonly List<SiegeSpan> Sieges = new();
+    public readonly List<BigFall> BigFalls = new();
+    public readonly List<DragonHit> DragonHits = new();
+    /// <summary>terk edilen (harabeye dönen) eski Şehir: Şehir kademesine bir kez varmış (PeakTier ≥ Sim.BIG_TIER) yerleşimin terki</summary>
+    public readonly List<StateEvent> CoreLost = new();
+
+    /// <summary>gün d'de (1 tabanlı) yaşayan yerleşim</summary>
+    public int Setl(int d) => TierDaily[0][d - 1] + TierDaily[1][d - 1] + TierDaily[2][d - 1] + TierDaily[3][d - 1];
+    public int Days => TierDaily[0].Count;
+}
+
 /// <summary>Koşu sonunda medeniyet özeti.</summary>
 public sealed class CivSummary
 {
@@ -86,6 +131,7 @@ public sealed class WorldStats
     private const string G_CIV = "Medeniyet", G_EV = "Olaylar", G_WAR = "Savaş", G_MON = "Canavarlar", G_HERO = "Kahramanlar", G_INN = "Han ve ticaret";
     private const string G_ECO = "Altın ve ambar";   // Faz 1 C3
     private const string G_TIER = "Yerleşim kademesi", G_SEA = "Deniz";   // Faz 1b-3
+    private const string G_V3 = "v3: durum değişimi";   // Faz 1b-4
 
     /// <summary>Skaler ölçüler (sıra JSON ve rapor sırasıdır).</summary>
     public static readonly StatDef[] Defs =
@@ -178,6 +224,19 @@ public sealed class WorldStats
         new("overseas", "Denizaşırı yerleşim", G_SEA, StatKind.Stock),
         new("seaRoutes", "Deniz ticaret yolu (yıl sonu)", G_SEA, StatKind.Stock),
         new("seaTrips", "Deniz seferi (ticaret)", G_SEA, StatKind.Flow),
+        // Faz 1b-4: v3 durum değişimi (100 günlük oranlar ve pencereler raporda, V3Log'dan)
+        new("setlAvg", "Yaşayan yerleşim (yıl ort.)", G_V3, StatKind.Mean),
+        new("bigAvg", "Büyük şehir (Şehir kademesi, yıl ort.)", G_V3, StatKind.Mean),
+        new("ownerChanges", "El değiştiren yerleşim (fetih + bölünme)", G_V3, StatKind.Flow),
+        new("bigChanges", "El değiştiren büyük şehir", G_V3, StatKind.Flow),
+        new("bigSieges", "Büyük şehre hücum (kuşatma muharebesi)", G_V3, StatKind.Flow),
+        new("bigSacked", "Büyük şehir yağmalandı, tutulmadı", G_V3, StatKind.Flow),
+        new("stateChanges", "Yerleşim durum değişimi (kuruluş hariç hepsi)", G_V3, StatKind.Flow),
+        new("midShifts", "Orta halka kaydı (Köy/Kasaba: kademe değişimi ya da terk)", G_V3, StatKind.Flow),
+        new("famineStarts", "Açlık başlayan yerleşim", G_V3, StatKind.Flow),
+        new("plagueStarts", "Salgın başlayan yerleşim", G_V3, StatKind.Flow),
+        new("burns", "Yakılan/yanan yerleşim", G_V3, StatKind.Flow),
+        new("resettled", "Harabeye yeniden yerleşim", G_V3, StatKind.Flow),
     };
 
     /// <summary>Anahtarlı yıllık sayımlar: (ad, Türkçe etiket, tür). Flow = yıl içi toplam, Stock = yıl sonu.</summary>
@@ -278,7 +337,10 @@ public sealed class WorldStats
         I_PWGOLD = IndexOf("publicWorksGold"), I_PWFOOD = IndexOf("publicWorksFood"), I_AMELE = IndexOf("ameleShare"), I_IMAR = IndexOf("imarMean"), I_LACKFOOD = IndexOf("lackFoodShare"),   // C3
         I_FOODDAYS = IndexOf("foodDays"), I_TIERMEAN = IndexOf("tierMean"), I_TIER1 = IndexOf("tier1Plus"), I_TIER2 = IndexOf("tier2Plus"), I_TIER3 = IndexOf("tier3"),
         I_CAPTIER = IndexOf("capTierMean"), I_TIERCHG = IndexOf("tierChanges"), I_PORTS = IndexOf("ports"), I_SHIPS = IndexOf("ships"), I_GALLEYS = IndexOf("galleys"),
-        I_OVERSEAS = IndexOf("overseas"), I_SEAROUTES = IndexOf("seaRoutes"), I_SEATRIPS = IndexOf("seaTrips");   // Faz 1b-3
+        I_OVERSEAS = IndexOf("overseas"), I_SEAROUTES = IndexOf("seaRoutes"), I_SEATRIPS = IndexOf("seaTrips"),   // Faz 1b-3
+        I_SETLAVG = IndexOf("setlAvg"), I_BIGAVG = IndexOf("bigAvg"), I_OWNER = IndexOf("ownerChanges"), I_BIGCHG = IndexOf("bigChanges"),   // Faz 1b-4
+        I_BIGSIEGE = IndexOf("bigSieges"), I_BIGSACK = IndexOf("bigSacked"), I_STATECHG = IndexOf("stateChanges"), I_MIDSHIFT = IndexOf("midShifts"),
+        I_FAMSTART = IndexOf("famineStarts"), I_PLGSTART = IndexOf("plagueStarts"), I_BURNS = IndexOf("burns"), I_RESETTLED = IndexOf("resettled");
 
     // ------------------------------------------------------------ çıktı
     public Sim Sim { get; private set; }
@@ -299,7 +361,18 @@ public sealed class WorldStats
     // ------------------------------------------------------------ izleyiciler
     private sealed class HeroT { public string State; public bool Legend, Initial; public int Level; }
     private sealed class CivT { public bool Alive; public int Cap = -1, MaxSettlements; }
-    private sealed class SetlT { public bool Alive; public int Civ, Tier; }
+    private sealed class SetlT { public bool Alive, Starving, Plague; public int Civ, Tier; public double Burned, Houses, Pop; }   // Faz 1b-4: açlık, salgın, yanma
+
+    /// <summary>Faz 1b-4: v3 durum değişimi kayıtları (bkz. <see cref="V3Log"/>).</summary>
+    public readonly V3Log V3 = new();
+    private readonly Dictionary<War, WarSpan> _warSpan = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<War> _warsPrev = new(ReferenceEqualityComparer.Instance);
+    /// <summary>hedef yerleşim → önünde karargâh kurmuş savaş ordularının en erken Muster.Since'i (dünün taraması)</summary>
+    private readonly Dictionary<int, int> _siegeCamp = new();
+    /// <summary>bugün hücum yiyen yerleşim → kuşatmanın başladığı gün</summary>
+    private readonly Dictionary<int, int> _siegeToday = new();
+    private readonly HashSet<int> _dragonTiles = new();
+    private double _setlSum, _bigSum, _v3Days;
 
     private readonly Dictionary<int, HeroT> _heroes = new();
     private readonly Dictionary<int, CivT> _civs = new();
@@ -327,7 +400,11 @@ public sealed class WorldStats
         // başlangıçta var olan her şey "yeni" sayılmaz
         foreach (var h in w.Heroes) _heroes[h.Id] = new HeroT { State = h.State, Legend = h.Legend == true, Initial = true, Level = h.Level };
         _heroCount = w.Heroes.Count;
-        foreach (var st in w.Settlements) { _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ }; _setlById[st.Id] = st; }
+        foreach (var st in w.Settlements)
+        {
+            _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier, Starving = st.Starving > 0, Plague = st.Plague != null, Burned = st.BurnedAt ?? double.NegativeInfinity, Houses = st.BurnedHouses ?? 0, Pop = st.Alive ? sim.Pop(st) : 0 };
+            _setlById[st.Id] = st;
+        }
         foreach (var c in w.Civs)
         {
             var t = new CivT { Alive = c.Alive };
@@ -335,7 +412,13 @@ public sealed class WorldStats
             _civs[c.Id] = t;
         }
         foreach (var cp in w.Camps) _camps[cp.Id] = cp.Alive;
-        foreach (var row in w.Relations) foreach (var r in row) if (r.War != null) _warsSeen.Add(r.War);
+        for (int i = 0; i < w.Relations.Count; i++)
+            for (int j = 0; j < w.Relations[i].Count; j++)
+            {
+                var war = w.Relations[i][j].War;
+                if (war != null && _warsSeen.Add(war)) { NewWarSpan(war, i, j); _warsNow.Add(war); }
+            }
+        foreach (var a in w.Agents) SiegeCamp(a);
         foreach (var b in w.Battles) if (b.Id > _lastBattleId) _lastBattleId = b.Id;
         foreach (var h in w.Heroes) if (h.Level > MaxHeroLevel) MaxHeroLevel = h.Level;
         _metrics0 = SnapshotMetrics(w);
@@ -357,6 +440,8 @@ public sealed class WorldStats
         y.V[I_EVENTS]++;
         y.Inc("eventsByKind", e.Kind ?? "?");
         if (e.Major == true) { y.V[I_MAJOR]++; y.Inc("majorByKind", e.Kind ?? "?"); }
+        // Faz 1b-4: ejderha akını (kayıt yerleşimin karosunda; inin karosundaki ejderha kayıtları gün sonunda elenir)
+        if (e.Kind == "dragon" && e.Tile != null && e.Civ != null) _dragonTiles.Add(e.Tile.Value);
         bool deathish = e.Kind == "death" || e.Kind == "class";
         // doğan kahramanın seviyesi doğduğu anda, ölen kahramanın nedeni öldüğü anda okunur
         if (deathish || Sim.W.Heroes.Count != _heroCount) ScanHeroes(deathish ? CauseOf(e) : "unknown");
@@ -450,11 +535,13 @@ public sealed class WorldStats
         DaysSeen++;
         _cur.LastDay = day;
         ScanHeroes("unknown");
+        // Faz 1b-4: savaşlar ve muharebeler (kuşatmalar dünkü yerleşim durumuna göre) yerleşimlerden önce taranır
+        ScanWars();
+        ScanBattles();
         ScanSettlements();
         ScanCivs(day);
         ScanCamps();
-        ScanWars();
-        ScanBattles();
+        ScanV3(day);
         AccumulateIdle();
         AccumulateEconomy();
         if (day % YearDays == 0) CloseYear(day, false);
@@ -482,21 +569,160 @@ public sealed class WorldStats
     private void ScanSettlements()
     {
         var y = _cur;
-        foreach (var st in Sim.W.Settlements)
+        var w = Sim.W;
+        int day = w.Day;
+        int[] tiers = new int[4];
+        foreach (var st in w.Settlements)
         {
+            if (st.Alive) tiers[Math.Clamp(st.Tier, 0, 3)]++;
+            bool starving = st.Starving > 0, plague = st.Plague != null;
+            double burned = st.BurnedAt ?? double.NegativeInfinity, houses = st.BurnedHouses ?? 0;
             if (!_setls.TryGetValue(st.Id, out var t))
             {
-                _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier };
+                _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier, Starving = starving, Plague = plague, Burned = burned, Houses = houses, Pop = st.Alive ? Sim.Pop(st) : 0 };
                 _setlById[st.Id] = st;
-                if (st.Alive) y.V[I_FOUNDED]++;
+                if (st.Alive) { y.V[I_FOUNDED]++; Founded(st, day); }
                 continue;
             }
-            if (t.Alive && !st.Alive) y.V[I_ABANDONED]++;
-            else if (!t.Alive && st.Alive) y.V[I_FOUNDED]++;
-            else if (t.Alive && st.Alive && t.Civ != st.Civ) y.V[I_CAPTURED]++;
-            if (t.Alive && st.Alive && t.Tier != st.Tier) y.V[I_TIERCHG]++;   // Faz 1b-3: kademe titremesi
-            t.Alive = st.Alive; t.Civ = st.Civ; t.Tier = st.Tier;
+            // Faz 1b-4: ejderha bugün bu yerleşimi vurdu (dünkü kademe; gün sonundaki kademe ve nüfus)
+            if (t.Alive && _dragonTiles.Contains(st.Tile))
+                V3.DragonHits.Add(new DragonHit { Day = day, Settlement = st.Id, Tier = t.Tier, TierAfter = st.Alive ? st.Tier : -1, PopBefore = t.Pop, PopAfter = st.Alive ? Sim.Pop(st) : 0 });
+            if (t.Alive && !st.Alive)
+            {
+                y.V[I_ABANDONED]++; Ev("abandon", st, t.Tier, day); DragonAfter(st.Id, day, h => h.AbandonDay ??= day);
+                if ((st.PeakTier ?? 0) >= Sim.BIG_TIER) V3.CoreLost.Add(new StateEvent { Day = day, Kind = "abandon", Settlement = st.Id, Tier = t.Tier });
+            }
+            else if (!t.Alive && st.Alive) { y.V[I_FOUNDED]++; Founded(st, day); }
+            else if (t.Alive && st.Alive && t.Civ != st.Civ) { y.V[I_CAPTURED]++; OwnerChange(st, t, day); }
+            if (t.Alive && st.Alive)
+            {
+                if (t.Tier != st.Tier)
+                {
+                    y.V[I_TIERCHG]++;   // Faz 1b-3: kademe titremesi
+                    Ev(st.Tier > t.Tier ? "tierUp" : "tierDown", st, t.Tier, day);
+                    if (st.Tier < t.Tier) DragonAfter(st.Id, day, h => h.TierDropDay ??= day);
+                }
+                if (starving && !t.Starving) Ev("famine", st, t.Tier, day);
+                if (plague && !t.Plague) Ev("plague", st, t.Tier, day);
+                // yakıldı/yandı: bugün BurnedAt yazıldı ya da yanık ev arttı (onarım BurnedAt'i gün − 10 yapar, yanma sayılmaz)
+                if ((burned == day && burned > t.Burned) || houses > t.Houses) Ev("burn", st, t.Tier, day);
+            }
+            t.Alive = st.Alive; t.Civ = st.Civ; t.Tier = st.Tier; t.Starving = starving; t.Plague = plague; t.Burned = burned; t.Houses = houses; t.Pop = st.Alive ? Sim.Pop(st) : 0;
         }
+        for (int k = 0; k < 4; k++) V3.TierDaily[k].Add(tiers[k]);
+        _setlSum += tiers[0] + tiers[1] + tiers[2] + tiers[3]; _bigSum += tiers[Sim.BIG_TIER]; _v3Days++;
+    }
+
+    // ------------------------------------------------------------ v3 (Faz 1b-4)
+    /// <summary>Durum değişimini kaydeder ve yıllık sayaçları artırır (kuruluş durum değişimi sayılmaz).</summary>
+    private void Ev(string kind, Settlement st, int tierBefore, int day)
+    {
+        var y = _cur;
+        V3.Events.Add(new StateEvent { Day = day, Kind = kind, Settlement = st.Id, Tier = tierBefore });
+        if (kind != "found") y.V[I_STATECHG]++;
+        switch (kind)
+        {
+            case "capture": case "secede": y.V[I_OWNER]++; break;
+            case "famine": y.V[I_FAMSTART]++; break;
+            case "plague": y.V[I_PLGSTART]++; break;
+            case "burn": y.V[I_BURNS]++; break;
+            case "resettle": y.V[I_RESETTLED]++; break;
+        }
+        if (IsMidShift(kind, tierBefore)) y.V[I_MIDSHIFT]++;
+    }
+
+    /// <summary>Orta halka kaydı: Köy ya da Kasaba (kademe 1–2) yerleşimin kademe değişimi ya da terki.</summary>
+    public static bool IsMidShift(string kind, int tierBefore) =>
+        (kind == "tierUp" || kind == "tierDown" || kind == "abandon") && tierBefore >= 1 && tierBefore < Sim.BIG_TIER;
+
+    /// <summary>Yeni yerleşim: bir harabenin (terk edilmiş yerleşim) 2 fersah yakınındaysa yeniden yerleşim.</summary>
+    private void Founded(Settlement st, int day)
+    {
+        bool ruin = false;
+        foreach (var x in Sim.W.Settlements) if (x.Id != st.Id && !x.Alive && Sim.G.Dist(x.Tile, st.Tile) <= 2) { ruin = true; break; }
+        Ev(ruin ? "resettle" : "found", st, st.Tier, day);
+    }
+
+    /// <summary>Yerleşim el değiştirdi: fetih ya da bölünme (yeni medeniyet bugün eskisinden ayrıldı). Büyük şehirse uyarı süreleriyle kaydedilir.</summary>
+    private void OwnerChange(Settlement st, SetlT t, int day)
+    {
+        var w = Sim.W;
+        var nc = st.Civ >= 0 && st.Civ < w.Civs.Count ? w.Civs[st.Civ] : null;
+        bool secede = nc != null && nc.Parent == t.Civ && nc.Founded == day;
+        Ev(secede ? "secede" : "capture", st, t.Tier, day);
+        DragonAfter(st.Id, day, h => h.CaptureDay ??= day);
+        if (t.Tier < Sim.BIG_TIER) return;
+        _cur.V[I_BIGCHG]++;
+        int? siegeLead = !secede && _siegeToday.TryGetValue(st.Id, out int s0) ? day - s0 : null;
+        int? warLead = null;
+        for (int i = V3.Wars.Count - 1; i >= 0; i--)
+        {
+            var sp = V3.Wars[i];
+            bool pair = (sp.Attacker == st.Civ && sp.Defender == t.Civ) || (sp.Attacker == t.Civ && sp.Defender == st.Civ);
+            if (pair && sp.Start <= day && (sp.End < 0 || sp.End >= day)) { warLead = day - sp.Start; break; }
+        }
+        V3.BigFalls.Add(new BigFall { Day = day, Settlement = st.Id, Name = st.Name, From = t.Civ, To = st.Civ, Tier = t.Tier, Kind = secede ? "secede" : "capture", SiegeLead = siegeLead, WarLead = warLead });
+    }
+
+    /// <summary>Son 60 günde ejderhanın vurduğu büyük şehir kaydına (kademe düşüşü, terk, el değiştirme günü) yazar.</summary>
+    private void DragonAfter(int settlement, int day, Action<DragonHit> f)
+    {
+        for (int i = V3.DragonHits.Count - 1; i >= 0; i--)
+        {
+            var h = V3.DragonHits[i];
+            if (h.Day < day - DRAGON_WATCH) break;
+            if (h.Settlement == settlement && h.Tier >= Sim.BIG_TIER) f(h);
+        }
+    }
+
+    /// <summary>ejderha akınından sonra büyük şehrin izlendiği gün sayısı</summary>
+    public const int DRAGON_WATCH = 60;
+
+    private void NewWarSpan(War war, int i, int j)
+    {
+        var tgt = Sim.Settlement(war.Target);
+        var sp = new WarSpan
+        {
+            Start = (int)war.Since, Attacker = war.Attacker, Defender = i == war.Attacker ? j : i, Target = war.Target, TargetTier = tgt?.Tier ?? -1,
+            Kind = war.Kind ?? (war.Ally != null ? "ally" : "plain"),
+        };
+        _warSpan[war] = sp;
+        V3.Wars.Add(sp);
+    }
+
+    /// <summary>Karargâh kurmuş (Muster) savaş ordusu: hedefin kuşatma başlangıcı en erken Muster.Since.</summary>
+    private void SiegeCamp(Agent a)
+    {
+        if (a.Kind != "army" || a.Purpose != "war" || a.Muster == null || a.To == null || a.Dead == true || a.Returning == true) return;
+        int to = a.To.Value, since = (int)a.Muster.Since;
+        if (!_siegeCamp.TryGetValue(to, out int old) || since < old) _siegeCamp[to] = since;
+    }
+
+    /// <summary>Kuşatma muharebesi: hedef (karodaki yaşayan yerleşim), başlangıç (dünkü karargâh ya da bugün), sonuç (dünkü sahibine göre).</summary>
+    private void SiegeBattle(Battle b)
+    {
+        var w = Sim.W;
+        Settlement st = null;
+        foreach (var x in w.Settlements) if (x.Alive && x.Tile == b.Tile) { st = x; break; }
+        if (st == null || !_setls.TryGetValue(st.Id, out var t) || !t.Alive) return;
+        int day = (int)b.Day;
+        int start = _siegeCamp.TryGetValue(st.Id, out int s0) ? Math.Min(s0, day) : day;
+        string outcome = st.Civ != t.Civ ? "taken" : b.Winner == "A" ? "sacked" : "repelled";
+        V3.Sieges.Add(new SiegeSpan { Start = start, Assault = day, Settlement = st.Id, Tier = t.Tier, Outcome = outcome });
+        _siegeToday[st.Id] = start;
+        _siegeCamp.Remove(st.Id);
+        Ev("siege", st, t.Tier, day);
+        if (t.Tier >= Sim.BIG_TIER) { _cur.V[I_BIGSIEGE]++; if (outcome == "sacked") _cur.V[I_BIGSACK]++; }
+    }
+
+    /// <summary>Gün sonu: ejderhanın vurduğu yerleşimler, bugünkü karargâhlar.</summary>
+    private void ScanV3(int day)
+    {
+        var w = Sim.W;
+        _dragonTiles.Clear();
+        _siegeToday.Clear();
+        _siegeCamp.Clear();
+        foreach (var a in w.Agents) SiegeCamp(a);
     }
 
     private void ScanCivs(int day)
@@ -552,16 +778,22 @@ public sealed class WorldStats
     private void ScanWars()
     {
         var y = _cur;
+        int day = Sim.W.Day;
+        _warsPrev.Clear();
+        foreach (var war in _warsNow) _warsPrev.Add(war);
         _warsNow.Clear();
-        foreach (var row in Sim.W.Relations)
-            foreach (var r in row)
+        var rels = Sim.W.Relations;
+        for (int i = 0; i < rels.Count; i++)
+            for (int j = 0; j < rels[i].Count; j++)
             {
-                var war = r.War;
+                var war = rels[i][j].War;
                 if (war == null) continue;
                 _warsNow.Add(war);
-                if (_warsSeen.Add(war)) y.V[I_WARSTART]++;
+                if (_warsSeen.Add(war)) { y.V[I_WARSTART]++; NewWarSpan(war, i, j); }
                 _warsYear.Add(war);
             }
+        // Faz 1b-4: ilişkiden düşen savaş bugün bitti
+        foreach (var war in _warsPrev) if (!_warsNow.Contains(war) && _warSpan.TryGetValue(war, out var sp) && sp.End < 0) sp.End = day;
     }
 
     private void ScanBattles()
@@ -574,7 +806,9 @@ public sealed class WorldStats
         {
             var b = bs[k];
             y.V[I_BATTLES]++;
-            y.Inc("battleTypes", BattleType(b));
+            string type = BattleType(b);
+            y.Inc("battleTypes", type);
+            if (type == "siege") SiegeBattle(b);   // Faz 1b-4
             if (b.Id > _lastBattleId) _lastBattleId = b.Id;
         }
     }
@@ -764,6 +998,9 @@ public sealed class WorldStats
         foreach (var r in w.Routes) if (r.Alive && r.Sea == true) seaRoutes++;
         y.V[I_SEAROUTES] = seaRoutes;
         y.V[I_SEATRIPS] = Delta("seaTrips");
+        // Faz 1b-4
+        y.V[I_SETLAVG] = _v3Days > 0 ? _setlSum / _v3Days : double.NaN;
+        y.V[I_BIGAVG] = _v3Days > 0 ? _bigSum / _v3Days : double.NaN;
         foreach (var kv in w.Metrics)
         {
             if (PerCivMetric(kv.Key)) continue;
@@ -775,6 +1012,7 @@ public sealed class WorldStats
         _metrics0 = SnapshotMetrics(w);
         _birthSum = _birthN = _deathSum = _deathN = _idle = _work = _campsSum = _campDays = 0;
         _brokeN = _civDays = _lackN = _lackFoodN = _setlDays = _amele = _ameleWork = 0;   // C3
+        _setlSum = _bigSum = _v3Days = 0;   // Faz 1b-4
         _warsYear.Clear();
         foreach (var war in _warsNow) _warsYear.Add(war);
         _cur = NewYear(day + 1);
@@ -880,6 +1118,21 @@ public sealed class WorldStats
             });
         o.Add("civs", civs);
         o.Add("legendList", LegendList);
+        // Faz 1b-4: v3 kayıtları (diziler: alan sırası "fields"te)
+        var v3 = new JObj
+        {
+            { "tierDaily", V3.TierDaily.Select(l => (object)l).ToList() },
+            { "eventFields", "day, kind, settlement, tierBefore" },
+            { "events", V3.Events.Select(e => (object)new List<object> { e.Day, e.Kind, e.Settlement, e.Tier }).ToList() },
+            { "warFields", "start, end (-1: sürüyor), attacker, defender, target, targetTier, kind" },
+            { "wars", V3.Wars.Select(x => (object)new List<object> { x.Start, x.End, x.Attacker, x.Defender, x.Target, x.TargetTier, x.Kind }).ToList() },
+            { "siegeFields", "start, assault, settlement, tier, outcome" },
+            { "sieges", V3.Sieges.Select(x => (object)new List<object> { x.Start, x.Assault, x.Settlement, x.Tier, x.Outcome }).ToList() },
+            { "bigFalls", V3.BigFalls.Select(x => (object)new JObj { { "day", x.Day }, { "settlement", x.Settlement }, { "name", x.Name }, { "from", x.From }, { "to", x.To }, { "tier", x.Tier }, { "kind", x.Kind }, { "siegeLead", x.SiegeLead }, { "warLead", x.WarLead } }).ToList() },
+            { "dragonHits", V3.DragonHits.Select(x => (object)new JObj { { "day", x.Day }, { "settlement", x.Settlement }, { "tier", x.Tier }, { "tierAfter", x.TierAfter }, { "popBefore", x.PopBefore }, { "popAfter", x.PopAfter }, { "tierDropDay", x.TierDropDay }, { "abandonDay", x.AbandonDay }, { "captureDay", x.CaptureDay } }).ToList() },
+            { "coreLost", V3.CoreLost.Select(e => (object)new List<object> { e.Day, e.Settlement, e.Tier }).ToList() },
+        };
+        o.Add("v3", v3);
         return o;
     }
 

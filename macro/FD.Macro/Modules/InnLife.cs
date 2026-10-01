@@ -538,7 +538,7 @@ public static class InnLife
         var def = D.GUEST[kind];
         string race = RaceFrom(s, from);
         double n = Irange(s, def.N);
-        if (kind == "refugee") { n = JsMath.Min(n, JsMath.Max(0, s.Pop(from) - 4)); if (n <= 0) return; }
+        if (kind == "refugee") { n = JsMath.Min(n, JsMath.Max(0, s.Pop(from) - (Sim.IsCore(from) ? Sim.CORE_MIN : 4))); if (n <= 0) return; }   // Faz 1b-4: çekirdek şehir mültecilerle tükenmez
         var c = w.Civs[from.Civ];
         string toName = to?.Name ?? "uzak diyarlar";
         string topGood = J.At(J.Sort(J.Filter(c.Stock.Keys(), g => g != "gold" && (c.Stock.Get(g) ?? 0) >= 5), (a, b) => (c.Stock.Get(b) ?? 0) * D.GOODS[b].Base - (c.Stock.Get(a) ?? 0) * D.GOODS[a].Base), 0);

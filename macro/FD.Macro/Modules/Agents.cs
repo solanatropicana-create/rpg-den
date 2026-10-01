@@ -786,16 +786,18 @@ public static class Agents
         var cp = camp ? J.Find(w.Camps, x => x.Id == a.To) : null;
         var st = camp ? null : s.Settlement(a.To);
         string tname = camp ? cp.Name : st.Name;
+        bool big = st != null && Diplomacy.Guarded(s, st);   // Faz 1b-4: büyük şehir (ya da Kasaba+ başkent) kuşatması
         if (a.Muster == null)
         {
             // Faz 1 B2: ejderhanın ininde ittifak orduları birbirini daha uzun bekler
-            double until = waiting.Count > 0 ? J.MinOf(waiting, b => b.Muster.Until) : s.Day + (camp ? (cp.Kind == "dragon" ? Dragon.MUSTER : MUSTER_CAMP) : MUSTER_CITY);
+            double until = waiting.Count > 0 ? J.MinOf(waiting, b => b.Muster.Until) : s.Day + (camp ? (cp.Kind == "dragon" ? Dragon.MUSTER : MUSTER_CAMP) : big ? JsMath.Max(MUSTER_CITY, Diplomacy.BIG_SIEGE_DAYS) : MUSTER_CITY);
             a.Muster = new Muster { Since = s.Day, Until = until };
             var coming0 = J.Filter(allies, b => !AtTarget(b) && EtaDays(s, b) <= until - s.Day);
             if (waiting.Count > 0)
             {
                 s.Log(camp ? "quest" : "war", $"{BandName(s, a)}, {Tr.Ek(tname, "da")} bekleyen {JoinNames(J.Map(waiting, b => BandName(s, b)))} ile buluştu.", tile: TileOf(a), civ: a.Civ >= 0 ? a.Civ : (int?)null, cause: coming0.Count > 0 ? $"{J.S(coming0.Count)} grup daha yolda" : "Ortak hücum başlıyor");
             }
+            else if (big) SiegeBegins(s, a, st, coming0);
             else if (coming0.Count > 0)
             {
                 s.Metric("musterWait");
@@ -807,6 +809,8 @@ public static class Agents
         }
         var coming = J.Filter(allies, b => !AtTarget(b) && EtaDays(s, b) <= a.Muster.Until - s.Day);
         if (coming.Count > 0 && s.Day < a.Muster.Until) return;   // bekle
+        // Faz 1b-4: büyük şehir kuşatması en az BIG_SIEGE_DAYS sürer (karargâhı ilk kuran ordudan sayılır)
+        if (big && s.Day < JsMath.Min(a.Muster.Since, waiting.Count > 0 ? J.MinOf(waiting, b => b.Muster.Since) : a.Muster.Since) + Diplomacy.BIG_SIEGE_DAYS) return;
         if (cp != null && cp.Kind == "dragon" && Dragon.Gathering(s, a)) return;   // Faz 1 B2: ittifakın öbür orduları yolda
         var band = new List<Agent> { a };
         band.AddRange(waiting);
@@ -816,6 +820,17 @@ public static class Agents
         if (band.Count > 1) s.Metric("jointBattle");
         if (cp != null) FightCamp(s, band, cp);
         else if (st != null) Siege(s, band, st);
+    }
+
+    /// <summary>Faz 1b-4: büyük şehrin kuşatılması büyük olaydır (v3: büyük şehrin düşüşünden önce uyarı): şehrin o günkü zayıflığı
+    /// nedeniyle birlikte yazılır; hücum <see cref="Diplomacy.BIG_SIEGE_DAYS"/> gün sonra.</summary>
+    private static void SiegeBegins(Sim s, Agent a, Settlement st, List<Agent> coming)
+    {
+        var why = new List<string>();
+        double u = Diplomacy.CityWeakness(s, st, a.Civ >= 0 ? s.W.Civs[a.Civ] : null, why);
+        s.Metric("guardSiege");
+        s.Log("war", $"{BandName(s, a)} {Tr.Ek(st.Name, "i")} kuşattı! Hücum {J.S(Diplomacy.BIG_SIEGE_DAYS)} gün sonra{(coming.Count > 0 ? $"; {JoinNames(J.Map(coming, b => BandName(s, b)))} yolda" : "")}.",
+            tile: st.Tile, civ: a.Civ >= 0 ? a.Civ : (int?)null, major: true, cause: Diplomacy.WeakText(u, why));
     }
 
     /// <summary>yoldaki bir grubun savaşçıları (karar verirken güç tahmini için); vs: kamp türü (CampKind) ya da null</summary>
@@ -1019,8 +1034,12 @@ public static class Agents
         var lead = band[0];
         var att = w.Civs[lead.Civ]; var dfc = w.Civs[st.Civ];
         var civsIn = J.Unique(J.Map(band, ba => w.Civs[ba.Civ]));
-        bool isCap = s.Capital(dfc)?.Id == st.Id;
+        bool isCap = Diplomacy.IsSeat(s, dfc, st);   // Faz 1b-4: dünkü başkent de (taht şehri)
         bool joint = band.Count > 1;
+        // Faz 1b-4: büyük şehrin (ve Kasaba+ başkentin) zayıflığı hücumdan önce (garnizon henüz yerinde) ölçülür
+        bool big = Diplomacy.Guarded(s, st);
+        var weakWhy = new List<string>();
+        double weak = big ? Diplomacy.CityWeakness(s, st, att, weakWhy) : 0;
         string nameA = civsIn.Count > 1 ? $"{JoinNames(J.Map(civsIn, ci => ci.Name))} orduları" : joint ? $"{att.Name} orduları" : $"{att.Name} ordusu";
         var per = new List<List<Combatant>>();
         List<Combatant> lastSide = null, lastDef = null;
@@ -1058,6 +1077,7 @@ public static class Agents
             deadAll += dead - back;
         }
         if (b.Winner == "A") { st.BurnedHouses = (st.BurnedHouses ?? 0) + s.Rng.Int(2, 4); st.BurnedAt = s.Day; Will.OnHomeBurned(s, st, null, att); }
+        if (big) { Diplomacy.Assaulted(s, st); s.Metric("guardAssault"); s.Metric("guardWeakSum", weak); }   // Faz 1b-4: her hücum şehri yıpratır
         if (b.Winner == "A")
         {
             foreach (var c in civsIn) c.Stats.BattlesWon++;
@@ -1066,30 +1086,41 @@ public static class Agents
             // B1: başkent de düşebilir: sağ kalan güç şehri tutmaya yetiyorsa (haraç seferi değilse) alınır, yetmezse yağmalanır
             var leadWar = s.Rel(att.Id, dfc.Id).War;
             bool takeCap = isCap && Diplomacy.CanHoldCapital(s, band, st, leadWar);
+            // Faz 1b-4: büyük şehir ancak zayıflığı BIG_FALL'a varıyorsa (ve tutacak güç kaldıysa) el değiştirir; yoksa yağmalanır
+            bool take = big ? weak >= Diplomacy.BIG_FALL && Diplomacy.CanHoldCapital(s, band, st, leadWar) : !isCap || takeCap;
             string capLoot = null;
-            if (isCap)
+            if (isCap || (big && !take))
             {
-                // başkent yağması: her orduya ayakta kalan gücü oranında pay
+                // başkent (ve tutulamayan büyük şehir) yağması: her orduya ayakta kalan gücü oranında pay; taşradaki büyük şehirden
+                // hazinenin şehrin nüfus payı kadarı
+                double frac = isCap ? 0.35 : 0.35 * JsMath.Min(1, s.Pop(st) / JsMath.Max(1, s.CivPop(dfc)));
                 var weight = J.Map(civsIn, ci => J.Reduce(J.Filter(band, ba => ba.Civ == ci.Id), (n, ba) => n + (ba.Troops ?? 0) + (ba.Heroes?.Count ?? 0) * 3, 0.0) + 0.01);
                 double tot = J.Reduce(weight, (x, y) => x + y, 0.0);
                 var parts = new List<string>();
-                for (int i = 0; i < civsIn.Count; i++) { var ci = civsIn[i]; parts.Add($"{(civsIn.Count > 1 ? ci.Name + ": " : "")}{LootFrom(s, ci, dfc, 0.35 * weight[i] / tot)}"); }
+                for (int i = 0; i < civsIn.Count; i++) { var ci = civsIn[i]; parts.Add($"{(civsIn.Count > 1 ? ci.Name + ": " : "")}{LootFrom(s, ci, dfc, frac * weight[i] / tot)}"); }
                 capLoot = string.Join(" · ", parts);
             }
-            if (!isCap || takeCap)
+            if (take)
             {
                 // şehir, en çok askeri ayakta kalan orduya geçer
                 var win = J.Sorted(band, (x, y) => J.Or((y.Troops ?? 0) - (x.Troops ?? 0), ReferenceEquals(x, lead) ? -1 : 1))[0];
                 var wc = w.Civs[win.Civ];
                 string goal = leadWar?.Goal;
+                if (big) { goal = $"{goal}; {Diplomacy.WeakText(weak, weakWhy)}"; st.Assaults = null; st.LastAssault = null; s.Metric("guardFall"); }   // Faz 1b-4
                 st.Civ = wc.Id; st.Soldiers = 0;
                 s.MergePop(st, win.Pop); win.Pop = new JsObj<double>(); win.Troops = 0;
                 s.UpdateTerritory();
                 s.Metric("conquest");
-                if (takeCap) Diplomacy.CapitalFell(s, st, wc, dfc, nameA, capLoot, b.Id, joint ? $"Ortak kuşatma: {goal}" : goal);
-                else if (joint) s.Log("war", $"{nameA} birlikte {Tr.Ek(st.Name, "i")} düşürdü! Şehir {Tr.Ek(wc.Name, "in")} bayrağı altına geçti.", civ: wc.Id, tile: st.Tile, battle: b.Id, cause: $"Ortak kuşatma: {JoinNames(J.Map(band, ba => $"{BandName(s, ba)} ({J.S(ba.Troops ?? 0)} asker kaldı)"))}", major: true);
+                if (isCap) Diplomacy.CapitalFell(s, st, wc, dfc, nameA, capLoot, b.Id, joint ? $"Ortak kuşatma: {goal}" : goal);
+                else if (joint) s.Log("war", $"{nameA} birlikte {Tr.Ek(st.Name, "i")} düşürdü! Şehir {Tr.Ek(wc.Name, "in")} bayrağı altına geçti.", civ: wc.Id, tile: st.Tile, battle: b.Id, cause: $"Ortak kuşatma: {JoinNames(J.Map(band, ba => $"{BandName(s, ba)} ({J.S(ba.Troops ?? 0)} asker kaldı)"))}{(big ? $"; {Diplomacy.WeakText(weak, weakWhy)}" : "")}", major: true);
                 else s.Log("war", $"{att.Name}, {Tr.Ek(st.Name, "i")} fethetti! Halkı ({s.RaceStr(st.Pop)}) artık onların bayrağı altında.", civ: att.Id, tile: st.Tile, battle: b.Id, cause: goal, major: true);
                 Diplomacy.AfterConquest(s, st, wc, dfc);
+            }
+            else if (big)
+            {
+                s.Metric("guardSacked");
+                s.Log("war", $"{nameA} {Tr.Ek(st.Name, "i")} yağmaladı ama şehir düşmedi: {capLoot}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true,
+                    cause: weak < Diplomacy.BIG_FALL ? $"{(Sim.IsBig(st) ? "Büyük şehir" : "Taht şehri")} direndi: {Diplomacy.WeakText(weak, weakWhy)}" : Diplomacy.SackWhy(leadWar));
             }
             else s.Log("war", $"{nameA} {Tr.Ek(st.Name, "i")} yağmaladı: {capLoot}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true, cause: joint ? "Ortak kuşatma" : Diplomacy.SackWhy(leadWar));
         }

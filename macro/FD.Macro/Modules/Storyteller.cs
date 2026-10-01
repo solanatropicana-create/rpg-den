@@ -119,15 +119,16 @@ public static class Storyteller
         var big = BigTown(s);
         bool dragon = Dragon.CanRaid(s);
         double target = Monsters.CampTarget(s);
+        int room = Monsters.CampRoom(s);   // Faz 1b-4: istila ve trol çetesi kamp bandının üstüne çıkamaz
         string kind = s.Rng.Weighted(KINDS, k =>
         {
             double v = k switch
             {
-                "campWave" => 1 + 0.25 * JsMath.Max(0, target - land.Count),
+                "campWave" => room <= 0 ? 0 : 1 + 0.25 * JsMath.Max(0, target - land.Count),
                 "raidSurge" => land.Count >= 3 ? 0.5 + 0.1 * land.Count : 0,
                 "drought" => s.Year - st.LastDrought >= 6 && st.DroughtUntil <= s.Day ? 0.8 : 0,
                 "plague" => big != null ? 0.7 : 0,
-                "trolls" => s.Year >= 15 && trolls < 3 ? 0.6 + s.Year / 50.0 : 0,
+                "trolls" => s.Year >= 15 && trolls < 3 && room > 0 ? 0.6 + s.Year / 50.0 : 0,
                 "dragon" => dragon ? 1.4 : 0,
                 _ => 0,
             };
@@ -165,13 +166,13 @@ public static class Storyteller
         return best;
     }
 
-    /// <summary>İstila: bir medeniyetin sınırına 2 (30. yıldan sonra 3) yeni in birden; 10. yıldan sonra çoğunlukla hobgoblin.</summary>
+    /// <summary>İstila: bir medeniyetin sınırına 2 (30. yıldan sonra 3) yeni in birden (Faz 1b-4: kamp bandının üst sınırına dek); 10. yıldan sonra çoğunlukla hobgoblin.</summary>
     private static bool CampWave(Sim s)
     {
         var civ = PickVictim(s);
         if (civ == null) return false;
         string kind = s.Year < 10 ? "goblin" : s.Rng.Chance(0.6) ? "hobgoblin" : "goblin";
-        int n = s.Year >= 30 ? 3 : 2;
+        int n = Math.Min(s.Year >= 30 ? 3 : 2, Monsters.CampRoom(s));   // Faz 1b-4: kamp bandının üstüne çıkmaz
         var made = new List<Camp>();
         for (int i = 0; i < n; i++)
         {
@@ -249,9 +250,10 @@ public static class Storyteller
         return true;
     }
 
-    /// <summary>Trol çetesi: bir medeniyetin sınırına yakın dağ eteğine yerleşir, kısa sürede akına çıkar.</summary>
+    /// <summary>Trol çetesi: bir medeniyetin sınırına yakın dağ eteğine yerleşir, kısa sürede akına çıkar (Faz 1b-4: kamp bandı doluysa gelmez).</summary>
     private static bool TrollBand(Sim s)
     {
+        if (Monsters.CampRoom(s) <= 0) return false;
         var civ = PickVictim(s);
         var c = Monsters.SpawnLair(s, "troll", civ, false, null);
         if (c == null) return false;

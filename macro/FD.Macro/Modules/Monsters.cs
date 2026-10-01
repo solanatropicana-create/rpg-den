@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 // Goblin istilası: büyüyen, yayılan, üst kademeye evrilen kamplar. Port of src/sim/monsters.ts.
-// Faz 1 B2: hedef kamp sayısı (3 + yıl/6; eksikse yeni inler birer birer gelir, tür yıla göre), trol çeteleri
+// Faz 1 B2: hedef kamp sayısı (Faz 1b-4: sabit bant CAMP_LOW–CAMP_HIGH; eksikse yeni inler birer birer gelir, tür yıla göre), trol çeteleri
 // (15. yıldan sonra; güçlü, yaralarını kapatır, ateş durdurur) ve ejderhanın kampı (Kind "dragon"; davranışı Dragon.cs).
 
 namespace FD.Macro;
@@ -107,7 +107,7 @@ public static class Monsters
                 s.Log("lair", $"{Tr.Ek(c.Name, "da")} goblinlerin başına acımasız bir şef geçti.", tile: c.Tile, cause: $"Kamp kalabalıklaştı ({J.S(c.Count)} goblin)", major: true);
             }
             // yayılma
-            if (c.Kind == "goblin" && c.Count >= 12 && J.Filter(w.Camps, x => x.Alive).Count < 10 && s.Rng.Chance(1.0 / 200))
+            if (c.Kind == "goblin" && c.Count >= 12 && J.Filter(w.Camps, x => x.Alive).Count < 10 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(1.0 / 200))   // Faz 1b-4: yalnız bandın altındayken
             {
                 var avoid = J.Map(J.Filter(w.Settlements, x => x.Alive), x => x.Tile);
                 avoid.AddRange(J.Map(alive, x => x.Tile));
@@ -136,7 +136,7 @@ public static class Monsters
                 s.Log("lair", $"Hobgoblin lejyonerleri kampı ele geçirdi: {c.Name} kuruldu.", tile: c.Tile, major: true, cause: "Uzun süre temizlenmeyen goblin kampı disiplinli bir orduya dönüştü");
             }
             // hobgoblin işgali: terk edilmiş yerleşim ya da sahipsiz yatak
-            if (c.Kind == "hobgoblin" && c.Count >= 10 && hobs < 4 && J.Filter(w.Camps, x => x.Alive).Count < 7 && s.Rng.Chance(1.0 / 300))
+            if (c.Kind == "hobgoblin" && c.Count >= 10 && hobs < 4 && J.Filter(w.Camps, x => x.Alive).Count < 7 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(1.0 / 300))
             {
                 var cand = J.Map(J.Filter(w.Settlements, x => !x.Alive && s.G.Dist(x.Tile, c.Tile) <= 12 && w.Tiles[x.Tile].Owner < 0 && w.Tiles[x.Tile].Camp == null && w.Tiles[x.Tile].InnZone == null), x => x.Tile);
                 var depTiles = new List<int>();
@@ -161,7 +161,7 @@ public static class Monsters
             if (s.Day >= c.NextRaid && c.Count >= (c.Kind == "goblin" ? 7 : c.Kind == "hobgoblin" ? 6 : 2)) LaunchRaid(s, c);
         }
         // bugbear ini
-        if (s.Year >= 4 && !J.Some(alive, c => c.Kind == "bugbear") && s.Rng.Chance(1.0 / 500))
+        if (s.Year >= 4 && !J.Some(alive, c => c.Kind == "bugbear") && CampRoom(s) > 0 && s.Rng.Chance(1.0 / 500))
         {
             var forest = new List<int>();
             for (int i = 0; i < w.Tiles.Count; i++)
@@ -179,23 +179,45 @@ public static class Monsters
                 s.Log("lair", $"Ormanın derinliklerinde bir bugbear ini belirdi: {c.Name}.", tile: tt, major: true, cause: "Yolcuları ve kahramanları pusuya düşürürler");
             }
         }
-        // hedef kamp sayısı (Faz 1 B2; eskiden yeni kabile ancak 2'den az kamp kalınca gelirdi): kara kampları (korsan koyu ve
-        // ejderha sayılmaz) 3 + yıl/6'nın altındaysa yeni inler birer birer, en az 40–80 gün arayla gelir; eksik büyüdükçe daha
-        // çabuk. Tür yıla göre: önce goblinler, sonra hobgoblin, bugbear ve (15. yıldan sonra) trol.
+        // Faz 1b-4: kamp bandı (eskiden büyüyen hedef 3 + yıl/6; Faz 1 B2): kara kampları (korsan koyu ve ejderha sayılmaz)
+        // CAMP_LOW'un altındaysa yeni inler birer birer, en az 20–40 gün arayla gelir (eskiden 40–80); eksik büyüdükçe daha çabuk; goblin
+        // yayılması ve hobgoblin işgali de yalnız bandın altında. Bandın içinde yalnız bugbear ini ve anlatıcının krizleri (istila, trol
+        // çetesi) CAMP_HIGH'a dek in açabilir (bkz. CampRoom).
+        // Tür yıla göre: önce goblinler, sonra hobgoblin, bugbear ve (15. yıldan sonra) trol.
         var story = Storyteller.State(s);
-        int land = 0;
-        foreach (var c in alive) if (c.Kind != "pirate" && c.Kind != "dragon") land++;
+        int land = LandCamps(alive);
         double target = CampTarget(s);
-        if (land < target && s.Day >= story.NextCampSpawn && s.Rng.Chance(JsMath.Min(0.25, (target - land) / 40.0)))
+        if (land < target && s.Day >= story.NextCampSpawn && s.Rng.Chance(JsMath.Min(0.25, (target - land) / CAMP_REFILL)))
         {
             var nc = SpawnLair(s, LateKind(s, alive), null, true, land == 0 ? "Boşalan topraklar yeni yağmacıları çekti" : null, 12, true);
-            story.NextCampSpawn = s.Day + (nc != null ? s.Rng.Int(40, 80) : 30);
+            story.NextCampSpawn = s.Day + (nc != null ? s.Rng.Int(20, 40) : 30);
         }
     }
 
-    // ------------------------------------------------------------ hedef kamp sayısı ve yeni inler (Faz 1 B2)
-    /// <summary>yıla göre hedef kara kampı sayısı: ⌊3 + yıl/6⌋ (1–5. yıl 3, 30. yıl 8, 60. yıl 13)</summary>
-    public static double CampTarget(Sim s) => Math.Floor(3 + s.Year / 6.0);
+    // ------------------------------------------------------------ kamp bandı ve yeni inler (Faz 1 B2, Faz 1b-4)
+    /// <summary>Faz 1b-4: kamp bandı (yaşayan kara kampı; korsan koyu ve ejderha sayılmaz). Dünya büyüdükçe artan hedefin yerine sabit
+    /// bant: altında yeni inler gelir, üstüne hiçbir yoldan çıkılmaz. Ölçümle seçildi: f1b-3'te kara kampı 1–10. yıllarda ~7–9,5 (erken
+    /// goblin yayılması), 11–40. yıllarda ~6, 51–60. yıllarda ~9; bantla bütün yıllarda ~8 (geç yıllarda ejderha ve korsanlarla ~9).
+    /// Canavar baskısı yıllar boyu aynı kalır; geç inler büyüklükleri ve trollerle sertleşir. Dar tutuldu: üst sınırı erken goblin
+    /// yayılması doldurursa erken yıllar geç yıllardan kalabalık olur (ölçüt 3).</summary>
+    public const int CAMP_LOW = 8, CAMP_HIGH = 10;
+    /// <summary>bandın altında günlük yeni in olasılığı eksik / CAMP_REFILL (en çok %25; eskiden eksik / 40): temizlenen in çabuk yerine gelir</summary>
+    public const double CAMP_REFILL = 15;
+
+    /// <summary>bandın alt sınırı: hedef kara kampı sayısı (eskiden ⌊3 + yıl/6⌋)</summary>
+    public static double CampTarget(Sim s) => CAMP_LOW;
+
+    /// <summary>yaşayan kara kampı (korsan koyu ve ejderha hariç) sayısı</summary>
+    public static int LandCamps(List<Camp> camps)
+    {
+        int n = 0;
+        foreach (var c in camps) if (c.Alive && c.Kind != "pirate" && c.Kind != "dragon") n++;
+        return n;
+    }
+
+    /// <summary>Faz 1b-4: bandın üst sınırına dek açılabilecek kara kampı (bugbear ini, istila ve trol krizi bunu aşamaz; yayılma ve işgal
+    /// zaten yalnız CAMP_LOW'un altında).</summary>
+    public static int CampRoom(Sim s) => CAMP_HIGH - LandCamps(s.W.Camps);
 
     /// <summary>Kamp türünün nüfus tavanı; 20. yıldan sonra dünya yaşlandıkça büyür (geç gelen inler gerçek tehdit olur, sıradan
     /// bir kahraman grubu onları kolayca deviremez): goblin 14 + (yıl−20)/4 (en çok 24), hobgoblin 10 + (yıl−20)/5 (en çok 18),

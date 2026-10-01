@@ -127,6 +127,11 @@ public sealed class Settlement
     public double? Imar;
     /// <summary>imar ilk kez Economy.IMAR_LOG'a vardı ve kroniğe düştü</summary>
     public bool? ImarLog;
+    // ---- büyük şehir (Faz 1b-4)
+    /// <summary>art arda büyük şehir hücumları (iki hücum arası en çok Diplomacy.BIG_WEAR_DAYS; el değiştirince sıfırlanır): halkı yıpratır</summary>
+    public double? Assaults;
+    /// <summary>son büyük şehir hücumunun günü</summary>
+    public double? LastAssault;
 }
 
 public sealed class RelMod
@@ -222,6 +227,8 @@ public sealed class Civ
     public int? Parent;                  // ayrılarak doğduğu medeniyet
     public double? LastSecession;        // son bölünme günü (bir yerleşimi ayrıldı ya da kendisi bölünmeyle doğdu)
     public double? CapitalLostDay;       // başkentini son kaybettiği gün
+    public int? CapitalLosses;           // Faz 1b-4: başkentini kaç kez kaybetti (fetihle; Diplomacy.CapitalFell)
+    public int? Seat;                    // Faz 1b-4: dünkü gün sonunun başkenti (Sim.Step; en kalabalık yerleşim gün içinde değişebilir)
     public string FallCause;             // son yerleşimini neden kaybetti (yok oluşun kroniğe düşen nedeni)
     public double? CrusadeDay;           // kendisine karşı son Kutsal Sefer çağrısının günü
     // ---- altın ve ambar (Faz 1, C3)

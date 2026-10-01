@@ -230,15 +230,34 @@ public static class Diplomacy
                 var alt = J.At(J.Sort(J.Filter(s.CivSettlements(t), x => x.Id != tCap.Id), (x, y) => s.G.Dist(x.Tile, oCap.Tile) - s.G.Dist(y.Tile, oCap.Tile)), 0);
                 if (alt != null) target = alt;
             }
+            // Faz 1b-4: büyük şehir üstünlük ister (BIG_ODDS; başkentse CAPITAL_ODDS): güç yetmezse hedef büyük şehirse en yakın küçük
+            // yerleşime döner; yetiyorsa sıradan savaş düşmanın ulaşılabilir büyük şehirlerinden en zayıfına yürür (v3: savaşlar çekirdek
+            // şehirler için yapılır, büyük şehir ancak istikrarı düşükken düşer)
+            bool bigWar = false;
+            if (!reclaim && !tribute && !crusade && oCap != null)
+            {
+                if (powO >= powT * BIG_ODDS)
+                {
+                    var bigT = BigTarget(s, o, t, oCap, powO >= powT * CAPITAL_ODDS);
+                    if (bigT != null) { target = bigT; bigWar = true; }
+                }
+                else if (Sim.IsBig(target))
+                {
+                    var alt = J.At(J.Sort(J.Filter(s.CivSettlements(t), x => !Sim.IsBig(x) && (x.Id != tCap?.Id || powO >= powT * CAPITAL_ODDS)), (x, y) => s.G.Dist(x.Tile, oCap.Tile) - s.G.Dist(y.Tile, oCap.Tile)), 0);
+                    if (alt != null) target = alt;
+                }
+            }
             var war = new War
             {
                 Since = s.Day, Attacker = o.Id, Target = target.Id, Attacks = 0, LastArmy = -999,
-                Goal = crusade ? $"Kutsal Sefer: {Tr.Ek(t.Name, "in")} karanlık paktını yıkmak" : reclaim ? ReclaimGoal(s, o, target) : byLand ? $"{Tr.Ek(target.Name, "i")} ve çevresindeki toprakları almak" : $"{goodName} kaynağını ele geçirmek",
+                Goal = crusade ? $"Kutsal Sefer: {Tr.Ek(t.Name, "in")} karanlık paktını yıkmak" : reclaim ? ReclaimGoal(s, o, target) : bigWar ? $"Büyük şehir {Tr.Ek(target.Name, "i")} almak"
+                    : byLand ? $"{Tr.Ek(target.Name, "i")} ve çevresindeki toprakları almak" : $"{goodName} kaynağını ele geçirmek",
                 Kind = crusade ? "crusade" : reclaim ? "reclaim" : tribute ? "tribute" : null,
             };
             r.War = war; s.Rel(t.Id, o.Id).War = war;
             s.Metric("war");
             if (reclaim) s.Metric("reclaimWar");
+            if (bigWar) s.Metric("bigWar");   // Faz 1b-4
             s.Log("war", $"{o.Name}, {Tr.Ek(t.Name, "a")} SAVAŞ İLAN ETTİ! Hedef: {target.Name}.", civ: o.Id, tile: target.Tile,
                 cause: $"İlişki {J.S(rv)}: {string.Join(", ", J.Map(J.Filter(r.Mods, m => m.Value < 0), m => J.TrLower(m.Text)))}{(reclaim ? $"; tarihî hak: {ClaimWhy(s, o, target)}" : "")}", major: true);
             CallAllies(s, o, t, war, target);
@@ -752,6 +771,10 @@ public static class Diplomacy
     public const double CAPITAL_ODDS = 1.5;
     /// <summary>başkenti düşen medeniyetin yeni başkenti bu kadar gün savunmada +RALLY_AC zırh alır (halk kenetlenir)</summary>
     public const double RALLY_DAYS = 3 * Sim.YEAR, RALLY_AC = 2;
+    /// <summary>Faz 1b-4: yeni başkentin zayıflığından düşülen (halk kenetlendi; RALLY_DAYS boyunca)</summary>
+    public const double RALLY_WEAK = 1;
+    /// <summary>Faz 1b-4: başkentin zayıflığından her eski başkent kaybı için düşülen (medeniyet başkentini art arda kaybetmesin)</summary>
+    public const double CAP_LOSS_WEAK = 1;
 
     /// <summary>Kötü medeniyet: iyiliği düşük ya da karanlık bir patrona paktla bağlı (Paktçı).</summary>
     public static bool IsEvil(Sim s, Civ c) => c.Align.Good <= -0.3 || s.E(c, "pact") > 0;
@@ -976,6 +999,129 @@ public static class Diplomacy
     /// <summary>Başkent yağmalanıp tutulamadıysa kroniğe düşen neden.</summary>
     public static string SackWhy(War war) => war != null && war.Kind == "tribute" ? "Haraç ve ganimet için gelmişlerdi, şehri tutmadılar" : "Şehri tutmaya güçleri yetmedi; yağmalayıp çekildiler";
 
+    // ================================================================ Faz 1b-4: büyük şehrin istikrarı (yol haritası v3: çekirdek halka)
+    // Büyük şehir (Şehir kademesi, Sim.IsBig) ve Kasaba ve üstü başkent (Guarded) kolay düşmez. Savaş ordusu önünde en az BIG_SIEGE_DAYS gün karargâh kurar; kuşatma büyük
+    // olay olarak ilan edilir ve şehrin o günkü zayıflığını söyler (uyarı). Sonra hücum eder (Agents.Siege). Hücumu kazanan ordu
+    // şehri ancak şehrin zayıflığı (CityWeakness: garnizon, açlık, hazine, efendinin meşruiyeti, savaş yorgunluğu, salgın) BIG_FALL'a
+    // varıyorsa ve şehri tutacak gücü kalmışsa (CanHoldCapital) alır; yoksa yağmalar ve çekilir. Her hücum şehri yıpratır (art arda
+    // hücumlar zayıflığa eklenir): büyük şehir uzun bir savaşta, birkaç kuşatmadan sonra ya da içi çürüyünce el değiştirir.
+    // Ejderha büyük şehri kademesinden düşüremez (Dragon.BigRoom); büyük şehir terk edilmez (Economy).
+
+    /// <summary>Kasaba ve üstü başkent (başkentini bir kez kaybetmiş medeniyette her başkent) de büyük şehir gibi korunur (kuşatma günleri,
+    /// zayıflık eşiği): taht şehri ancak sarsılınca düşer (yol haritası: bir medeniyet başkentini en çok birkaç kez kaybetsin)</summary>
+    public const int GUARD_CAP_TIER = 2;
+
+    /// <summary>Faz 1b-4: korunan yerleşim: büyük şehir (Şehir kademesi) ya da Kasaba ve üstü başkent (medeniyet başkentini bir kez
+    /// kaybettiyse her başkent). Düşmesi için kuşatma
+    /// (<see cref="BIG_SIEGE_DAYS"/>), zayıflık (<see cref="CityWeakness"/> ≥ <see cref="BIG_FALL"/>) ve şehri tutacak güç gerekir.</summary>
+    public static bool Guarded(Sim s, Settlement st)
+    {
+        if (Sim.IsBig(st)) return true;
+        if (st.Civ < 0 || st.Civ >= s.W.Civs.Count) return false;
+        var c = s.W.Civs[st.Civ];
+        return (st.Tier >= GUARD_CAP_TIER || (c.CapitalLosses ?? 0) > 0) && IsSeat(s, c, st);
+    }
+
+    /// <summary>Faz 1b-4: taht şehri: medeniyetin başkenti (en kalabalık yerleşimi) ya da dünkü gün sonunun başkenti (<see cref="Civ.Seat"/>;
+    /// asker yazımı başkentin nüfusunu bir günlüğüne düşürse de taht yerinden oynamaz).</summary>
+    public static bool IsSeat(Sim s, Civ c, Settlement st) => c.Seat == st.Id || s.Capital(c)?.Id == st.Id;
+
+    /// <summary>büyük şehir kuşatması: ordu hücumdan önce en az bu kadar gün şehrin önünde karargâh kurar</summary>
+    public const double BIG_SIEGE_DAYS = 20;
+    /// <summary>büyük şehir ancak zayıflığı (<see cref="CityWeakness"/>) en az bu kadarsa el değiştirir; altında hücumu kazanan ordu yağmalar</summary>
+    public const double BIG_FALL = 1;
+    /// <summary>art arda hücumların yıpratması: her hücum +BIG_WEAR (en çok BIG_WEAR_MAX); son hücumdan BIG_WEAR_DAYS sonra söner</summary>
+    public const double BIG_WEAR = 1, BIG_WEAR_MAX = 2, BIG_WEAR_DAYS = 2 * Sim.YEAR;
+    /// <summary>garnizon (asker / nüfus) bunun altındaysa eridi (+1), GARRISON_LOW'un altındaysa zayıf (+0,5)</summary>
+    public const double GARRISON_THIN = 0.04, GARRISON_LOW = 0.08;
+
+    /// <summary>
+    /// Faz 1b-4: şehrin zayıflığı (0: sağlam; büyük şehir <see cref="BIG_FALL"/>'dan itibaren düşebilir). v3'ün istikrar ölçüsünün
+    /// en küçük hâli; nedenler <paramref name="why"/>'a yazılır. Zar atılmaz.
+    /// <list type="bullet">
+    /// <item>garnizon: asker / nüfus &lt; %4 (+1) ya da &lt; %8 (+0,5);</item>
+    /// <item>açlık: şehir aç (+1) ya da medeniyette kıtlık ilanı (+0,5); pazarda ekmek ya da bira yok (+0,5);</item>
+    /// <item>hazine (vergi): hazine boş, maaş ödenmiyor (+1);</item>
+    /// <item>efendinin meşruiyeti: şehir son 10 yılda zorla alınmış (+1), saldıranın tarihî hakkı (+0,5), halkın çoğu başka ırktan
+    /// (+0,5);</item>
+    /// <item>savaş yorgunluğu: medeniyetin savaşı 200 günü aşmış (+0,5), art arda hücumlar (her biri +0,75, en çok +1,5; <see cref="Wear"/>);</item>
+    /// <item>salgın (+1);</item>
+    /// <item>direnç: kanunlu medeniyet (−0,5 × kanun), imar (−0,5 × imar/100); başkent: son RALLY_DAYS içinde başkenti düşmüş
+    /// medeniyette −RALLY_WEAK (halk kenetlendi) ve her eski başkent kaybı için −CAP_LOSS_WEAK (bir medeniyet başkentini art arda kaybetmesin).</item>
+    /// </list>
+    /// </summary>
+    public static double CityWeakness(Sim s, Settlement st, Civ att, List<string> why)
+    {
+        var c = s.W.Civs[st.Civ];
+        double P = JsMath.Max(1, s.Pop(st));
+        double u = 0;
+        void Add(double v, string w) { u += v; why?.Add(w); }
+        double g = st.Soldiers / P;
+        if (g < GARRISON_THIN) Add(1, "garnizon eridi"); else if (g < GARRISON_LOW) Add(0.5, "garnizon zayıf");
+        if (st.Starving > 0) Add(1, "şehir aç"); else if (c.Famine != null && c.Famine.Declared) Add(0.5, "kıtlık ilan edilmiş");
+        if (Economy.LackCount(st, Economy.LACK_UNREST, true) > 0) Add(0.5, "pazarda ekmek ya da bira yok");
+        if (c.Broke != null) Add(1, "hazine boş, askerin maaşı ödenmiyor");
+        if (st.Founder != null && st.Founder != st.Civ && st.LostDay != null && s.Day - st.LostDay.Value < 10 * Sim.YEAR) Add(1, "şehir zorla alınmıştı, halk yeni efendisine ısınmadı");
+        if (att != null && st.ClaimBy == att.Id && s.Day < (st.ClaimUntil ?? 0)) Add(0.5, $"halk eski efendisi {Tr.Ek(att.Name, "i")} bekliyor");
+        string maj = MajorityRace(st);
+        if (maj != null && maj != c.Race) Add(0.5, $"halkının çoğu {J.TrLower(D.RACES[maj].Plural)}");
+        if (LongestWar(s, c) > 200) Add(0.5, "savaş bitmek bilmiyor");
+        double wear = Wear(s, st);
+        if (wear > 0) Add(wear, $"art arda {J.S(st.Assaults ?? 0)} hücum halkı yıprattı");
+        if (st.Plague != null) Add(1, "salgın kol geziyor");
+        u -= c.Align.Law * 0.5;
+        u -= Economy.ImarCalm(st);
+        // başkenti düşen medeniyetin halkı yeni başkentte kenetlenir (RALLY_DAYS boyunca; savunmada ayrıca +RALLY_AC, Agents.Defenders);
+        // tahtı defalarca düşmüş halk son kalesinde her seferinde daha çetin direnir
+        if (IsSeat(s, c, st))
+        {
+            if (c.CapitalLostDay != null && s.Day - c.CapitalLostDay.Value < RALLY_DAYS) u -= RALLY_WEAK;
+            u -= CAP_LOSS_WEAK * (c.CapitalLosses ?? 0);
+        }
+        return u;
+    }
+
+    /// <summary>saldırganın hedefleyebileceği büyük şehrin başkentine en büyük uzaklığı (fersah)</summary>
+    public const double BIG_REACH = 40;
+    /// <summary>büyük şehre yürümek için gereken askerî üstünlük (MilitaryPower oranı; başkent için CAPITAL_ODDS)</summary>
+    public const double BIG_ODDS = 1;
+
+    /// <summary>Faz 1b-4: üstün (MilitaryPower ≥ BIG_ODDS ×) saldırganın hedefi: t'nin, o'nun başkentine en çok BIG_REACH fersah
+    /// uzaklıktaki ve ordu yolu olan büyük şehirlerinden en zayıfı (CityWeakness; eşitse en yakını); başkent ancak
+    /// <paramref name="capOk"/> (CAPITAL_ODDS) ise. Yoksa null.</summary>
+    private static Settlement BigTarget(Sim s, Civ o, Civ t, Settlement oCap, bool capOk)
+    {
+        Settlement best = null; double bw = double.NegativeInfinity, bd = 0;
+        var tCap = capOk ? null : s.Capital(t);
+        foreach (var x in s.CivSettlements(t))
+        {
+            if (!Sim.IsBig(x) || (tCap != null && x.Id == tCap.Id)) continue;
+            double d = s.G.Dist(x.Tile, oCap.Tile);
+            if (d > BIG_REACH) continue;
+            double wk = CityWeakness(s, x, o, null);
+            if (best != null && (wk < bw || (wk == bw && d >= bd))) continue;
+            if (ArmyRoute(s, o, oCap.Tile, x.Tile) == null) continue;
+            best = x; bw = wk; bd = d;
+        }
+        return best;
+    }
+
+    /// <summary>Art arda hücumların yıpratması: son hücumdan bu yana BIG_WEAR_DAYS geçmediyse hücum başına BIG_WEAR (en çok BIG_WEAR_MAX).</summary>
+    public static double Wear(Sim s, Settlement st) =>
+        st.LastAssault == null || s.Day - st.LastAssault.Value > BIG_WEAR_DAYS ? 0 : JsMath.Min(BIG_WEAR_MAX, (st.Assaults ?? 0) * BIG_WEAR);
+
+    /// <summary>Büyük şehre hücum edildi (sonucu ne olursa olsun): yıpranma sayacı.</summary>
+    public static void Assaulted(Sim s, Settlement st)
+    {
+        if (st.LastAssault == null || s.Day - st.LastAssault.Value > BIG_WEAR_DAYS) st.Assaults = 0;
+        st.Assaults = (st.Assaults ?? 0) + 1;
+        st.LastAssault = s.Day;
+    }
+
+    /// <summary>Zayıflığın kroniğe düşen özeti: "sağlam" ya da nedenler.</summary>
+    public static string WeakText(double u, List<string> why) =>
+        why.Count == 0 || u <= 0 ? "şehir sağlam" : $"{J.TrCap(string.Join(", ", why))} (zayıflık {J.S(JsMath.Round(u * 10) / 10)}/{J.S(BIG_FALL)})";
+
     /// <summary>Fethedilen her yerleşim için (Agents.Siege, şehir el değiştirdikten sonra): kurucu ve tarihî hak; kötü
     /// bir fatih Kutsal Sefer çağrısı doğurur. Hak, şehri kuranındır (kaybedince doğar, geri alınca düşer); bölünmeden
     /// doğan hak (ana medeniyetin asi şehir üzerindeki hakkı) şehir üçüncü bir ele geçince düşer.</summary>
@@ -1003,6 +1149,7 @@ public static class Diplomacy
             return;
         }
         dfc.CapitalLostDay = s.Day;
+        dfc.CapitalLosses = (dfc.CapitalLosses ?? 0) + 1;   // Faz 1b-4
         var ncap = s.Capital(dfc);
         s.Log("war", $"{nameA} {Tr.Ek(dfc.Name, "in")} başkenti {Tr.Ek(st.Name, "i")} düşürdü! Şehir artık {Tr.Ek(wc.Name, "in")}; ganimet: {loot}.", civ: wc.Id, tile: st.Tile, battle: battle, cause: goal, major: true);
         s.Log("war", $"{dfc.Name} başkentini {Tr.Ek(ncap.Name, "a")} taşıdı.", civ: dfc.Id, tile: ncap.Tile, cause: $"{st.Name} düştü; saray ve hazine {Tr.Ek(ncap.Name, "a")} kaçırıldı", major: true);

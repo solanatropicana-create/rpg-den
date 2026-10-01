@@ -30,26 +30,31 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll <mod> ...
 ## Ölçüm aracı (`stats`)
 
 ```
-dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 --years 60 --out reports/<ad> --runs reports/runs/<ad> [--jobs N] [--label <metin>] [--verify N] [--saveload N]
+dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 (--years 60 | --days N) --out reports/<ad> --runs reports/runs/<ad> [--jobs N] [--label <metin>] [--verify N] [--saveload N] [--proj K]
 ```
 
 | Seçenek | Varsayılan | |
 |---|---|---|
 | `--seeds` | `1-16` | seed listesi ve aralıkları (`1,3,5-8`) |
-| `--years` | `60` | dünya başına yıl (1 yıl = 120 gün) |
+| `--years` | `60` | dünya başına yıl (1 yıl = `Sim.YEAR` gün; şimdilik 120) |
+| `--days` | — | `--years` yerine gün; son yıl yarım kalabilir (ölçütler tam yıllarla) |
 | `--out` | (gerekli) | `report.md` ve `report.json` klasörü |
 | `--runs` | `<out>/worlds` | dünya başına `seed-N.json` klasörü; `reports/runs/<ad>` git'e girmez |
 | `--jobs` | çekirdek sayısı | paralel dünya (iş parçacığı) |
 | `--label` | `--out` klasörünün adı | rapor başlığı |
 | `--verify` | `1` | ilk N seed toplayıcısız yeniden koşulur; her yıl sonu hash'i karşılaştırılır (determinizm + toplayıcı salt okunur) |
 | `--saveload` | `1` | `Sim.Save`/`Sim.Load` varsa ilk N seed yıl ortasında kaydedilip yüklenir, sonraki hash'ler karşılaştırılır |
+| `--proj` | `4` (yıl 120 günken), `1` | v3 hedeflerinin yeni takvime yansıtılması: oranlar ×K, süreler ÷K (eski 120 günlük yıl ≈ 30 yeni gün) |
 
 Çıktı:
-- `report.md`: bitiş ölçütleri tablosu (✓/✗, ölçülen değerler ve tanımlar), eski analizdeki sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
+- `report.md`: bitiş ölçütleri tablosu (✓/✗/○, ölçülen değerler ve tanımlar; 6–7: yol haritası v3, † gelecek zaman ölçeğine bağlı), v3 durum değişimi
+  bölümü (100 günlük oranlar, bütün koşu ve ısınmadan sonra; savaş, kuşatma ve uyarı süreleri; büyük şehrin el değiştirmeleri), eski analizdeki
+  sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
   kahraman seviye dağılımları, olay/muharebe/ölüm nedeni türleri, dünya tablosu, her ölçü için yıllık medyan (p10–p90);
 - `report.json`: aynı veriler (yıllık medyan/p10/p90 dizileri, on yıllık değerler, ölçütler);
 - `seed-N.json`: dünyanın yıllık değerleri (her ölçü bir dizi), anahtarlı sayımlar (olay türleri, seviye dağılımları, `W.Metrics`
-  farkları), çöküş listesi, medeniyet özetleri, efsaneler, yıl sonu hash'leri.
+  farkları), çöküş listesi, medeniyet özetleri, efsaneler, yıl sonu hash'leri; `v3`: günlük kademe sayıları, yerleşim durum değişimleri,
+  savaşlar, kuşatmalar, büyük şehrin el değiştirmeleri, ejderha akınları (`V3Log`).
 
 Çıkış kodu 0; bir dünya çökerse 3 (raporlar yine yazılır). Dünyalar aynı süreçte paralel koşar; simülasyonda statik değişken
 durum olmamalıdır (`--verify` bunu da yakalar).
@@ -64,6 +69,8 @@ st.Finish();                       // st.Years[y - 1]["majorEvents"], st.Collaps
 ```
 
 Yeni bir ölçü: `WorldStats.Defs`'e tanım ekle, `AfterStep`/`CloseYear` içinde doldur; rapor ve JSON kendiliğinden içerir.
+Pencereler koşunun uzunluğuna göre: ölçüt 1 ve 3 için erken = koşunun %10'u – üçte biri, geç = son üçte biri (60 yılda 6–20 ve 41–60);
+v3 ısınması koşunun ilk üçte biri.
 Bitiş ölçütleri `FD.Macro.Run/Program.cs` → `StatsMode.Report.Evaluate`.
 
 Temel ölçüm (değişmemiş port, `port-exact`): `reports/baseline-port-exact/`. Yeniden üretmek için:

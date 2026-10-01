@@ -37,7 +37,7 @@ public static class Events
                 double sick = JsMath.Max(1, JsMath.Round(P * 0.05 * pl.Severity * (1 - @base)));
                 double prot = JsMath.Min(0.92, @base + Gear.PlaguePotions(s, c, sick) * (1 - @base));
                 if (prot > @base + 0.05) pl.Potions = (pl.Potions ?? 0) + 1;
-                double deaths = JsMath.Min(P - 2, JsMath.Max(1, JsMath.Round(P * 0.05 * pl.Severity * (1 - prot))));
+                double deaths = JsMath.Min(P - (Sim.IsCore(st) ? Sim.CORE_MIN : 2), JsMath.Max(1, JsMath.Round(P * 0.05 * pl.Severity * (1 - prot))));   // Faz 1b-4: çekirdek şehir salgınla tükenmez
                 if (deaths > 0) { s.RemovePop(st, deaths); pl.Dead += deaths; st.Graves = (st.Graves ?? 0) + deaths; s.Metric("plagueDead", deaths); }
                 if (s.Day >= pl.Until || s.Pop(st) <= 3)
                 {
@@ -122,7 +122,8 @@ public static class Events
         // --- kıtlık göçü: aç kalan halk, yiyeceği olan komşuya yürür
         foreach (var c in J.Filter(w.Civs, x => x.Alive))
         {
-            var ss = J.Filter(s.CivSettlements(c), x => x.Starving > 20 && s.Pop(x) > 8);
+            // Faz 1b-4: çekirdek şehir (bir kez Şehir olmuş) kıtlık göçüyle Sim.CORE_MIN'in altına inmez
+            var ss = J.Filter(s.CivSettlements(c), x => x.Starving > 20 && s.Pop(x) > (Sim.IsCore(x) ? Sim.CORE_MIN + 6 : 8));
             if (ss.Count == 0 || J.Some(w.Agents, a => a.Kind == "settlers" && a.Purpose == "refugee" && a.Civ == c.Id)) continue;
             var from = J.Sort(ss, (a, b) => s.Pop(b) - s.Pop(a))[0];
             var targets = J.Sort(J.Filter(J.Filter(alive, o => o.Civ != c.Id && w.Civs[o.Civ].Alive),

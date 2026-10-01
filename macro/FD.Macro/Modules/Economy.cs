@@ -455,7 +455,8 @@ public static class Economy
                 st.Starving++;
                 // açlık, açığın büyüklüğüyle orantılı birikir
                 st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
-                if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); fam.Dead++; }
+                // Faz 1b-4: çekirdek şehir (bir kez Şehir olmuş) açlıktan Sim.CORE_MIN'in altına inmez: büyük şehir küçülür ama terk edilmez
+                if (st.Hunger >= 10 && !(Sim.IsCore(st) && s.Pop(st) <= Sim.CORE_MIN)) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); fam.Dead++; }
             }
         }
         else
@@ -479,7 +480,7 @@ public static class Economy
                         s.AddPop(st, s.Rng.Weighted(rs, x => (st.Pop.Get(x) ?? 0) * D.RACES[x].Growth) ?? c.Race, 1);
                     }
                 }
-                if (s.Rng.Chance(P * 0.00025)) s.RemovePop(st, 1);
+                if (s.Rng.Chance(P * 0.00025) && !(Sim.IsCore(st) && P <= Sim.CORE_MIN)) s.RemovePop(st, 1);   // Faz 1b-4: çekirdek şehir yaşlılıktan da tükenmez
             }
         }
 

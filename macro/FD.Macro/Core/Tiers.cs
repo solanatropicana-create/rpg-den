@@ -62,6 +62,20 @@ public sealed partial class Sim
     /// <summary>histerezis: yerleşim kademesini nüfus eşiğin bu payının altına düşene dek korur (eşikte titremesin)</summary>
     public const double TIER_KEEP = 0.85;
 
+    /// <summary>Faz 1b-4: "büyük şehir" (v3'ün çekirdek halkası) = Şehir kademesindeki yerleşim (nüfus ≥ 100; histerezisle ≥ 85).</summary>
+    public const int BIG_TIER = 3;
+
+    /// <summary>Faz 1b-4: yerleşim büyük şehir mi (Şehir kademesi, <see cref="BIG_TIER"/>).</summary>
+    public static bool IsBig(Settlement s) => s != null && s.Tier >= BIG_TIER;
+
+    /// <summary>Faz 1b-4: çekirdek şehir: Şehir kademesine bir kez varmış yerleşim (küçülse de). Terk edilmez: hiçbir yol (savaş, akın,
+    /// açlık, salgın, göç; <see cref="RemovePop"/>) onu <see cref="CORE_MIN"/> kişinin altına indiremez; açlık, yaşlılık, salgın, kıtlık
+    /// göçü ve han yolundan geçen mülteciler o sınırda ayrıca durur (Economy, Events, InnLife).</summary>
+    public static bool IsCore(Settlement s) => s != null && (s.PeakTier ?? 0) >= BIG_TIER;
+
+    /// <summary>Faz 1b-4: çekirdek şehrin hiçbir yoldan inemeyeceği en az nüfus (Köy eşiği)</summary>
+    public const double CORE_MIN = 12;
+
     /// <summary>
     /// Medeniyet kademesine bağlı etkiler (birikimli; eski ana ağacın dengede ağırlığı olan medeniyet çapındaki etkileri):
     /// Kasaba: Kervancılık (ticaret altını +0,3); Şehir: Ticaret Ağları ve Deniz Ticareti (+0,7), Kale Yapımı (savunma AC +2).

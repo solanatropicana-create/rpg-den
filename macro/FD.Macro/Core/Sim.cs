@@ -107,6 +107,8 @@ public sealed partial class Sim
 
     public JsObj<double> RemovePop(Settlement s, double n)
     {
+        // Faz 1b-4: çekirdek şehir (bir kez Şehir olmuş) hiçbir yoldan CORE_MIN'in altına inmez: küçülür ama terk edilmez
+        if (IsCore(s)) n = JsMath.Min(n, JsMath.Max(0, Pop(s) - CORE_MIN));
         var outp = new JsObj<double>();
         for (int i = 0; i < n; i++)
         {
@@ -427,6 +429,9 @@ public sealed partial class Sim
         if (w.Day % 60 == 0)
             foreach (var c in w.Civs)
                 if (c.Alive) c.History.Add(new HistPoint { Day = w.Day, Pop = CivPop(c), Gold = JsMath.Round(St(c, "gold")), Tier = CivTier(c) });
+        // Faz 1b-4: taht şehri: gün sonunun başkenti (ertesi gün asker yazımı ya da göçle en kalabalık yerleşim değişse de
+        // dünkü başkent korunur; Diplomacy.IsSeat)
+        foreach (var c in w.Civs) c.Seat = c.Alive ? Capital(c)?.Id : null;
         w.RngState = Rng.State();
         Cp?.Invoke("end");
     }

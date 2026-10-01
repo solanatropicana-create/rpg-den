@@ -343,7 +343,21 @@ public static class Dragon
         double back = deadS > 0 ? Gear.HealWounded(s, c, deadS) : 0;
         double fire = slain ? 0 : driven ? s.Rng.Int(0, 2) : s.Rng.Int(1, 3) + st.Tier * 2;   // alevlerde ölen siviller
         fire = JsMath.Max(0, JsMath.Min(fire, s.Pop(st) - st.Soldiers - 3));
+        bool big = Sim.IsBig(st);
+        double pop0 = s.Pop(st);
+        if (big)
+        {
+            // Faz 1b-4: ejderha büyük şehri düşüremez: ölüler şehri Şehir kademesinin eşiğinin (histerezisle) altına indiremez;
+            // önce alevlerde ölenler azalır, sonra düşen askerler yaralı sayılır
+            double over = deadS - back + fire - BigRoom(s, st);
+            if (over > 0) { double f = JsMath.Min(fire, over); fire -= f; over -= f; if (over > 0) back += over; }
+        }
         if (deadS - back + fire > 0) s.RemovePop(st, deadS - back + fire);
+        if (big)
+        {
+            s.Metric("dragonRaidBig"); s.Metric("dragonBigDead", deadS - back + fire);
+            if (pop0 >= BigKeep && s.Pop(st) < BigKeep) s.Metric("dragonBigBreach");   // ölçüm (Faz 1b-4 ölçüt 7): olmamalı
+        }
         st.Soldiers = JsMath.Max(0, st.Soldiers - deadS + back);
         double deadAll = deadS - back + fire + heroDead;
         d.Hits.Set(c.Id, (d.Hits.Get(c.Id) ?? 0) + 1);
@@ -366,6 +380,8 @@ public static class Dragon
             if (t.Ext.Kind == "farm") fields++; else other++;
         }
         double houses = driven ? s.Rng.Int(1, 2) : s.Rng.Int(2, 4) + st.Tier;
+        // Faz 1b-4: büyük şehirde yanan evler halkı barakalara (ve oradan göçe; Events) itecek kadar çok olamaz
+        if (big) houses = JsMath.Min(houses, Math.Floor(JsMath.Max(0, s.Housing(st) - s.Pop(st) + HOMELESS_OK) / 4));
         st.BurnedHouses = (st.BurnedHouses ?? 0) + houses; st.BurnedAt = s.Day;
         // Faz 1 C3: ejderha yaktığı kentin hazine payını kaçırır (nüfus payının yarısı, en çok %20; eskiden bütün hazinenin %20'si)
         double gold = driven ? 0 : Math.Floor(s.St(c, "gold") * JsMath.Min(0.2, s.Pop(st) / JsMath.Max(1, s.CivPop(c)) * 0.5));
@@ -378,20 +394,33 @@ public static class Dragon
         var burnt = new List<string>();
         if (fields > 0) burnt.Add($"{J.S(fields)} tarla");
         if (other > 0) burnt.Add($"{J.S(other)} yapı");
-        burnt.Add($"{J.S(houses)} ev");
+        if (houses > 0 || !big) burnt.Add($"{J.S(houses)} ev");
+        // Faz 1b-4: büyük şehrin taş evleri ve surları alevlere dayanır (yanacak bir şey kalmadıysa)
+        string burntTxt = burnt.Count > 0 ? Lore.JoinVe(burnt) : null;
         if (driven)
         {
             s.Metric("dragonDriven");
-            s.Log("dragon", $"{st.Name}, ejderha {Tr.Ek(d.Name, "i")} püskürttü: yaralı ejderha {Lore.JoinVe(burnt)} yakıp inine çekildi{(deadAll > 0 ? $"; {J.S(deadAll)} kişi öldü" : "")}.", civ: c.Id, tile: st.Tile, battle: b?.Id, major: true,
+            s.Log("dragon", $"{st.Name}, ejderha {Tr.Ek(d.Name, "i")} püskürttü: yaralı ejderha {(burntTxt != null ? $"{burntTxt} yakıp " : "")}inine çekildi{(deadAll > 0 ? $"; {J.S(deadAll)} kişi öldü" : "")}.", civ: c.Id, tile: st.Tile, battle: b?.Id, major: true,
                 cause: $"Savunucular ejderhayı kanattı; kolay av bekleyen ejderha geri çekildi (canı {J.S(JsMath.Round(d.Hp))}/{J.S(d.MaxHp)})");
         }
         else
         {
-            s.Log("dragon", $"Ejderha {d.Name}, {Tr.Ek(st.Name, "in")} üzerine alev yağdırdı: {Lore.JoinVe(burnt)} kül oldu{(deadAll > 0 ? $", {J.S(deadAll)} kişi öldü" : "")}{(gold >= 50 ? $"; hazineden {J.S(gold)} altın kaçırdı" : "")}.", civ: c.Id, tile: st.Tile, battle: b?.Id, major: true,
+            s.Log("dragon", $"Ejderha {d.Name}, {Tr.Ek(st.Name, "in")} üzerine alev yağdırdı: {(burntTxt != null ? $"{burntTxt} kül oldu" : "taş evler ve surlar alevlere dayandı")}{(deadAll > 0 ? $", {J.S(deadAll)} kişi öldü" : "")}{(gold >= 50 ? $"; hazineden {J.S(gold)} altın kaçırdı" : "")}.", civ: c.Id, tile: st.Tile, battle: b?.Id, major: true,
                 cause: why ?? (refused ? $"{c.Name} haraç vermeyi reddetmişti" : d.Alliance.Contains(c.Id) ? "Ejderha kendisine karşı kurulan ittifakı cezalandırıyor" : $"Ejderha hazinesini büyütüyor ({J.S(JsMath.Round(cp.Loot))} altın)"));
         }
         return true;
     }
+
+    /// <summary>Faz 1b-4: büyük şehirde ejderha yangınının bırakabileceği en çok evsiz (Events'te baraka göçü 4 evsizle başlar)</summary>
+    public const double HOMELESS_OK = 3;
+
+    /// <summary>Faz 1b-4: büyük şehrin ejderha akınında yitirebileceği en çok kişi: nüfusun Şehir kademesinin histerezis eşiğine
+    /// (<see cref="Sim.TIER_POP"/> × <see cref="Sim.TIER_KEEP"/> = 85) kadarı. Ejderha haritanın kaderini değiştirmez; büyük
+    /// şehirler ancak istikrarları çökünce el değiştirir (Diplomacy.CityWeakness).</summary>
+    public static double BigRoom(Sim s, Settlement st) => JsMath.Max(0, s.Pop(st) - BigKeep);
+
+    /// <summary>Şehir kademesinin histerezis eşiği (85)</summary>
+    public static readonly double BigKeep = Math.Ceiling(Sim.TIER_POP[Sim.BIG_TIER] * Sim.TIER_KEEP);
 
     // ------------------------------------------------------------ haraç ve ilanlar
     /// <summary>Medeniyetin ejderhaya karşı çıkarabileceği güç (ejderhanın zırhına karşı): askerlerinin %65'i ve yurttaki sağlıklı

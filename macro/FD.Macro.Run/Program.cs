@@ -319,17 +319,25 @@ public static class Program
 /// </summary>
 internal static class StatsMode
 {
-    public const string Usage = "stats --seeds 1-16 --years 60 --out <dir> [--jobs N] [--runs <dir>] [--label <text>] [--verify N] [--saveload N]";
+    public const string Usage = "stats --seeds 1-16 (--years 60 | --days N) --out <dir> [--jobs N] [--runs <dir>] [--label <text>] [--verify N] [--saveload N] [--proj K]";
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private static readonly object Gate = new();
     private const int YEAR = Sim.YEAR;
+
+    /// <summary>Faz 1b-4: v3 hedeflerinin yeni takvime yansıtılması. Yol haritası v3: 1 yıl = 40 gün ve eski 120 günlük yıl ≈ 30 gün;
+    /// yıl hâlâ 120 günse oranlar ×4, süreler ÷4 yansıtılır (yeni takvime geçince 1: ölçülen değer zaten yeni ölçekte).</summary>
+    public static readonly double DefaultProj = YEAR == 120 ? 4 : 1;
 
     private sealed class Opts
     {
         public string SeedsText = "1-16", Out, Runs, Label;
         public List<double> Seeds;
         public int Years = 60, Jobs = Math.Max(1, Environment.ProcessorCount), Verify = 1, SaveLoad = 1;
+        /// <summary>Faz 1b-4: koşu uzunluğu (gün); --days verilmezse Years × Sim.YEAR</summary>
+        public int Days;
+        public bool DaysGiven;
+        public double Proj = DefaultProj;
     }
 
     private sealed class WorldRun
@@ -365,14 +373,14 @@ internal static class StatsMode
         var (save, load) = SaveLoadApi();
         if (save != null)
             for (int i = 0; i < Math.Min(o.SaveLoad, runs.Count); i++)
-                checks.Add(new CheckRun { Kind = "saveload", Seed = runs[i].Seed, SaveDay = (o.Years / 2) * YEAR + 37 });
+                checks.Add(new CheckRun { Kind = "saveload", Seed = runs[i].Seed, SaveDay = SaveDayOf(o) });
         int done = 0, total = runs.Count + checks.Count;
         var jobs = new List<Action>();
         foreach (var r in runs)
             jobs.Add(() =>
             {
                 RunWorld(r, o);
-                Say($"[{Interlocked.Increment(ref done)}/{total}] seed {S(r.Seed)}: {(r.Error != null ? $"HATA gün {r.ErrorDay}: {r.Error}" : $"{o.Years} yıl, {r.Sec.ToString("0.0", Inv)} sn, hash {r.FinalHash}")}");
+                Say($"[{Interlocked.Increment(ref done)}/{total}] seed {S(r.Seed)}: {(r.Error != null ? $"HATA gün {r.ErrorDay}: {r.Error}" : $"{RunLen(o)}, {r.Sec.ToString("0.0", Inv)} sn, hash {r.FinalHash}")}");
             });
         foreach (var c in checks)
             jobs.Add(() =>
@@ -380,7 +388,7 @@ internal static class StatsMode
                 if (c.Kind == "verify") RunVerify(c, o); else RunSaveLoad(c, o, save, load);
                 Say($"[{Interlocked.Increment(ref done)}/{total}] denetim {(c.Kind == "verify" ? "toplayıcısız tekrar" : $"kaydet/yükle (gün {c.SaveDay})")} seed {S(c.Seed)}: {(c.Error ?? $"{c.Sec.ToString("0.0", Inv)} sn")}");
             });
-        Say($"stats: {runs.Count} dünya × {o.Years} yıl, {o.Jobs} iş parçacığı{(checks.Count > 0 ? $", +{checks.Count} denetim koşusu" : "")}; çıktı {o.Out}");
+        Say($"stats: {runs.Count} dünya × {RunLen(o)}, {o.Jobs} iş parçacığı{(checks.Count > 0 ? $", +{checks.Count} denetim koşusu" : "")}; çıktı {o.Out}");
         RunParallel(jobs, o.Jobs);
         wall.Stop();
         var rep = new Report(o, runs, checks, save != null, wall.Elapsed.TotalSeconds);
@@ -410,6 +418,14 @@ internal static class StatsMode
             {
                 case "--seeds": o.SeedsText = Next(); break;
                 case "--years": o.Years = Int(Next(), k, 1); break;
+                case "--days": o.Days = Int(Next(), k, 1); o.DaysGiven = true; break;   // Faz 1b-4
+                case "--proj":
+                    {
+                        string v = Next();
+                        if (!double.TryParse(v, NumberStyles.Float, Inv, out double p) || !(p > 0)) throw new Program.UsageException($"stats: --proj için geçersiz değer: {v}");
+                        o.Proj = p;
+                        break;
+                    }
                 case "--out": o.Out = Next(); break;
                 case "--runs": o.Runs = Next(); break;
                 case "--jobs": o.Jobs = Int(Next(), k, 1); break;
@@ -421,10 +437,18 @@ internal static class StatsMode
         }
         if (string.IsNullOrEmpty(o.Out)) throw new Program.UsageException($"stats: --out gerekli\nusage: FD.Macro.Run {Usage}");
         o.Seeds = ParseSeeds(o.SeedsText);
+        // Faz 1b-4: --days verildiyse yıl sayısı ondan (son yıl yarım kalabilir); yoksa gün = yıl × Sim.YEAR
+        if (o.DaysGiven) o.Years = (o.Days + YEAR - 1) / YEAR; else o.Days = o.Years * YEAR;
         o.Runs ??= Path.Combine(o.Out, "worlds");
         o.Label ??= Path.GetFileName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(o.Out)));
         return o;
     }
+
+    /// <summary>"60 yıl" ya da "1800 gün (15 yıl)": koşu uzunluğunun yazımı.</summary>
+    private static string RunLen(Opts o) => o.DaysGiven && o.Days % YEAR != 0 ? $"{o.Days} gün ({o.Years - 1} tam yıl)" : o.DaysGiven ? $"{o.Days} gün ({o.Years} yıl)" : $"{o.Years} yıl";
+
+    /// <summary>5b: kayıt günü koşunun ortasındaki yılın 37. günü (60 yılda 3637); koşudan kısa kalır.</summary>
+    private static int SaveDayOf(Opts o) => Math.Max(1, Math.Min(o.Days - 1, (o.Days / YEAR / 2) * YEAR + 37));
 
     private static int Int(string s, string k, int min)
     {
@@ -487,14 +511,14 @@ internal static class StatsMode
         {
             var sim = new Sim(r.Seed);
             st = new WorldStats(sim);
-            int days = o.Years * YEAR;
+            int days = o.Days;
             for (d = 1; d <= days; d++)
             {
                 sim.Step();
                 st.AfterStep();
                 if (d % YEAR == 0) r.YearHashes.Add(Canon.Hash(sim.W));
             }
-            r.FinalHash = r.YearHashes.Count > 0 ? r.YearHashes[r.YearHashes.Count - 1] : Canon.Hash(sim.W);
+            r.FinalHash = r.YearHashes.Count > 0 && days % YEAR == 0 ? r.YearHashes[r.YearHashes.Count - 1] : Canon.Hash(sim.W);
         }
         catch (Exception e) { r.Error = Describe(e); r.ErrorDay = d; r.Stack = e.ToString(); }
         try { st?.Finish(); } catch (Exception e) { r.Error ??= "Finish: " + Describe(e); }
@@ -509,7 +533,7 @@ internal static class StatsMode
         try
         {
             var sim = new Sim(c.Seed);
-            for (int d = 1; d <= o.Years * YEAR; d++) { sim.Step(); if (d % YEAR == 0) c.YearHashes.Add(Canon.Hash(sim.W)); }
+            for (int d = 1; d <= o.Days; d++) { sim.Step(); if (d % YEAR == 0) c.YearHashes.Add(Canon.Hash(sim.W)); }
         }
         catch (Exception e) { c.Error = Describe(e); }
         c.Sec = sw.Elapsed.TotalSeconds;
@@ -522,7 +546,7 @@ internal static class StatsMode
         try
         {
             var sim = new Sim(c.Seed);
-            int days = o.Years * YEAR;
+            int days = o.Days;
             for (int d = 1; d <= c.SaveDay; d++) { sim.Step(); if (d % YEAR == 0) c.YearHashes.Add(null); }
             c.HashBeforeSave = Canon.Hash(sim.W);
             save.Invoke(sim, new object[] { path });
@@ -569,6 +593,10 @@ internal static class StatsMode
         public string Id, Name, Rule, Measured;
         public bool? Pass;          // null: ölçülemedi
         public JObj Data = new();
+        /// <summary>Faz 1b-4: hedefi olmayan bilgi satırı (○)</summary>
+        public bool Info;
+        /// <summary>Faz 1b-4: gelecek zaman ölçeğine bağlı (†): yeni takvime yansıtılmış değerle değerlendirilir</summary>
+        public bool Scaled;
     }
 
     private sealed class Known
@@ -715,30 +743,41 @@ internal static class StatsMode
         }
 
         private static string Mark(bool? p) => p == null ? "—" : p.Value ? "✓" : "✗";
+        private static string Mark(Crit c) => c.Info ? "○" : Mark(c.Pass);
+
+        // ------------------------------------------------------------ zaman pencereleri (Faz 1b-4: koşunun uzunluğuna ve Sim.YEAR'a göre)
+        /// <summary>"erken" pencere: koşunun %10'u – üçte biri (60 yılda 6–20. yıllar)</summary>
+        private (int From, int To) EarlyWin => (Math.Max(1, (int)Math.Floor(Y * 0.1 + 0.5)), Math.Max(1, Y / 3));
+        /// <summary>"geç" pencere: koşunun son üçte biri (60 yılda 41–60. yıllar)</summary>
+        private (int From, int To) LateWin => (Math.Min(Y, Y * 2 / 3 + 1), Y);
+        /// <summary>v3 ısınması: koşunun ilk üçte biri (60 yılda 20 yıl = 2400 gün)</summary>
+        private int WarmDays => (Y / 3) * YEAR;
 
         // ------------------------------------------------------------ exit criteria (DESIGN-FAZ1.md "Bitiş ölçütleri")
         private void Evaluate()
         {
             int n = Ok.Count;
-            int lateTo = Math.Min(60, Y);
+            // Faz 1b-4: pencereler koşunun uzunluğuna göre (60 yılda eskisi gibi 6–20 ve 41–60)
+            var (eFrom, eTo) = EarlyWin; var (lFrom, lTo) = LateWin;
+            string ew = $"{eFrom}–{eTo}", lw = $"{lFrom}–{lTo}";
             // 1. Donma yok
             {
-                var c = new Crit { Id = "1", Name = "Donma yok", Rule = "41–60. yılların yıllık büyük olay medyanı ≥ 0,8 × 6–20. yılların medyanı" };
-                if (Y >= 41)
+                var c = new Crit { Id = "1", Name = "Donma yok", Rule = $"{lw}. yılların yıllık büyük olay medyanı ≥ 0,8 × {ew}. yılların medyanı" };
+                if (Y >= 3)
                 {
-                    double late = Pooled(K("majorEvents"), 41, lateTo), early = Pooled(K("majorEvents"), 6, 20);
+                    double late = Pooled(K("majorEvents"), lFrom, lTo), early = Pooled(K("majorEvents"), eFrom, eTo);
                     c.Pass = late >= 0.8 * early;
                     c.Measured = $"{F(late)} / {F(early)} = {F(late / early)} kat";
-                    c.Data = new JObj { { "late", late }, { "early", early }, { "ratio", late / early }, { "lateYears", $"41-{lateTo}" } };
+                    c.Data = new JObj { { "late", late }, { "early", early }, { "ratio", late / early }, { "lateYears", $"{lFrom}-{lTo}" }, { "earlyYears", $"{eFrom}-{eTo}" } };
                 }
-                else c.Measured = $"ölçülemedi: koşu {Y} yıl (41. yıl gerekir)";
+                else c.Measured = $"ölçülemedi: koşu {Y} yıl (en az 3 yıl gerekir)";
                 Crits.Add(c);
             }
             // 2. Çöküş
             {
-                var c = new Crit { Id = "2", Name = "Çöküş", Rule = $"dünyaların ≥ %75'inde {Math.Min(60, Y)} yılda ≥ 1 çöküş (yok olma ya da başkent kaybı)" };
-                int with = Ok.Count(r => r.Stats.CollapseLog.Count(x => x.Year <= 60) > 0);
-                int ext = Ok.Sum(r => r.Stats.CollapseLog.Count(x => x.Kind == "extinct" && x.Year <= 60)), cap = Ok.Sum(r => r.Stats.CollapseLog.Count(x => x.Kind == "capital" && x.Year <= 60));
+                var c = new Crit { Id = "2", Name = "Çöküş", Rule = $"dünyaların ≥ %75'inde {Y} yılda ≥ 1 çöküş (yok olma ya da başkent kaybı)" };
+                int with = Ok.Count(r => r.Stats.CollapseLog.Count(x => x.Year <= Y) > 0);
+                int ext = Ok.Sum(r => r.Stats.CollapseLog.Count(x => x.Kind == "extinct" && x.Year <= Y)), cap = Ok.Sum(r => r.Stats.CollapseLog.Count(x => x.Kind == "capital" && x.Year <= Y));
                 double share = with / (double)n;
                 c.Pass = share >= 0.75;
                 c.Measured = $"{Pct(share)} ({with}/{n} dünya); toplam {ext + cap} çöküş: {ext} yok olma, {cap} başkent kaybı";
@@ -747,11 +786,11 @@ internal static class StatsMode
             }
             // 3. Kamplar
             {
-                var c = new Crit { Id = "3", Name = "Kamplar", Rule = "41–60. yıllarda yaşayan kamp medyanı ≥ 6–20. yılların medyanı" };
-                if (Y >= 41)
+                var c = new Crit { Id = "3", Name = "Kamplar", Rule = $"{lw}. yıllarda yaşayan kamp medyanı ≥ {ew}. yılların medyanı" };
+                if (Y >= 3)
                 {
-                    double late = Pooled(K("campsAliveAvg"), 41, lateTo), early = Pooled(K("campsAliveAvg"), 6, 20);
-                    double lateEnd = Pooled(K("campsAlive"), 41, lateTo), earlyEnd = Pooled(K("campsAlive"), 6, 20);
+                    double late = Pooled(K("campsAliveAvg"), lFrom, lTo), early = Pooled(K("campsAliveAvg"), eFrom, eTo);
+                    double lateEnd = Pooled(K("campsAlive"), lFrom, lTo), earlyEnd = Pooled(K("campsAlive"), eFrom, eTo);
                     c.Pass = late >= early;
                     c.Measured = $"{F(late)} {(late >= early ? "≥" : "<")} {F(early)} (yıl sonu sayımıyla {F(lateEnd)} / {F(earlyEnd)})";
                     c.Data = new JObj { { "late", late }, { "early", early }, { "lateYearEnd", lateEnd }, { "earlyYearEnd", earlyEnd } };
@@ -864,7 +903,401 @@ internal static class StatsMode
                 }
                 Crits.Add(c);
             }
+            EvaluateV3();
         }
+
+        // ------------------------------------------------------------ v3 ölçüleri (Faz 1b-4)
+        /// <summary>Bir dünyanın bir gün penceresindeki v3 değerleri.</summary>
+        private sealed class V3W
+        {
+            public double Days, SetlMean, SetlMin, SetlMax, SetlCv, SetlDays, MidDays, BigDays, BigMean;
+            public double Owner, Changes, Mid, Big, BigSieges, BigSacked;
+            public readonly Dictionary<string, double> ByKind = new();
+            public double Kind(string k) => ByKind.TryGetValue(k, out double v) ? v : 0;
+        }
+
+        /// <summary>Pencere: [d0, d1] günleri (dünyanın koşusuyla kırpılır); boşsa null.</summary>
+        private static V3W V3Of(WorldRun r, int d0, int d1)
+        {
+            var L = r.Stats.V3;
+            d1 = Math.Min(d1, L.Days);
+            if (d1 < d0) return null;
+            var o = new V3W();
+            double sum = 0, sq = 0, mn = double.PositiveInfinity, mx = double.NegativeInfinity, mid = 0, big = 0;
+            for (int d = d0; d <= d1; d++)
+            {
+                double x = L.Setl(d);
+                sum += x; sq += x * x; if (x < mn) mn = x; if (x > mx) mx = x;
+                mid += L.TierDaily[1][d - 1] + L.TierDaily[2][d - 1];
+                big += L.TierDaily[Sim.BIG_TIER][d - 1];
+            }
+            double days = d1 - d0 + 1, mean = sum / days;
+            o.Days = days; o.SetlMean = mean; o.SetlMin = mn; o.SetlMax = mx; o.SetlDays = sum; o.MidDays = mid; o.BigDays = big; o.BigMean = big / days;
+            o.SetlCv = mean > 0 ? Math.Sqrt(Math.Max(0, sq / days - mean * mean)) / mean : double.NaN;
+            foreach (var e in L.Events)
+            {
+                if (e.Day < d0 || e.Day > d1) continue;
+                o.ByKind[e.Kind] = o.Kind(e.Kind) + 1;
+                if (e.Kind != "found") o.Changes++;
+                if (e.Kind == "capture" || e.Kind == "secede") o.Owner++;
+                if (WorldStats.IsMidShift(e.Kind, e.Tier)) o.Mid++;
+            }
+            foreach (var f in L.BigFalls) if (f.Day >= d0 && f.Day <= d1) o.Big++;
+            foreach (var sg in L.Sieges)
+                if (sg.Assault >= d0 && sg.Assault <= d1 && sg.Tier >= Sim.BIG_TIER) { o.BigSieges++; if (sg.Outcome == "sacked") o.BigSacked++; }
+            return o;
+        }
+
+        private static double Per100(double n, double days) => days > 0 ? n / days * 100 : double.NaN;
+
+        /// <summary>v3 pencereleri: bütün koşu ve ısınmadan sonra (gün aralıkları).</summary>
+        private List<(string Key, string Name, int D0, int D1)> V3Wins()
+        {
+            int D = Ok.Max(r => r.Stats.V3.Days);
+            var o = new List<(string, string, int, int)> { ("all", $"bütün koşu (1–{Y}. yıl)", 1, D) };
+            if (WarmDays > 0 && WarmDays < D) o.Add(("warm", $"ısınmadan sonra ({WarmDays / YEAR + 1}–{Y}. yıl)", WarmDays + 1, D));
+            return o;
+        }
+
+        /// <summary>Dünyalar arası dağılım: her dünyanın penceredeki değeri.</summary>
+        private Dst V3Dist(int d0, int d1, Func<V3W, double> f) => Dist(Ok.Select(r => V3Of(r, d0, d1)).Where(x => x != null).Select(f));
+
+        private static string Cell(Dst t, Func<double, string> fmt)
+        {
+            if (t.N == 0) return "–";
+            string m = fmt(t.Med), lo = fmt(t.P10), hi = fmt(t.P90);
+            return lo == hi && lo == m ? m : $"{m} ({lo}–{hi})";
+        }
+
+        /// <summary>Havuzlanmış süre dağılımı (gün): n, p10, medyan, p90, ortalama, en çok.</summary>
+        private sealed class Spans
+        {
+            public readonly List<double> Xs = new();
+            public int N => Xs.Count;
+            public double Q(double q) { if (Xs.Count == 0) return double.NaN; var s = Xs.OrderBy(x => x).ToList(); return Report.Q(s, q); }
+            public double Mean => Xs.Count > 0 ? Xs.Average() : double.NaN;
+            public double Max => Xs.Count > 0 ? Xs.Max() : double.NaN;
+            public JObj Json() => new JObj { { "n", N }, { "p10", Q(0.1) }, { "median", Q(0.5) }, { "p90", Q(0.9) }, { "mean", Mean }, { "max", Max } };
+        }
+
+        private Spans WarSpans(int d0, int d1, Func<WarSpan, bool> f = null)
+        {
+            var o = new Spans();
+            foreach (var r in Ok) foreach (var w in r.Stats.V3.Wars) if (w.Start >= d0 && w.Start <= d1 && w.End >= 0 && (f == null || f(w))) o.Xs.Add(w.End - w.Start);
+            return o;
+        }
+
+        private Spans SiegeSpans(int d0, int d1, Func<SiegeSpan, bool> f = null)
+        {
+            var o = new Spans();
+            foreach (var r in Ok) foreach (var s in r.Stats.V3.Sieges) if (s.Assault >= d0 && s.Assault <= d1 && (f == null || f(s))) o.Xs.Add(s.Assault - s.Start + 1);
+            return o;
+        }
+
+        private Spans LeadSpans(int d0, int d1, Func<BigFall, int?> f)
+        {
+            var o = new Spans();
+            foreach (var r in Ok) foreach (var b in r.Stats.V3.BigFalls) if (b.Day >= d0 && b.Day <= d1 && f(b) is int v) o.Xs.Add(v);
+            return o;
+        }
+
+        private int UnfinishedWars() => Ok.Sum(r => r.Stats.V3.Wars.Count(w => w.End < 0));
+
+        /// <summary>Hedef aralığı [lo, hi] içinde mi (NaN: ölçülemedi).</summary>
+        private static bool? In(double x, double lo, double hi) => double.IsNaN(x) ? null : x >= lo && x <= hi;
+
+        private string PF(double x) => F(x * O.Proj);   // yansıtılmış oran
+        private string PD(double x) => F(x / O.Proj);   // yansıtılmış süre
+
+        private void EvaluateV3()
+        {
+            var wins = V3Wins();
+            var all = wins[0];
+            var warm = wins[wins.Count - 1];
+            string warmName = warm.Key == "warm" ? $"{warm.D0 / YEAR + 1}–{Y}. yıl" : $"1–{Y}. yıl";
+            string proj = O.Proj == 1 ? "" : $"; yeni takvimde ×{F(O.Proj)}";
+            // 6a, 6b. Yerleşim sayısı sabit
+            foreach (var (id, w, label) in new[] { ("6a", warm, $"ısınmadan sonra ({warmName})"), ("6b", all, $"bütün koşu (1–{Y}. yıl)") })
+            {
+                if (id == "6b" && warm.Key != "warm") continue;
+                var cv = V3Dist(w.D0, w.D1, x => x.SetlCv);
+                var mean = V3Dist(w.D0, w.D1, x => x.SetlMean);
+                var lo = V3Dist(w.D0, w.D1, x => x.SetlMin / x.SetlMean);
+                var hi = V3Dist(w.D0, w.D1, x => x.SetlMax / x.SetlMean);
+                Crits.Add(new Crit
+                {
+                    Id = id, Name = $"Yerleşim sayısı sabit, {label}",
+                    Rule = "dünya başına yaşayan yerleşim sayısının (günlük) değişim katsayısı medyanı ≤ %10" + (id == "6b" ? " (dünya hâlâ 8 kamptan başlayıp büyüyor; dünya üretimi sonraki adım)" : ""),
+                    Pass = double.IsNaN(cv.Med) ? null : cv.Med <= 0.10,
+                    Measured = $"değişim katsayısı {Pct(cv.Med)} ({Pct(cv.P10)}–{Pct(cv.P90)}); ortalama {F(mean.Med)} yerleşim, en az ve en çok ortalamanın {Pct(lo.Med)} ve {Pct(hi.Med)} kadarı",
+                    Data = new JObj { { "cv", cv.Med }, { "cvP10", cv.P10 }, { "cvP90", cv.P90 }, { "mean", mean.Med }, { "minShare", lo.Med }, { "maxShare", hi.Med }, { "fromDay", w.D0 }, { "toDay", w.D1 } },
+                });
+            }
+            // 6c. El değiştirme
+            {
+                var ow = V3Dist(warm.D0, warm.D1, x => Per100(x.Owner, x.Days));
+                var ps = V3Dist(warm.D0, warm.D1, x => Per100(x.Owner, x.SetlDays));
+                Crits.Add(new Crit
+                {
+                    Id = "6c", Name = "El değiştirme (her yerleşim)", Info = true,
+                    Rule = $"fetih + bölünme, 100 günde, dünya başına ve yerleşim başına ({warmName}); hedef yok",
+                    Measured = $"dünyada {F(ow.Med)} ({F(ow.P10)}–{F(ow.P90)}) / 100 gün; yerleşim başına {F(ps.Med * 100)} / 10 bin gün{proj}: {PF(ow.Med)} / 100 gün",
+                    Data = new JObj { { "perWorld100", ow.Med }, { "perSettlement100", ps.Med }, { "proj", O.Proj } },
+                });
+            }
+            // 6d. Durum dalgalanması
+            {
+                var ch = V3Dist(warm.D0, warm.D1, x => Per100(x.Changes, x.SetlDays));
+                var cw = V3Dist(warm.D0, warm.D1, x => Per100(x.Changes, x.Days));
+                Crits.Add(new Crit
+                {
+                    Id = "6d", Name = "Durum dalgalanması (yerleşim başına)", Info = true,
+                    Rule = $"açlık, salgın, kuşatma, yakılma, kademe, el değiştirme, terk, yeniden yerleşim: yerleşim başına 100 günde ({warmName}); hedef yok",
+                    Measured = $"yerleşim başına {F(ch.Med)} ({F(ch.P10)}–{F(ch.P90)}) / 100 gün, yani ~{F(100 / ch.Med)} günde bir; dünyada {F(cw.Med)} / 100 gün{proj}: yerleşim başına ~{PD(100 / ch.Med)} günde bir",
+                    Data = new JObj { { "perSettlement100", ch.Med }, { "perWorld100", cw.Med } },
+                });
+            }
+            // 6e. Orta halka †
+            {
+                var mid = V3Dist(warm.D0, warm.D1, x => x.Mid > 0 ? x.MidDays / x.Mid : double.NaN);
+                double p = mid.Med / O.Proj;
+                Crits.Add(new Crit
+                {
+                    Id = "6e", Name = "Orta halka: kademe değişimi †", Scaled = true,
+                    Rule = $"Köy/Kasaba başına kademe değişimi ya da terk, yeni takvimde 60–150 günde bir ({warmName})",
+                    Pass = In(p, 60, 150),
+                    Measured = $"yerleşim başına {F(mid.Med)} ({F(mid.P10)}–{F(mid.P90)}) günde bir{(O.Proj != 1 ? $"; yeni takvimde {F(p)} günde bir" : "")}",
+                    Data = new JObj { { "daysPerShift", mid.Med }, { "projected", p } },
+                });
+            }
+            // 6f. Büyük şehir el değiştirmesi †
+            {
+                var bw = V3Dist(warm.D0, warm.D1, x => Per100(x.Big, x.Days));
+                var bc = V3Dist(warm.D0, warm.D1, x => Per100(x.Big, x.BigDays));
+                var bm = V3Dist(warm.D0, warm.D1, x => x.BigMean);
+                int n = Ok.Sum(r => r.Stats.V3.BigFalls.Count(f => f.Day >= warm.D0 && f.Day <= warm.D1));
+                int sec = Ok.Sum(r => r.Stats.V3.BigFalls.Count(f => f.Day >= warm.D0 && f.Day <= warm.D1 && f.Kind == "secede"));
+                double p = bw.Med * O.Proj;
+                // ayrıştırma: savaş temposu × büyük şehre giden savaş payı × hücumun düşüşle bitme payı (sonraki adımın kolları)
+                var wars = Ok.SelectMany(r => r.Stats.V3.Wars.Where(x => x.Start >= warm.D0 && x.Start <= warm.D1)).ToList();
+                var warRate = Dist(Ok.Select(r => Per100(r.Stats.V3.Wars.Count(x => x.Start >= warm.D0 && x.Start <= Math.Min(warm.D1, r.Stats.V3.Days)), Math.Min(warm.D1, r.Stats.V3.Days) - warm.D0 + 1)));
+                double bigShare = wars.Count > 0 ? wars.Count(x => x.TargetTier >= Sim.BIG_TIER) / (double)wars.Count : double.NaN;
+                var bigAss = Ok.SelectMany(r => r.Stats.V3.Sieges.Where(x => x.Assault >= warm.D0 && x.Assault <= warm.D1 && x.Tier >= Sim.BIG_TIER)).ToList();
+                double fallShare = bigAss.Count > 0 ? bigAss.Count(x => x.Outcome == "taken") / (double)bigAss.Count : double.NaN;
+                Crits.Add(new Crit
+                {
+                    Id = "6f", Name = "Büyük şehir el değiştirmesi †", Scaled = true,
+                    Rule = $"büyük şehir (Şehir kademesi) bütün dünyada yeni takvimde 100 günde 2–4 kez el değiştirir ({warmName}); felaketle düşmez",
+                    Pass = In(p, 2, 4),
+                    Measured = $"dünyada {F(bw.Med)} ({F(bw.P10)}–{F(bw.P90)}) / 100 gün{(O.Proj != 1 ? $"; yeni takvimde {F(p)} / 100 gün" : "")}; şehir başına {F(bc.Med)} / 100 gün; dünyada ortalama {F(bm.Med)} büyük şehir; toplam {n} el değiştirme ({sec} bölünme). Ayrıştırma: dünyada {F(warRate.Med)} savaş / 100 gün{(O.Proj != 1 ? $" (yeni takvimde {PF(warRate.Med)})" : "")}, hedefi büyük şehir olan {Pct(bigShare)}; büyük şehre {bigAss.Count} hücum, düşüşle bitenlerin payı {Pct(fallShare)}",
+                    Data = new JObj { { "perWorld100", bw.Med }, { "p10", bw.P10 }, { "p90", bw.P90 }, { "projected", p }, { "perCity100", bc.Med }, { "bigCities", bm.Med }, { "falls", n }, { "secessions", sec },
+                        { "warsPer100", warRate.Med }, { "bigWarShare", bigShare }, { "bigAssaults", bigAss.Count }, { "bigAssaultFallShare", fallShare } },
+                });
+            }
+            // 6g. Uyarı süresi †
+            {
+                var sl = LeadSpans(warm.D0, warm.D1, f => f.SiegeLead);
+                var wl = LeadSpans(warm.D0, warm.D1, f => f.WarLead);
+                double p = sl.Q(0.5) / O.Proj;
+                Crits.Add(new Crit
+                {
+                    Id = "6g", Name = "Büyük şehir: uyarı süresi †", Scaled = true,
+                    Rule = $"büyük şehrin düşüşünden önce yeni takvimde 5–10 gün uyarı (kuşatmanın başı → düşüş, medyan; {warmName})",
+                    Pass = In(p, 5, 10),
+                    Measured = $"kuşatmanın başından {F(sl.Q(0.5))} gün ({F(sl.Q(0.1))}–{F(sl.Q(0.9))}; n = {sl.N}); savaşın başından {F(wl.Q(0.5))} gün ({F(wl.Q(0.1))}–{F(wl.Q(0.9))}){(O.Proj != 1 ? $"; yeni takvimde {F(p)} / {PD(wl.Q(0.5))} gün" : "")}",
+                    Data = new JObj { { "siegeLead", sl.Json() }, { "warLead", wl.Json() }, { "projected", p } },
+                });
+            }
+            // 6h. Savaş süresi †
+            {
+                var ws = WarSpans(warm.D0, warm.D1);
+                double p = ws.Q(0.5) / O.Proj;
+                Crits.Add(new Crit
+                {
+                    Id = "6h", Name = "Savaş süresi †", Scaled = true,
+                    Rule = $"savaş (ilandan barışa) yeni takvimde 10–40 gün (medyan; {warmName} başlayıp biten savaşlar)",
+                    Pass = In(p, 10, 40),
+                    Measured = $"{F(ws.Q(0.5))} gün ({F(ws.Q(0.1))}–{F(ws.Q(0.9))}; n = {ws.N}){(O.Proj != 1 ? $"; yeni takvimde {F(p)} gün ({PD(ws.Q(0.1))}–{PD(ws.Q(0.9))})" : "")}",
+                    Data = new JObj { { "wars", ws.Json() }, { "projected", p } },
+                });
+            }
+            // 6i. Kuşatma süresi †
+            {
+                var bs = SiegeSpans(warm.D0, warm.D1, s => s.Tier >= Sim.BIG_TIER);
+                var os = SiegeSpans(warm.D0, warm.D1, s => s.Tier < Sim.BIG_TIER);
+                double p = bs.Q(0.5) / O.Proj;
+                Crits.Add(new Crit
+                {
+                    Id = "6i", Name = "Kuşatma süresi †", Scaled = true,
+                    Rule = $"büyük şehir kuşatması (karargâhtan hücuma) yeni takvimde 2–6 gün (medyan; {warmName})",
+                    Pass = In(p, 2, 6),
+                    Measured = $"büyük şehir {F(bs.Q(0.5))} gün ({F(bs.Q(0.1))}–{F(bs.Q(0.9))}; n = {bs.N}); diğer yerleşimler {F(os.Q(0.5))} gün ({F(os.Q(0.1))}–{F(os.Q(0.9))}; n = {os.N}){(O.Proj != 1 ? $"; yeni takvimde {F(p)} / {PD(os.Q(0.5))} gün" : "")}",
+                    Data = new JObj { { "big", bs.Json() }, { "other", os.Json() }, { "projected", p } },
+                });
+            }
+            // 6j. Başkent kaybı medeniyet başına (yol haritası Faz 1b/4: "bir medeniyet başkentini en fazla birkaç kez kaybetsin")
+            {
+                var per = Ok.SelectMany(r => r.Stats.CollapseLog.Where(x => x.Kind == "capital").GroupBy(x => x.Civ).Select(g => g.Count())).ToList();
+                int civs = Ok.Sum(r => r.Stats.Civs.Count);
+                int mx = per.Count > 0 ? per.Max() : 0, over = per.Count(v => v > 3), total = per.Sum();
+                var dist = per.GroupBy(v => v).OrderBy(g => g.Key).Select(g => $"{g.Key}×: {g.Count()}");
+                Crits.Add(new Crit
+                {
+                    Id = "6j", Name = "Başkent kaybı (medeniyet başına)",
+                    Rule = "hiçbir medeniyet başkentini 3 kereden çok kaybetmez (yol haritası: \"en fazla birkaç kez\")",
+                    Pass = mx <= 3,
+                    Measured = $"en çok {mx}; 3'ten çok kaybeden {over} medeniyet; toplam {total} başkent kaybı, {per.Count}/{civs} medeniyette{(per.Count > 0 ? $" ({string.Join(", ", dist)})" : "")}",
+                    Data = new JObj { { "max", mx }, { "over3", over }, { "total", total }, { "civsWithLoss", per.Count }, { "civs", civs } },
+                });
+            }
+            // 7. Felaket büyük şehri düşürmez
+            {
+                int core = Ok.Sum(r => r.Stats.V3.CoreLost.Count);
+                var hits = Ok.SelectMany(r => r.Stats.V3.DragonHits.Where(h => h.Tier >= Sim.BIG_TIER)).ToList();
+                double keep = Math.Ceiling(Sim.TIER_POP[Sim.BIG_TIER] * Sim.TIER_KEEP);
+                // akının doğrudan etkisi: simülasyonun kendi denetimi (Dragon.Raid: akından önce eşiğin üstündeki büyük şehir akından sonra altında)
+                int direct = (int)Ok.Sum(r => r.Stats.Years.Sum(y => y.Map("metricDeltas") is { } m && m.TryGetValue("dragonBigBreach", out double v) ? v : 0));
+                double bigDead = Ok.Sum(r => r.Stats.Years.Sum(y => y.Map("metricDeltas") is { } m && m.TryGetValue("dragonBigDead", out double v) ? v : 0));
+                int dayDrop = hits.Count(h => h.PopBefore >= keep && (h.TierAfter < Sim.BIG_TIER || h.PopAfter < keep));   // aynı gün başka nedenlerle de olabilir
+                int drop = hits.Count(h => h.TierDropDay != null), aband = hits.Count(h => h.AbandonDay != null), capt = hits.Count(h => h.CaptureDay != null);
+                int allHits = Ok.Sum(r => r.Stats.V3.DragonHits.Count);
+                Crits.Add(new Crit
+                {
+                    Id = "7", Name = "Felaket büyük şehri düşürmez",
+                    Rule = $"Şehir kademesine varmış yerleşim hiç terk edilmez; ejderha akını büyük şehrin nüfusunu Şehir eşiğinin ({F(keep)}) altına indiremez; akından sonraki {WorldStats.DRAGON_WATCH} günde terk yok",
+                    Pass = core == 0 && direct == 0 && aband == 0,
+                    Measured = $"terk edilen eski Şehir: {core}; ejderha akını {allHits} (büyük şehre {hits.Count}, orada {F(bigDead)} ölü): akınla eşiğin altına inen {direct}, sonraki {WorldStats.DRAGON_WATCH} günde terk {aband}; bilgi: akın günü başka nedenlerle (ordu, öncü) eşiğin altına inen {dayDrop}, {WorldStats.DRAGON_WATCH} gün içinde kademe düşüşü {drop}, el değiştirme {capt}",
+                    Data = new JObj { { "coreLost", core }, { "dragonHits", allHits }, { "bigHits", hits.Count }, { "bigDead", bigDead }, { "direct", direct }, { "sameDayDrop", dayDrop }, { "tierDrop60", drop }, { "abandoned", aband }, { "captured", capt } },
+                });
+            }
+        }
+
+        private JObj V3Json()
+        {
+            var o = new JObj { { "proj", O.Proj }, { "warmDays", WarmDays } };
+            var wl = new List<object>();
+            foreach (var (key, name, d0, d1) in V3Wins())
+            {
+                JObj D(Func<V3W, double> f) { var t = V3Dist(d0, d1, f); return new JObj { { "median", t.Med }, { "p10", t.P10 }, { "p90", t.P90 } }; }
+                var kinds = new JObj();
+                foreach (var k in V3Kinds) kinds.Add(k, D(x => Per100(x.Kind(k), x.SetlDays)));
+                wl.Add(new JObj
+                {
+                    { "key", key }, { "name", name }, { "fromDay", d0 }, { "toDay", d1 },
+                    { "setlMean", D(x => x.SetlMean) }, { "setlMin", D(x => x.SetlMin) }, { "setlMax", D(x => x.SetlMax) }, { "setlCv", D(x => x.SetlCv) },
+                    { "bigMean", D(x => x.BigMean) },
+                    { "ownerPerWorld100", D(x => Per100(x.Owner, x.Days)) }, { "ownerPerSettlement100", D(x => Per100(x.Owner, x.SetlDays)) },
+                    { "changesPerSettlement100", D(x => Per100(x.Changes, x.SetlDays)) }, { "midDaysPerShift", D(x => x.Mid > 0 ? x.MidDays / x.Mid : double.NaN) },
+                    { "bigPerWorld100", D(x => Per100(x.Big, x.Days)) }, { "bigPerCity100", D(x => Per100(x.Big, x.BigDays)) },
+                    { "bigSiegesPerWorld100", D(x => Per100(x.BigSieges, x.Days)) }, { "bigSackedPerWorld100", D(x => Per100(x.BigSacked, x.Days)) },
+                    { "kindsPerSettlement100", kinds },
+                    { "warDays", WarSpans(d0, d1).Json() }, { "siegeDaysBig", SiegeSpans(d0, d1, s => s.Tier >= Sim.BIG_TIER).Json() }, { "siegeDaysOther", SiegeSpans(d0, d1, s => s.Tier < Sim.BIG_TIER).Json() },
+                    { "siegeLead", LeadSpans(d0, d1, f => f.SiegeLead).Json() }, { "warLead", LeadSpans(d0, d1, f => f.WarLead).Json() },
+                });
+            }
+            o.Add("windows", wl);
+            o.Add("unfinishedWars", UnfinishedWars());
+            return o;
+        }
+
+        private static readonly string[] V3Kinds = { "capture", "secede", "famine", "plague", "siege", "burn", "tierUp", "tierDown", "abandon", "resettle", "found" };
+        private static readonly Dictionary<string, string> V3KindTr = new()
+        {
+            ["capture"] = "Fetih", ["secede"] = "Bölünme", ["famine"] = "Açlık başladı", ["plague"] = "Salgın başladı", ["siege"] = "Kuşatma (hücum)",
+            ["burn"] = "Yakıldı / yandı", ["tierUp"] = "Kademe yükseldi", ["tierDown"] = "Kademe düştü", ["abandon"] = "Terk (harabe)",
+            ["resettle"] = "Harabeye yeniden yerleşim", ["found"] = "Kuruluş (durum değişimi sayılmaz)",
+        };
+
+        private void V3Md(StringBuilder sb)
+        {
+            void L(string s = "") => sb.Append(s).Append('\n');
+            var wins = V3Wins();
+            string P(double x) => Pct(x);
+            L("## v3: durum değişimi");
+            L();
+            L($"Yol haritası v3: dünya büyüyerek değil, durum değiştirerek yaşar. Bütün değerler dünya başına; hücre: dünyalar arası medyan (p10–p90). \"100 günde\": pencerede sayılan / pencerenin günü × 100; \"yerleşim başına\": yaşayan yerleşim-günlerine bölünür. Büyük şehir = Şehir kademesi (kademe {Sim.BIG_TIER}, nüfus ≥ 100; histerezisle ≥ 85). Isınma: koşunun ilk üçte biri ({WarmDays} gün). Dünya hâlâ 8 kamptan başlayıp ilk on yıllarda büyüyor (dünya üretimi sonraki adım); bu yüzden bütün koşunun değerleri ayrıca verilmiştir.");
+            if (O.Proj != 1) L($"†: gelecek zaman ölçeğine bağlı. Yol haritası v3'ün hedefleri yeni takvimdedir (1 yıl = 40 gün; eski {YEAR} günlük yıl ≈ 30 gün): bugünkü ölçekte ölçülen oranlar ×{F(O.Proj)}, süreler ÷{F(O.Proj)} ile yansıtılır (`--proj`). Yeni takvime geçince yansıtma 1 olur.");
+            L();
+            L("| Ölçü | " + string.Join(" | ", wins.Select(w => w.Name)) + (O.Proj != 1 ? $" | yeni takvimde (×{F(O.Proj)} / ÷{F(O.Proj)}, ısınmadan sonra)" : "") + " |");
+            L("|---|" + string.Concat(wins.Select(_ => "---|")) + (O.Proj != 1 ? "---|" : ""));
+            void Row(string name, Func<V3W, double> f, Func<double, string> fmt, Func<double, string> proj = null)
+            {
+                var cells = wins.Select(w => Cell(V3Dist(w.D0, w.D1, f), fmt)).ToList();
+                string pc = "";
+                if (O.Proj != 1) { var last = wins[wins.Count - 1]; pc = proj != null ? " | " + Cell(V3Dist(last.D0, last.D1, f), proj) : " | "; }
+                L($"| {name} | " + string.Join(" | ", cells) + pc + " |");
+            }
+            Row("Yaşayan yerleşim (günlük ortalama)", x => x.SetlMean, F);
+            Row("Yaşayan yerleşim: en az (ortalamaya oranı)", x => x.SetlMin / x.SetlMean, P);
+            Row("Yaşayan yerleşim: en çok (ortalamaya oranı)", x => x.SetlMax / x.SetlMean, P);
+            Row("Yaşayan yerleşim: değişim katsayısı", x => x.SetlCv, P);
+            Row("Büyük şehir (günlük ortalama)", x => x.BigMean, F);
+            Row("El değiştirme (fetih + bölünme), dünyada / 100 gün", x => Per100(x.Owner, x.Days), F, PF);
+            Row("El değiştirme, yerleşim başına / 10 bin gün", x => Per100(x.Owner, x.SetlDays) * 100, F, PF);
+            Row("Durum değişimi (kuruluş hariç), yerleşim başına / 100 gün", x => Per100(x.Changes, x.SetlDays), F, PF);
+            Row("Durum değişimi, dünyada / 100 gün", x => Per100(x.Changes, x.Days), F, PF);
+            Row("Orta halka (Köy/Kasaba) kaydı: yerleşim başına kaç günde bir", x => x.Mid > 0 ? x.MidDays / x.Mid : double.NaN, F, PD);
+            Row("Büyük şehir el değiştirdi, dünyada / 100 gün", x => Per100(x.Big, x.Days), F, PF);
+            Row("Büyük şehir el değiştirdi, şehir başına / 100 gün", x => Per100(x.Big, x.BigDays), F, PF);
+            Row("Büyük şehre hücum, dünyada / 100 gün", x => Per100(x.BigSieges, x.Days), F, PF);
+            Row("Büyük şehir yağmalandı ama tutulmadı, dünyada / 100 gün", x => Per100(x.BigSacked, x.Days), F, PF);
+            L();
+            L("Durum değişimi türleri (yerleşim başına 10 bin günde; bölünme dışında olayın kademesi olaydan önceki):");
+            L();
+            L("| Tür | " + string.Join(" | ", wins.Select(w => w.Name)) + " |");
+            L("|---|" + string.Concat(wins.Select(_ => "---|")));
+            foreach (var k in V3Kinds) L($"| {V3KindTr[k]} (`{k}`) | " + string.Join(" | ", wins.Select(w => Cell(V3Dist(w.D0, w.D1, x => Per100(x.Kind(k), x.SetlDays) * 100), F))) + " |");
+            L();
+            L("Süreler (gün; bütün dünyalar havuzlanmış; savaş: ilandan ilişkiden düştüğü güne, koşu sonunda süren savaşlar hariç; kuşatma: hedefin önündeki ilk karargâhtan hücuma, karargâhsız hücum 1 gün; uyarı: büyük şehrin düşüşünden geriye):");
+            L();
+            L("| Süre | Pencere | n | p10 | medyan | p90 | ortalama | en çok |" + (O.Proj != 1 ? $" medyan, yeni takvimde (÷{F(O.Proj)}) |" : ""));
+            L("|---|---|---|---|---|---|---|---|" + (O.Proj != 1 ? "---|" : ""));
+            void SpanRow(string name, string win, Spans s) =>
+                L($"| {name} | {win} | {s.N} | {F(s.Q(0.1))} | {F(s.Q(0.5))} | {F(s.Q(0.9))} | {F(s.Mean)} | {F(s.Max)} |" + (O.Proj != 1 ? $" {PD(s.Q(0.5))} |" : ""));
+            foreach (var w in wins)
+            {
+                SpanRow("Savaş (hepsi)", w.Name, WarSpans(w.D0, w.D1));
+                foreach (var kind in new[] { "plain", "tribute", "reclaim", "crusade", "pact", "ally" })
+                {
+                    var s = WarSpans(w.D0, w.D1, x => x.Kind == kind);
+                    if (s.N > 0) SpanRow($"Savaş: {WarKindTr(kind)}", w.Name, s);
+                }
+                SpanRow("Kuşatma: büyük şehir", w.Name, SiegeSpans(w.D0, w.D1, s => s.Tier >= Sim.BIG_TIER));
+                SpanRow("Kuşatma: diğer yerleşimler", w.Name, SiegeSpans(w.D0, w.D1, s => s.Tier < Sim.BIG_TIER));
+                SpanRow("Uyarı: kuşatmanın başı → büyük şehrin düşüşü", w.Name, LeadSpans(w.D0, w.D1, f => f.SiegeLead));
+                SpanRow("Uyarı: savaşın başı → büyük şehrin düşüşü", w.Name, LeadSpans(w.D0, w.D1, f => f.WarLead));
+            }
+            L();
+            L($"Koşu sonunda süren savaş: {UnfinishedWars()} (sürelere girmedi).");
+            L();
+            // kuşatma sonuçları
+            {
+                var all = Ok.SelectMany(r => r.Stats.V3.Sieges).ToList();
+                string Out(IEnumerable<SiegeSpan> xs) { var l = xs.ToList(); return $"{l.Count} hücum: {l.Count(s => s.Outcome == "taken")} el değiştirdi, {l.Count(s => s.Outcome == "sacked")} yağmalandı (tutulmadı), {l.Count(s => s.Outcome == "repelled")} püskürtüldü"; }
+                L($"Kuşatma sonuçları (bütün koşu): büyük şehir: {Out(all.Where(s => s.Tier >= Sim.BIG_TIER))}; diğer: {Out(all.Where(s => s.Tier < Sim.BIG_TIER))}.");
+                L();
+            }
+            var falls = Ok.SelectMany(r => r.Stats.V3.BigFalls.Select(f => (r.Seed, f))).ToList();
+            if (falls.Count > 0)
+            {
+                L($"Büyük şehrin el değiştirmesi (bütün koşu, {falls.Count}; ilk 60):");
+                L();
+                L("| Seed | Gün (yıl) | Şehir | Nasıl | Önceki → yeni sahip | Kuşatma → düşüş | Savaş → düşüş |");
+                L("|---|---|---|---|---|---|---|");
+                foreach (var (seed, f) in falls.Take(60))
+                {
+                    var civs = Ok.First(r => r.Seed == seed).Stats.Civs;
+                    string Nm(int id) => civs.FirstOrDefault(c => c.Id == id)?.Name ?? $"#{id}";
+                    L($"| {S(seed)} | {f.Day} ({WorldStats.YearOf(f.Day)}) | {f.Name} | {(f.Kind == "secede" ? "bölünme" : "fetih")} | {Nm(f.From)} → {Nm(f.To)} | {(f.SiegeLead is int a ? $"{a} gün" : "–")} | {(f.WarLead is int b ? $"{b} gün" : "–")} |");
+                }
+                L();
+            }
+        }
+
+        private static string WarKindTr(string k) => k switch
+        {
+            "plain" => "sıradan", "tribute" => "haraç", "reclaim" => "tarihî hak", "crusade" => "Kutsal Sefer", "pact" => "savunma paktı", "ally" => "müttefik çağrısı", _ => k,
+        };
 
         // ------------------------------------------------------------ eski analizdeki sorunlar (TS v0.23)
         private double PooledShareAt(int year, int kShare, int kWeight)
@@ -876,7 +1309,7 @@ internal static class StatsMode
 
         private void KnownProblems()
         {
-            int y30 = Math.Min(30, Y), y60 = Math.Min(60, Y);
+            int y30 = Math.Max(1, Y / 2), y60 = Y;   // Faz 1b-4: eski analizin 30. ve 60. yılı = koşunun ortası ve sonu
             // araştırma ağacı (Faz 1b-3: kaldırıldı; ilerleme yerleşim kademesinde)
             {
                 var civs = Ok.SelectMany(r => r.Stats.Civs.Where(c => c.Founded == 0)).ToList();
@@ -957,7 +1390,7 @@ internal static class StatsMode
             }
             // doğuş seviyesi
             {
-                int from = Math.Min(25, Y);
+                int from = Math.Max(1, (Y * 5 + 6) / 12);   // eski analizin 25. yılı (60 yılda 25)
                 var m = PoolMap("levelBirth", from, Y);
                 double tot = m.Values.Sum(), top = m.Where(kv => int.TryParse(kv.Key, out int k) && k >= 5).Sum(kv => kv.Value);
                 var decs = Dec.Select(d => F(LevelMean(PoolMap("levelBirth", d.From, d.To)).Mean)).ToList();
@@ -988,13 +1421,13 @@ internal static class StatsMode
         {
             var o = new JObj
             {
-                { "label", O.Label }, { "created", Created }, { "seeds", O.Seeds }, { "years", O.Years }, { "measuredYears", Y }, { "yearDays", YEAR },
+                { "label", O.Label }, { "created", Created }, { "seeds", O.Seeds }, { "years", O.Years }, { "days", O.Days }, { "measuredYears", Y }, { "yearDays", YEAR }, { "proj", O.Proj },
                 { "jobs", O.Jobs }, { "wallSec", Wall },
                 { "worldSec", Ok.Count > 0 ? new JObj { { "median", Median(Ok.Select(r => r.Sec)) }, { "min", Ok.Min(r => r.Sec) }, { "max", Ok.Max(r => r.Sec) } } : null },
                 { "runsDir", Rel(O.Runs) },
                 { "definitions", new JObj
                     {
-                        { "year", "1 yıl = 120 gün; y. yıl = (y-1)*120+1 ... y*120. günler" },
+                        { "year", $"1 yıl = {YEAR} gün; y. yıl = (y-1)*{YEAR}+1 ... y*{YEAR}. günler" },
                         { "stats", "medyan, p10, p90: dünyalar arası, doğrusal ara değer" },
                         { "flow", "akış ölçüsü: yıl içindeki toplam" },
                         { "stock", "stok ölçüsü: yıl sonu değeri" },
@@ -1038,7 +1471,8 @@ internal static class StatsMode
             dec.Add("maps", maps);
             o.Add("decades", dec);
             o.Add("levels", new JObj { { "birth", LevelTable("levelBirth", false) }, { "death", LevelTable("levelDeath", false) }, { "alive", LevelTable("levelAlive", true) } });
-            o.Add("criteria", Crits.Select(c => (object)new JObj { { "id", c.Id }, { "name", c.Name }, { "rule", c.Rule }, { "pass", c.Pass }, { "measured", c.Measured }, { "data", c.Data } }).ToList());
+            o.Add("criteria", Crits.Select(c => (object)new JObj { { "id", c.Id }, { "name", c.Name }, { "rule", c.Rule }, { "pass", c.Pass }, { "info", c.Info }, { "scaled", c.Scaled }, { "measured", c.Measured }, { "data", c.Data } }).ToList());
+            o.Add("v3", V3Json());   // Faz 1b-4
             o.Add("knownProblems", KnownRows.Select(k => (object)new JObj { { "name", k.Name }, { "old", k.Old }, { "now", k.Now }, { "persists", k.Persists } }).ToList());
             return o;
         }
@@ -1084,7 +1518,7 @@ internal static class StatsMode
             int n = Ok.Count;
             L($"# Ölçüm raporu: {O.Label}");
             L();
-            L($"{All.Count} dünya (seed {O.SeedsText}) × {O.Years} yıl ({O.Years * YEAR} gün) · {Created} · `FD.Macro.Run stats --seeds {O.SeedsText} --years {O.Years} --jobs {O.Jobs} --verify {O.Verify} --saveload {O.SaveLoad}`");
+            L($"{All.Count} dünya (seed {O.SeedsText}) × {RunLen(O)}{(O.DaysGiven ? "" : $" ({O.Days} gün)")}, 1 yıl = {YEAR} gün · {Created} · `FD.Macro.Run stats --seeds {O.SeedsText} {(O.DaysGiven ? $"--days {O.Days}" : $"--years {O.Years}")} --jobs {O.Jobs} --verify {O.Verify} --saveload {O.SaveLoad}{(O.Proj != DefaultProj ? $" --proj {F(O.Proj)}" : "")}`");
             L();
             if (n > 0)
                 L($"Süre: {FmtSec(Wall)} duvar saati, {O.Jobs} iş parçacığı; dünya başına {F(Median(Ok.Select(r => r.Sec)))} sn (en az {F(Ok.Min(r => r.Sec))}, en çok {F(Ok.Max(r => r.Sec))}; yıl sonu hash'leri dâhil).");
@@ -1098,23 +1532,26 @@ internal static class StatsMode
             L();
             L("## Bitiş ölçütleri");
             L();
-            L("DESIGN-FAZ1.md, \"Bitiş ölçütleri\". ✓ geçti · ✗ kaldı · — ölçülemedi.");
+            L("DESIGN-FAZ1.md, \"Bitiş ölçütleri\" (1–5) ve yol haritası v3 (6–7, Faz 1b-4). ✓ geçti · ✗ kaldı · — ölçülemedi · ○ bilgi (hedef yok) · † gelecek zaman ölçeğine bağlı (yeni takvime yansıtılmış değerle değerlendirilir; bkz. \"v3: durum değişimi\").");
             L();
             L("| # | Ölçüt | Koşul | Ölçülen | Sonuç |");
             L("|---|---|---|---|---|");
-            foreach (var c in Crits) L($"| {c.Id} | {c.Name} | {c.Rule} | {c.Measured} | {Mark(c.Pass)} |");
+            foreach (var c in Crits) L($"| {c.Id} | {c.Name} | {c.Rule} | {c.Measured} | {Mark(c)} |");
             L();
             L("Tanımlar:");
             L();
-            L("- **1, 3:** \"41–60. yılların medyanı\": 41–60. yıllardaki bütün (dünya, yıl) değerlerinin medyanı (16 dünya × 20 yıl = 320 değer); 6–20. yıllar için de aynı. Büyük olay = `GameEvent.Major == true` olan olaylar (`Sim.OnEvent` ile sayılır, `World.Events` kırpılmasından etkilenmez). Kamp ölçütünde yıllık değer, o yıl her gün sayılan yaşayan kamp sayısının ortalamasıdır (korsan koyları dâhil; yıl sonu sayımıyla değer ayrıca verilmiştir).");
+            L($"- **1, 3:** \"{LateWin.From}–{LateWin.To}. yılların medyanı\": {LateWin.From}–{LateWin.To}. yıllardaki bütün (dünya, yıl) değerlerinin medyanı ({n} dünya × {LateWin.To - LateWin.From + 1} yıl = {n * (LateWin.To - LateWin.From + 1)} değer); {EarlyWin.From}–{EarlyWin.To}. yıllar için de aynı. Pencereler koşunun uzunluğuna göre: erken = koşunun %10'u – üçte biri, geç = son üçte biri (1 yıl = {YEAR} gün). Büyük olay = `GameEvent.Major == true` olan olaylar (`Sim.OnEvent` ile sayılır, `World.Events` kırpılmasından etkilenmez). Kamp ölçütünde yıllık değer, o yıl her gün sayılan yaşayan kamp sayısının ortalamasıdır (korsan koyları dâhil; yıl sonu sayımıyla değer ayrıca verilmiştir).");
             L("- **2:** Çöküş: medeniyet yok olur (`Civ.Alive` false olur) ya da medeniyet yaşarken başkentini kaybeder: bir önceki gün sonunda başkenti olan yerleşim (`Sim.Capital`, en kalabalık yerleşim) artık yaşamıyor ya da başka medeniyetin; medeniyetin o gün hâlâ yerleşimi vardır. Son yerleşimin düşmesi yok olma olarak bir kez sayılır.");
             L("- **4a:** Her on yılda doğan bütün kahramanların (bütün dünyalar) doğuş seviyelerinin ortalaması; her on yıl ≤ 2 olmalı. Doğuş seviyesi kahraman `World.Heroes`'a girdiği anda okunur.");
             L("- **4b:** Dünyada koşu boyunca herhangi bir kahramanın ulaştığı en yüksek seviye ≥ 8 olan dünyaların payı.");
             L("- **4c:** Dünya başına koşu boyunca efsane olan (`Hero.Legend`) kahraman sayısının dünyalar arası medyanı.");
             L("- **4d:** Koşu boyunca doğan bütün kahramanlardan (bütün dünyalar) koşu sonunda ölü (`State == \"dead\"`) olanların payı; emekli olanlar ve diyarı terk edenler ölü sayılmaz.");
             L("- **5a:** İlk `--verify` seed'i aynı süreçte toplayıcı bağlanmadan yeniden koşulur; her yıl sonundaki kanonik dünya hash'i (golden testteki FNV-1a) toplayıcılı koşuyla karşılaştırılır. Bu, determinizmi ve toplayıcının simülasyonu değiştirmediğini birlikte denetler.");
-            L("- **5b:** `Sim.Save(string)` ve `static Sim Sim.Load(string)` varsa ilk `--saveload` seed'i yıl ortasında (gün = yıl/2 × 120 + 37) kaydedilip yüklenir ve sonuna dek koşulur; yüklenen dünyanın hash'i ve sonraki yıl sonu hash'leri kesintisiz koşuyla karşılaştırılır.");
+            L($"- **5b:** `Sim.Save(string)` ve `static Sim Sim.Load(string)` varsa ilk `--saveload` seed'i yıl ortasında (gün = yıl/2 × {YEAR} + 37) kaydedilip yüklenir ve sonuna dek koşulur; yüklenen dünyanın hash'i ve sonraki yıl sonu hash'leri kesintisiz koşuyla karşılaştırılır.");
             L();
+            L("- **6–7 (v3):** bkz. \"v3: durum değişimi\" bölümü. Pencere: ısınmadan sonra (koşunun son üçte ikisi); 6b bütün koşu. Büyük şehir = Şehir kademesi (`Sim.BIG_TIER`). El değiştirme = fetih ya da bölünme. Kuşatma = hedefin önünde ilk savaş ordusunun karargâh kurduğu günden (`Agent.Muster`) hücum muharebesine; karargâhsız hücum 1 gün. Uyarı = kuşatmanın (ya da savaşın) başından büyük şehrin el değiştirdiği güne. Savaş = `War.Since`'ten savaşın ilişkiden düştüğü güne.");
+            L();
+            V3Md(sb);
             L("## Eski analizdeki sorunlar");
             L();
             L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");
@@ -1207,7 +1644,7 @@ internal static class StatsMode
             }
             L("## Yıllık ayrıntı");
             L();
-            L($"Hücre: medyan (p10–p90), {n} dünya. Yıl y = (y−1)·120+1 … y·120. günler. Bütün değerler `report.json` içinde (`metrics`), dünya başına değerler `{Rel(O.Runs)}` altında.");
+            L($"Hücre: medyan (p10–p90), {n} dünya. Yıl y = (y−1)·{YEAR}+1 … y·{YEAR}. günler. Bütün değerler `report.json` içinde (`metrics`), dünya başına değerler `{Rel(O.Runs)}` altında.");
             L();
             foreach (var grp in WorldStats.Defs.Select((d, k) => (d, k)).GroupBy(x => x.d.Group))
             {
@@ -1270,8 +1707,8 @@ internal static class StatsMode
         public string Summary()
         {
             var sb = new StringBuilder();
-            sb.Append($"\n{O.Label}: {Ok.Count}/{All.Count} dünya × {O.Years} yıl, {FmtSec(Wall)}\n");
-            foreach (var c in Crits) sb.Append($"  {Mark(c.Pass)} {c.Id,-3} {c.Name}: {c.Measured}\n");
+            sb.Append($"\n{O.Label}: {Ok.Count}/{All.Count} dünya × {RunLen(O)}, {FmtSec(Wall)}\n");
+            foreach (var c in Crits) sb.Append($"  {Mark(c)} {c.Id,-3} {c.Name}: {c.Measured}\n");
             sb.Append($"rapor: {Path.Combine(O.Out, "report.md")}, {Path.Combine(O.Out, "report.json")}; dünyalar: {O.Runs}\n");
             return sb.ToString();
         }
