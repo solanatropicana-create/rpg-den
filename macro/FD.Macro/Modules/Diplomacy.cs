@@ -328,14 +328,19 @@ public static class Diplomacy
     /// <summary>Saldırgan sınıfların savaş ilan etmeden yaptığı yağma akınları</summary>
     public static void ConsiderRaid(Sim s, Civ c)
     {
-        if (D.CLASSES[c.Cls].Aggression < 0.6 || s.InWar(c)) return;
+        // Faz 1 C3: kıtlıktaki aç medeniyet (saldırgan olmasa da) ambarı dolu komşusuna akın edebilir; yardım edene dokunmaz
+        var fam = c.Famine != null && c.Famine.Declared ? c.Famine : null;
+        if ((D.CLASSES[c.Cls].Aggression < 0.6 && fam == null) || s.InWar(c)) return;
         double sol = J.Sum(s.CivSettlements(c), x => x.Soldiers);
         if (sol < 5 || J.Some(s.W.Agents, a => a.Civ == c.Id && a.Purpose == "plunder")) return;
         var cap = s.Capital(c);
         int reach = s.Has(c, "navy") ? 34 : 20;
-        var targets = J.Filter(s.W.Settlements, x => x.Alive && x.Civ != c.Id && s.Rel(c.Id, x.Civ).Contact && s.RelValue(c.Id, x.Civ) < 0
-            && s.Day - s.Rel(c.Id, x.Civ).LastRaid > 180 && s.G.Dist(x.Tile, cap.Tile) <= reach && !J.T(s.Rel(c.Id, x.Civ).Treaty));
+        var targets = J.Filter(s.W.Settlements, x => x.Alive && x.Civ != c.Id && s.Rel(c.Id, x.Civ).Contact && s.RelValue(c.Id, x.Civ) < (fam != null ? 15 : 0)
+            && s.Day - s.Rel(c.Id, x.Civ).LastRaid > 180 && s.G.Dist(x.Tile, cap.Tile) <= reach && !J.T(s.Rel(c.Id, x.Civ).Treaty)
+            && (fam == null || (!fam.Helped.Contains(x.Civ) && s.FoodTotal(s.W.Civs[x.Civ]) > s.CivPop(s.W.Civs[x.Civ]) * Sim.FOOD_PER_POP * 40)));
         if (targets.Count == 0) return;
+        // saldırgan olmayan aç medeniyet çoğunlukla sabreder: kanunlu ve iyi olan daha az, kötü olan daha çok yağmaya döner
+        if (fam != null && D.CLASSES[c.Cls].Aggression < 0.6 && !s.Rng.Chance(JsMath.Max(0.05, 0.3 - c.Align.Good * 0.25 - c.Align.Law * 0.1))) return;
         var st = J.Sort(targets, (a, b) => (a.Soldiers * 3 + s.Pop(a) * 0.4) - (b.Soldiers * 3 + s.Pop(b) * 0.4))[0];
         double n = Math.Floor(sol * 0.5);
         if (n * 3 < st.Soldiers * 3 + s.Pop(st) * 0.3) return;
@@ -349,12 +354,14 @@ public static class Diplomacy
             Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = 0.8, Troops = n, Pop = pop, From = cap.Id, To = st.Id, Purpose = "plunder",
             Hull = route.Hull?.Id, Galleys = J.T(gal) ? gal : (double?)null,
         });
+        if (fam != null) s.Metric("famineRaid");
+        string raidWhy = fam != null ? $"Kıtlık: aç halk {Tr.Ek(s.W.Civs[st.Civ].Name, "in")} dolu ambarlarına göz dikti" : $"{D.CLASSES[c.Cls].Feature}: ganimet ve şan";
         if (route.Hull != null)
         {
             s.Metric("seaRaid");
-            s.Log("sea", $"{c.Name} deniz akıncıları {Tr.Ek(route.Hull.Name, "dan")} {Tr.Ek(st.Name, "a")} doğru yelken açtı.", civ: c.Id, tile: route.Hull.Port, cause: $"{D.CLASSES[c.Cls].Feature}: ganimet ve şan", major: true);
+            s.Log("sea", $"{c.Name} deniz akıncıları {Tr.Ek(route.Hull.Name, "dan")} {Tr.Ek(st.Name, "a")} doğru yelken açtı.", civ: c.Id, tile: route.Hull.Port, cause: raidWhy, major: true);
         }
-        else s.Log("war", $"{c.Name} akıncıları {Tr.Ek(st.Name, "a")} doğru yola çıktı.", civ: c.Id, tile: cap.Tile, cause: $"{D.CLASSES[c.Cls].Feature}: ganimet ve şan", major: true);
+        else s.Log("war", $"{c.Name} akıncıları {Tr.Ek(st.Name, "a")} doğru yola çıktı.", civ: c.Id, tile: cap.Tile, cause: raidWhy, major: true);
     }
 
     /// <summary>
@@ -1035,10 +1042,14 @@ public static class Diplomacy
         if (st.Plague != null) { acute += 1; why.Add("salgın kol geziyor"); }
         if (LongestWar(s, c) > 200) { acute += 0.75; why.Add("savaş bitmek bilmiyor"); }
         if (st.BurnedAt != null && s.Day - st.BurnedAt.Value < Sim.YEAR) { acute += 0.5; why.Add("evleri yakılıp yıkıldı"); }
+        // Faz 1 C3: kentte süren yokluk (ekmek, bira, alet) ve maaş ödeyemeyen boş hazine
+        if (Economy.LackCount(st, Economy.LACK_UNREST, true) > 0) { acute += 0.5; why.Add("pazarda ekmek ya da bira yok"); }
+        if (c.Broke != null && s.Day - c.Broke.Value > 30) { acute += 0.5; why.Add("hazine boş, maaşlar ödenmiyor"); }
         if (acute < 1) return 0;
         double u = chronic + acute;
         if (count >= 9) { u += JsMath.Min(1, (count - 8) * 0.25); why.Add("taşra yönetilemeyecek kadar geniş"); }
         u -= c.Align.Law * 0.5;
+        u -= Economy.ImarCalm(st);   // Faz 1 C3: bayındır kentin halkı sabırlı
         return u;
     }
 

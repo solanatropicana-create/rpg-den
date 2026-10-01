@@ -80,8 +80,60 @@ public static class Economy
         else if (knd == "hunt" || knd == "dock" || knd == "herbalist") season = winterImmune ? 1 : SEASON_WILD[s.Season];
         double toolF = 1;
         if (lvl >= 2 && s.St(c, "tools") < 0.5) toolF = 0.75;
+        if (lvl >= 2 && c.Broke != null) toolF *= BROKE_EXT;   // C3: hazine boşken L2+ yapıların bakımı aksar
         return (good, rate * D.LEVEL_MULT[lvl] * richness * m * season * toolF);
     }
+
+    // ------------------------------------------------------------ Faz 1 C3: altın ve ambar
+    // Altın ve ambar anlam kazansın: boştaki işçi az altın getirir; asker, kahraman ve L2–L3 yapı bakım ister; kasaba ve
+    // şehir bira, ekmek ve alet tüketir (yoksa büyüme yavaşlar, huzursuzluk artar); kıtlık tek büyük olaydır (komşular
+    // yardım eder ya da yüz çevirir, aç medeniyet yağmaya döner); hazine fazlası kamu işlerine (imar) akar.
+
+    /// <summary>işe yerleşemeyen (boştaki) işçinin günlük altını (eskiden 0,02: hazineler sınırsız büyüyordu)</summary>
+    public const double IDLE_GOLD = 0.004;
+    /// <summary>asker bakımı: günlük maaş (altın; eskiden 0,006) ve erzak (kişi başı gıdanın üstüne)</summary>
+    public const double SOLDIER_PAY = 0.01, SOLDIER_RATION = 0.05;
+    /// <summary>L2 ve L3 çıkarma yapısının günlük bakımı: altın ve alet aşınması (Demircilik'le alet yarı hızda aşınır)</summary>
+    public static readonly double[] EXT_GOLD = { 0, 0, 0.004, 0.01 }, EXT_TOOLS = { 0, 0, 0.0015, 0.003 };
+    /// <summary>medeniyete bağlı kahramanın yıllık maaşı: taban + seviye başına; mevsimde bir (30 günde) dörtte biri ödenir. Maaşı art
+    /// arda HERO_UNPAID mevsim ödenmeyen kahraman (yurttaysa) hizmetten ayrılır.</summary>
+    public const double HERO_WAGE = 12, HERO_WAGE_LV = 6, HERO_UNPAID = 2;
+    /// <summary>hazine boşken L2+ yapılar bu katla üretir; ödenemeyen her 10 günde yerleşim başına askerlerin bu payı firar eder</summary>
+    public const double BROKE_EXT = 0.8, DESERT = 0.1;
+    /// <summary>hazine boşluğu, ancak bu kadar günlük bakım biriktirince biter (kıl payı ödemeler bayrağı oynatmasın)</summary>
+    public const double BROKE_RESERVE = 30;
+    /// <summary>atölye işçi yuvası kademeyle büyür: kasaba ve şehir atölyeleri daha çok usta çalıştırır</summary>
+    public static readonly double[] WS_TIER = { 1, 1, 1.5, 2.5 };
+    /// <summary>kent tüketiminde yokluk: LACK_DAYS gün süren yokluk büyümeyi yavaşlatır (ekmek %12, bira %8, alet %5); LACK_LOG günde
+    /// kroniğe düşer; ekmek ya da bira yokluğu LACK_UNREST günden sonra huzursuzluk getirir (Diplomacy.Unrest; alet yokluğu getirmez:
+    /// madenler tükenince alet herkese kıt olur)</summary>
+    public const double LACK_DAYS = 10, LACK_LOG = 30, LACK_UNREST = 30;
+    private static readonly Dictionary<string, double> LACK_GROWTH = new() { ["bread"] = 0.12, ["beer"] = 0.08, ["tools"] = 0.05 };
+    /// <summary>aynı malın yokluğu medeniyet başına en çok bu kadar yılda bir kroniğe düşer</summary>
+    public const double LACK_LOG_GAP = 3;
+    private static readonly string[] LACK_GOODS = { "bread", "beer", "tools" };
+    /// <summary>kıtlık: açık bu kadar gün sürünce büyük olay olur; ambar art arda bu kadar gün (bir yıl) yetince biter: her kış
+    /// tekrarlayan açık aynı kıtlıktır. Kış sonunda birkaç günlük açık kıtlık sayılmaz: ilan için 10 gün ve ortalama %25 açık gerekir.</summary>
+    public const double FAMINE_DECLARE = 10, FAMINE_END = 120;
+    /// <summary>kıtlık ilanı için açık gıdanın ortalama bu payı olmalı (birkaç lokmalık açık kıtlık sayılmaz)</summary>
+    public const double FAMINE_SHORT = 0.25;
+    /// <summary>komşu yardımı: verenin kendine ayırdığı gıda (gün), yardım turları arası (gün), en çok tur, en çok kaç günlük gıda</summary>
+    public const double AID_KEEP = 60, AID_GAP = 30, AID_ROUNDS = 3, AID_DAYS = 10;
+    /// <summary>kıtlık turunda en çok bu kadar komşu yardım eder (en dost olandan başlayarak sorulur)</summary>
+    public const int AID_HELPERS = 3;
+    /// <summary>kamu işleri (imar): hazinenin yedeği (PW_RESERVE + PW_RESERVE_DAYS günlük bakım) aşan kısmının yılda PW_SPEND payı imara
+    /// harcanır (kıtlıkta ve hazine boşken durur); boştakilerden amele tutulur (yerleşimin nüfus payı kadar, kademeyle: PW_SLOTS), amele
+    /// en az AMELE_WAGE altın alır ve günde AMELE_MAT taş, kereste ya da tuğla harcar</summary>
+    public const double PW_RESERVE = 200, PW_RESERVE_DAYS = 60, PW_SPEND = 0.8, AMELE_WAGE = 0.012, AMELE_MAT = 0.04;
+    public static readonly double[] PW_SLOTS = { 0.05, 0.15, 0.3, 0.45 };
+    /// <summary>ambarla beslenen amele (angarya): PW_FOOD_KEEP günlük gıdanın üstündeki ambarın yılda PW_FOOD_SPEND payı, altın yetmeyince
+    /// amele tayınına gider (amele başı günde AMELE_FOOD gıda; imara AMELE_WAGE altın değerinde katkı)</summary>
+    public const double PW_FOOD_KEEP = 120, PW_FOOD_SPEND = 1, AMELE_FOOD = 0.1;
+    /// <summary>imar: kişi başı harcanan her altın IMAR_RATE puan; günde IMAR_DECAY payı söner; 100'de büyüme +IMAR_GROWTH, huzursuzluk
+    /// −IMAR_CALM; IMAR_REPAIR üstünde yanan evler iki kat hızlı onarılır</summary>
+    public const double IMAR_RATE = 12, IMAR_DECAY = 0.002, IMAR_GROWTH = 0.1, IMAR_CALM = 0.5, IMAR_REPAIR = 50;
+    /// <summary>imar bu düzeye ilk kez varınca kroniğe düşer (başkentte büyük olay)</summary>
+    public const double IMAR_LOG = 60;
 
     private static double Demand(Sim s, Civ c, string g, double P)
     {
@@ -154,7 +206,7 @@ public static class Economy
     {
         foreach (var st in s.CivSettlements(c))
         {
-            if ((st.BurnedHouses ?? 0) > 0 && s.Day - (st.BurnedAt ?? 0) > 20 && s.St(c, "wood") >= 4)
+            if ((st.BurnedHouses ?? 0) > 0 && s.Day - (st.BurnedAt ?? 0) > ((st.Imar ?? 0) >= IMAR_REPAIR ? 10 : 20) && s.St(c, "wood") >= 4)   // C3: bayındır kent çabuk onarılır
             {
                 s.Add(c, "wood", -4); st.BurnedHouses = (st.BurnedHouses ?? 0) - 1; st.BurnedAt = s.Day - 10;
             }
@@ -246,7 +298,7 @@ public static class Economy
                 double perW = def.Rate * (1 + s.E(c, "prodAll") * 0.5);
                 opts.Add(new JobOpt
                 {
-                    Key = def.Name, Slots = def.Slots * cnt, V = perW * JsMath.Max(0.05, margin), Run = n =>
+                    Key = def.Name, Slots = Math.Floor(def.Slots * cnt * WS_TIER[st.Tier]), V = perW * JsMath.Max(0.05, margin), Run = n =>
                     {
                         double outp = perW * n;
                         foreach (var g in inp.Keys()) outp = JsMath.Min(outp, s.St(c, g) / (inp.Get(g) ?? 1));
@@ -276,8 +328,7 @@ public static class Economy
                 jobs.Set(o.Key, (jobs.Get(o.Key) ?? 0) + n);
                 o.Run(n);
             }
-            jobs.Set("zanaatçı", avail);
-            s.Add(c, "gold", avail * 0.02);
+            jobs.Set("zanaatçı", avail);   // C3: boştakiler; altını ve kamu işleri PublicWorks'te
             st.Jobs = jobs;
             // araştırma puanı (ırk yatkınlığı yok; sınıf etkileri); bilginler mana kristali yakarsa +%25
             if (J.T(nr) && J.T(c.Research.Current))
@@ -290,8 +341,24 @@ public static class Economy
             }
         }
 
-        // Tüketim
-        double need = totalPop * Sim.FOOD_PER_POP * (1 - JsMath.Min(0.5, s.E(c, "frugal")));
+        // C3: hazine yedeğinin üstündeki altın kamu işlerine (imar) akar: boştakilerden amele tutulur; kalan boştakiler az altın getirir
+        double idleGold = PublicWorks(s, c, ss, totalPop);
+        // Tüketim (C3: askerin erzakı halkınkinin üstüne)
+        double soldiers = 0;
+        foreach (var x in ss) soldiers = soldiers + x.Soldiers;
+        double need = (totalPop * Sim.FOOD_PER_POP + soldiers * SOLDIER_RATION) * (1 - JsMath.Min(0.5, s.E(c, "frugal")));
+        // C3: kent tüketimi (kademe başına, kişi başı): bira ve alet; kasaba ve şehir gıdasının bir payını ekmekten ister
+        double beerNeed = 0, toolNeed = 0, breadNeed = 0;
+        foreach (var st in ss)
+        {
+            var tn = D.TOWN_NEEDS[st.Tier];
+            double P = s.Pop(st);
+            beerNeed += P * (tn.Get("beer") ?? 0);
+            toolNeed += P * (tn.Get("tools") ?? 0);
+            breadNeed += P * Sim.FOOD_PER_POP * (tn.Get("bread") ?? 0);
+        }
+        // ekmek önce yenir (FOOD_ORDER); kentlerin ekmek payı karşılanmıyorsa yokluk
+        bool lackBread = breadNeed > 0 && s.St(c, "bread") * D.GOODS["bread"].Food.Value < breadNeed * 0.8;
         foreach (var g in FOOD_ORDER)
         {
             double fv = D.GOODS[g].Food.Value;
@@ -312,33 +379,75 @@ public static class Economy
             double v = c.Stock.Get(g) ?? 0;
             if (v > capStore && g != "gold") s.Add(c, g, -(v - capStore) * 0.01);
         }
+        // C3: bira kentlerde daha çok içilir (eskiden herkes 0,004); yetmezse meyhaneler kurur
         double happy = 0;
-        if (s.St(c, "beer") > totalPop * 0.01) { s.Add(c, "beer", -totalPop * 0.004); happy = 0.15; }
-        double l2 = 0;
-        for (int i = 0; i < W.Tiles.Count; i++) { var t = W.Tiles[i]; if (t.Ext != null && t.Ext.Level >= 2 && t.Owner >= 0 && J.Some(ss, x => x.Id == t.Owner)) l2++; }
-        if (J.T(l2)) s.Add(c, "tools", -l2 * 0.0015 * (s.Has(c, "smithing") ? 0.5 : 1)); // demir aletler geç aşınır
+        bool lackBeer = false;
+        if (beerNeed > 0)
+        {
+            double haveBeer = s.St(c, "beer");
+            if (haveBeer >= beerNeed) { s.Add(c, "beer", -beerNeed); happy = 0.15; }
+            else { s.Add(c, "beer", -haveBeer); lackBeer = haveBeer < beerNeed * 0.8; }
+        }
+        // L2–L3 yapılar aleti aşındırır (L3 iki kat; demir aletler yarı hızda) ve altın bakımı ister
+        double l2 = 0, l3 = 0;
+        for (int i = 0; i < W.Tiles.Count; i++) { var t = W.Tiles[i]; if (t.Ext != null && t.Ext.Level >= 2 && t.Owner >= 0 && J.Some(ss, x => x.Id == t.Owner)) { if (t.Ext.Level >= 3) l3++; else l2++; } }
+        if (J.T(l2 + l3)) s.Add(c, "tools", -(l2 * EXT_TOOLS[2] + l3 * EXT_TOOLS[3]) * (s.Has(c, "smithing") ? 0.5 : 1)); // demir aletler geç aşınır
+        // C3: köy, kasaba ve şehir zanaatkârları alet tüketir
+        bool lackTools = false;
+        if (toolNeed > 0)
+        {
+            double haveTools = s.St(c, "tools");
+            if (haveTools >= toolNeed) s.Add(c, "tools", -toolNeed);
+            else { s.Add(c, "tools", -haveTools); lackTools = haveTools < toolNeed * 0.8; }
+        }
+        // yokluk ancak malı yapmayı bilen medeniyette sayılır (fırın, bira evi, aletçi): bilmeyen halk onu aramaz
+        lackBread = lackBread && s.Has(c, D.WORKSHOPS["bakery"].Tech);
+        lackBeer = lackBeer && s.Has(c, D.WORKSHOPS["brewery"].Tech);
+        lackTools = lackTools && s.Has(c, D.WORKSHOPS["toolmaker"].Tech);
+        foreach (var st in ss)
+        {
+            var tn = D.TOWN_NEEDS[st.Tier];
+            SetLack(st, "bread", lackBread && J.T(tn.Get("bread") ?? 0));
+            SetLack(st, "beer", lackBeer && st.Tier >= 1 && J.T(tn.Get("beer") ?? 0));
+            SetLack(st, "tools", lackTools && J.T(tn.Get("tools") ?? 0));
+        }
+        LackLog(s, c, ss);
         Gear.WearTick(s, c, ss);
         Gear.GearTick(s, c);
-        double soldiers = 0;
-        foreach (var x in ss) soldiers = soldiers + x.Soldiers;
         double mint = 0;
         foreach (var x in ss) mint += MintIncome(s, x);
-        s.Add(c, "gold", totalPop * 0.004 * (1 + s.E(c, "tax")) + mint - soldiers * 0.006);
+        double income = totalPop * 0.004 * (1 + s.E(c, "tax")) + mint;
+        s.Add(c, "gold", income);
+        // C3: bakım: asker maaşı ve L2–L3 yapılar (kahraman maaşı mevsimde bir: PayHeroes)
+        double extGold = l2 * EXT_GOLD[2] + l3 * EXT_GOLD[3];
+        double upkeep = soldiers * SOLDIER_PAY + extGold;
+        var bud = c.Budget ??= new CivBudget();
+        bud.Income = income + idleGold; bud.Soldiers = soldiers * SOLDIER_PAY; bud.Buildings = extGold;
+        bud.Heroes = 0;
+        foreach (var h in s.CivHeroes(c)) bud.Heroes += HeroWage(h) * 4 / Sim.YEAR;
+        bud.Upkeep = upkeep + bud.Heroes;
+        PayUpkeep(s, c, ss, upkeep);
+        if (s.Day % 30 == 0) PayHeroes(s, c);
 
         if (need > 0.01)
         {
             if (s.E(c, "noFamine") > 0) { s.Add(c, "grain", need); }
-            else foreach (var st in s.CivSettlements(c))
+            else
             {
-                st.Starving++;
-                if (st.Starving == 1) s.Log("economy", $"{Tr.Ek(st.Name, "da")} kıtlık başladı.", civ: c.Id, tile: st.Tile, cause: $"Gıda stoğu tükendi ({s.DateStr()})");
-                // açlık, açığın büyüklüğüyle orantılı birikir
-                st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
-                if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); }
+                // C3: kıtlık medeniyetin tek büyük olayıdır (yerleşim başına "kıtlık başladı" akışı yerine)
+                var fam = FamineDay(s, c, need, totalPop);
+                foreach (var st in s.CivSettlements(c))
+                {
+                    st.Starving++;
+                    // açlık, açığın büyüklüğüyle orantılı birikir
+                    st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
+                    if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); fam.Dead++; }
+                }
             }
         }
         else
         {
+            if (c.Famine != null) FamineOk(s, c);
             foreach (var st in s.CivSettlements(c))
             {
                 st.Starving = 0; st.Hunger = 0;
@@ -349,7 +458,7 @@ public static class Economy
                     double rate = 0;
                     foreach (var kv in st.Pop) rate += kv.Value * D.RACES[kv.Key].Growth;
                     double crowd = JsMath.Max(0.05, 1 - P / Sim.TIER_CROWD[st.Tier]) / (1 + JsMath.Max(0, totalPop - 60) / 70);
-                    st.GrowthAcc += rate * 0.0058 * (daysFood > 30 ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + happy) * (Gear.IsCold(s, c) ? 0.5 : 1); // üşüyen halk yavaş büyür
+                    st.GrowthAcc += rate * 0.0058 * (daysFood > 30 ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + happy) * (Gear.IsCold(s, c) ? 0.5 : 1) * LackGrowth(st) * ImarGrowth(st); // üşüyen halk yavaş büyür; C3: kentte yokluk, imar
                     while (st.GrowthAcc >= 1)
                     {
                         st.GrowthAcc -= 1;
@@ -391,6 +500,346 @@ public static class Economy
         foreach (double m in MILESTONES) if (tp >= m && c.Stats.PeakPop < m) s.Log("growth", $"{c.Name} nüfusu {J.S(m)} kişiye ulaştı.", civ: c.Id, major: m >= 50);
         c.Stats.PeakPop = JsMath.Max(c.Stats.PeakPop, tp);
     }
+
+    // ------------------------------------------------------------ C3: kent tüketiminde yokluk
+    /// <summary>Yerleşimin yokluk sayacı: yoksa bir gün artar, varsa silinir (hiç yokluk kalmayınca Lack null olur).</summary>
+    private static void SetLack(Settlement st, string g, bool on)
+    {
+        if (on) { st.Lack ??= new JsObj<double>(); st.Lack.Set(g, (st.Lack.Get(g) ?? 0) + 1); }
+        else if (st.Lack != null && st.Lack.Delete(g) && st.Lack.Count == 0) st.Lack = null;
+    }
+
+    /// <summary>Yerleşimde en az <paramref name="days"/> gündür süren yokluk sayısı (food: yalnız ekmek ve bira).</summary>
+    public static int LackCount(Settlement st, double days, bool food = false)
+    {
+        if (st.Lack == null) return 0;
+        int n = 0;
+        foreach (var kv in st.Lack) if (kv.Value >= days && (!food || kv.Key != "tools")) n++;
+        return n;
+    }
+
+    /// <summary>Kentte süren her yokluk büyümeyi yavaşlatır (bkz. LACK_GROWTH).</summary>
+    private static double LackGrowth(Settlement st)
+    {
+        if (st.Lack == null) return 1;
+        double f = 1;
+        foreach (var kv in st.Lack) if (kv.Value >= LACK_DAYS) f -= LACK_GROWTH.TryGetValue(kv.Key, out double g) ? g : 0.1;
+        return JsMath.Max(0.5, f);
+    }
+
+    private static readonly Dictionary<string, string> LACK_TEXT = new()
+    {
+        ["bread"] = "{0} kentlerinde fırınlar soğudu: halk ekmek bulamıyor.",
+        ["beer"] = "{0} meyhaneleri kurudu: kentlerde bira kalmadı.",
+        ["tools"] = "{0} zanaatkârları alet bulamıyor; tezgâhlar boş.",
+    };
+
+    /// <summary>Bir mal kentlerde LACK_LOG gündür yoksa akışa düşer: yokluğun başında bir kez (medeniyet başına LACK_LOG_GAP yılda en
+    /// çok bir, mal başına); süregelen yokluk her yıl yeniden yazılmaz.</summary>
+    private static void LackLog(Sim s, Civ c, List<Settlement> ss)
+    {
+        foreach (var g in LACK_GOODS)
+        {
+            int n = 0; bool start = false;
+            foreach (var x in ss) { double d = x.Lack?.Get(g) ?? 0; if (d >= LACK_LOG) n++; if (d == LACK_LOG) start = true; }
+            if (!start || s.Year - (c.Yearly.Get("lack_" + g) ?? -99) < LACK_LOG_GAP) continue;
+            c.Yearly.Set("lack_" + g, s.Year);
+            s.Metric("lack_" + g);
+            string why = g == "bread" ? "Kasabalılar gıdasının bir payını ekmekten ister; fırınlar ya da tahıl yetmiyor"
+                : g == "beer" ? "Bira evleri kentlerin susuzluğuna yetişemiyor"
+                : (s.St(c, "copper") < 2 || s.St(c, "tin") < 1) && s.St(c, "iron") < 2 ? "Bakır, kalay ve demir tükendi; aletçiler boş oturuyor" : "Aletçiler kentlerin aşındırdığı aletlere yetişemiyor";
+            s.Log("economy", LACK_TEXT[g].Replace("{0}", c.Name), civ: c.Id, cause: $"{why}; {J.S(n)} yerleşimde büyüme yavaşladı{(g == "tools" ? "" : ", halk huzursuz")}");
+        }
+    }
+
+    // ------------------------------------------------------------ C3: bakım ve hazine
+    /// <summary>Kahramanın mevsimlik maaşı (yıllık HERO_WAGE + HERO_WAGE_LV × seviye'nin dörtte biri, yuvarlanmış).</summary>
+    public static double HeroWage(Hero h) => JsMath.Round((HERO_WAGE + HERO_WAGE_LV * h.Level) / 4);
+
+    /// <summary>Günlük bakımı öder. Hazine yetmezse ödeyebildiğini öder ve medeniyet "hazinesi boş" olur: ödenemeyen her 10 günde
+    /// askerlerin bir payı firar eder, L2+ yapılar aksar (BROKE_EXT), yeni asker yazılmaz, kahramanlar ayrılmaya başlar.
+    /// Hazine BROKE_RESERVE günlük bakım biriktirince boşluk biter.</summary>
+    private static void PayUpkeep(Sim s, Civ c, List<Settlement> ss, double upkeep)
+    {
+        double gold = s.St(c, "gold");
+        if (gold >= upkeep)
+        {
+            s.Add(c, "gold", -upkeep);
+            s.Metric("upkeepGold", upkeep);
+            if (c.Broke != null && gold - upkeep >= JsMath.Max(20, (c.Budget?.Upkeep ?? upkeep) * BROKE_RESERVE))
+            {
+                double days = s.Day - c.Broke.Value;
+                c.Broke = null;
+                s.Log("economy", $"{c.Name} hazinesi yeniden doldu; maaşlar ödeniyor.", civ: c.Id, cause: $"{J.S(days)} gün süren darlık bitti");
+            }
+            return;
+        }
+        if (gold > 0) { s.Add(c, "gold", -gold); s.Metric("upkeepGold", gold); }
+        if (c.Broke == null)
+        {
+            c.Broke = s.Day;
+            s.Metric("broke");
+            var b = c.Budget;
+            s.Log("economy", $"{c.Name} hazinesi tükendi: askerlerin ve kahramanların maaşı ödenemiyor.", civ: c.Id, major: true,
+                cause: b != null ? $"Günlük gelir {J.S(JsMath.Round(b.Income * 10) / 10)}, bakım {J.S(JsMath.Round(b.Upkeep * 10) / 10)} altın; askerler firar ediyor, yapılar bakımsız" : "Askerler firar ediyor, yapılar bakımsız");
+        }
+        // firar: maaşı ödenmeyen askerlerin bir payı silahı bırakıp işine döner
+        if ((s.Day + c.Id) % 10 == 0)
+            foreach (var st in ss)
+                if (st.Soldiers > 0) { double n = JsMath.Max(1, Math.Floor(st.Soldiers * DESERT)); st.Soldiers -= n; s.Metric("deserted", n); }
+    }
+
+    /// <summary>Mevsimde bir (30 günde): medeniyete bağlı kahramanların maaşı (kahramanın kesesine). Maaşı art arda HERO_UNPAID mevsim
+    /// ödenmeyen (ya da hazinesi bir aydır boş medeniyetin) kahramanı yurttaysa hizmetten ayrılır (sözleşmeli olan hanına, öteki
+    /// tavernasına döner).</summary>
+    private static void PayHeroes(Sim s, Civ c)
+    {
+        foreach (var h in s.CivHeroes(c))
+        {
+            double w = HeroWage(h);
+            if (s.St(c, "gold") >= w)
+            {
+                s.Add(c, "gold", -w); h.Gold += w; h.Unpaid = null;
+                s.Metric("upkeepGold", w); s.Metric("upkeepHero", w);
+                continue;
+            }
+            h.Unpaid = (h.Unpaid ?? 0) + 1;
+            s.Metric("heroUnpaid");
+            bool broke = c.Broke != null && s.Day - c.Broke.Value >= 30;
+            if ((h.Unpaid < HERO_UNPAID && !broke) || h.State != "home") continue;
+            double seasons = h.Unpaid.Value;
+            h.Civ = -1; h.Contract = null; h.Unpaid = null;
+            s.Metric("heroQuit");
+            Will.Note(s, h, $"{c.Name} maaşını ödeyemeyince hizmetten ayrıldı");
+            s.Log("hero", $"{h.Name}, maaşı ödenmeyince {Tr.Ek(c.Name, "in")} hizmetinden ayrıldı.", civ: c.Id, tile: h.Pos, major: true,
+                cause: broke ? $"{c.Name} hazinesi {J.S(s.Day - c.Broke.Value)} gündür boş" : $"{J.S(seasons)} mevsimdir maaş alamadı; hazinede {J.S(Math.Floor(s.St(c, "gold")))} altın var");
+            Will.ReturnToBase(s, h);
+        }
+    }
+
+    // ------------------------------------------------------------ C3: kıtlık (tek büyük olay)
+    private static readonly HashSet<string> GENEROUS = new() { "cleric", "paladin", "druid", "monk", "bard" };
+
+    /// <summary>Gıda açığı olan gün: kıtlık kaydı açılır ya da sürer; açık FAMINE_DECLARE gün sürünce ve ortalama açık ihtiyacın
+    /// FAMINE_SHORT payını geçince büyük olay olarak ilan edilir, komşulara yardım çağrısı gider (AID_GAP günde bir, en çok AID_ROUNDS
+    /// kez). Ambar FAMINE_END gün art arda yetmeden kıtlık bitmez (kışın tekrarlayan açık aynı kıtlıktır).</summary>
+    private static FamineState FamineDay(Sim s, Civ c, double need, double totalPop)
+    {
+        var f = c.Famine ??= new FamineState { Since = s.Day, NextAid = s.Day };
+        f.Days++; f.OkDays = 0;
+        f.Short += JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
+        s.Metric("famineDays");
+        if (!f.Declared && f.Days >= FAMINE_DECLARE && f.Short / f.Days >= FAMINE_SHORT)
+        {
+            f.Declared = true;
+            f.Why = FamineWhy(s, c);
+            s.Metric("famine");
+            int n = s.CivSettlements(c).Count;
+            s.Log("economy", $"KITLIK! {c.Name} ambarları boşaldı; {(n > 1 ? $"{J.S(n)} yerleşimde" : "yurtta")} halk aç.", civ: c.Id, tile: s.Capital(c)?.Tile, major: true,
+                cause: $"{f.Why}; günde {J.S(JsMath.Round(need * 10) / 10)} gıda eksik");
+        }
+        if (f.Declared && s.Day >= f.NextAid && f.Rounds < AID_ROUNDS) FamineAid(s, c, f, totalPop);
+        return f;
+    }
+
+    /// <summary>Kıtlığın nedeni: yanan tarlalar, kuşatma ve savaş, kış, salgın, yoksa ambarın nüfusa yetmemesi.</summary>
+    private static string FamineWhy(Sim s, Civ c)
+    {
+        var why = new List<string>();
+        int burned = 0;
+        foreach (var t in s.W.Tiles) if (t.Ext != null && t.Ext.Kind == "farm" && J.T(t.Ext.Burned) && t.Owner >= 0 && s.Settlement(t.Owner)?.Civ == c.Id) burned++;
+        if (burned > 0) why.Add($"{J.S(burned)} tarla yanmış");
+        if (s.InWar(c)) why.Add("savaş tarlaları boş bıraktı");
+        if (s.Season == 3) why.Add(s.W.Story != null && s.W.Story.LastWinter == s.Year ? "sert kış ambarları tüketti" : "kış ortası");
+        if (J.Some(s.CivSettlements(c), x => x.Plague != null)) why.Add("salgın çiftçileri yatağa düşürdü");
+        if (why.Count == 0) why.Add("ambarlar büyüyen nüfusa yetmedi");
+        return J.TrCap(string.Join(", ", why));
+    }
+
+    /// <summary>Ambarın yettiği gün: FAMINE_END gün art arda tok geçince kıtlık biter (ilan edildiyse kroniğe düşer).</summary>
+    private static void FamineOk(Sim s, Civ c)
+    {
+        var f = c.Famine;
+        f.OkDays++;
+        if (f.OkDays < FAMINE_END) return;
+        c.Famine = null;
+        if (!f.Declared) return;
+        s.Metric("famineEnd");
+        var helped = J.Map(J.Filter(f.Helped, id => id >= 0 && id < s.W.Civs.Count), id => s.W.Civs[id].Name);
+        var refused = J.Map(J.Filter(f.Refused, id => id >= 0 && id < s.W.Civs.Count), id => s.W.Civs[id].Name);
+        string aid = helped.Count > 0 ? $"yardım edenler: {Lore.JoinVe(J.Unique(helped))} ({J.S(JsMath.Round(f.AidFood))} gıda)" : "kimse yardıma gelmedi";
+        if (refused.Count > 0) aid += $"; yüz çevirenler: {Lore.JoinVe(J.Unique(refused))}";
+        double span = JsMath.Max(f.Days, s.Day - FAMINE_END - f.Since + 1);   // ilk açıktan son açığa
+        s.Log("economy", $"{c.Name} kıtlığı atlattı: {J.S(span)} gün sürdü ({J.S(f.Days)} gün aç), {(f.Dead > 0 ? $"{J.S(f.Dead)} kişi açlıktan öldü" : "açlıktan ölen olmadı")}.", civ: c.Id, tile: s.Capital(c)?.Tile,
+            major: f.Dead > 0 || f.Days >= 20, cause: J.TrCap(aid));
+    }
+
+    /// <summary>
+    /// Kıtlıkta komşulara çağrı (en dost olandan başlayarak; en çok AID_HELPERS yardım eder): temastaki, savaşta olmayan, kendisi aç
+    /// olmayan ve kendine AID_KEEP günlük gıda ayırdıktan sonra fazlası olan her medeniyet karar verir: ilişki, iyilik, cömert sınıf
+    /// (rahip, paladin, druid, keşiş, ozan) ve kötülük olasılığı belirler. Yardım eden en çok AID_DAYS günlük gıda yollar (fazlasının
+    /// %35'i), aç medeniyet ona minnet duyar (+20); yüz çevirene kin tutar (−12) ve bu kıtlıkta bir daha sormaz.
+    /// </summary>
+    private static void FamineAid(Sim s, Civ c, FamineState f, double totalPop)
+    {
+        f.Rounds++;
+        f.NextAid = s.Day + AID_GAP;
+        double perDay = JsMath.Max(1, totalPop * Sim.FOOD_PER_POP);
+        var helped = new List<string>();
+        var refused = new List<string>();
+        var asked = J.Sort(J.Filter(s.W.Civs, o => o.Alive && o.Id != c.Id && s.Rel(o.Id, c.Id).Contact && !s.AtWar(o.Id, c.Id) && !(o.Famine != null && o.Famine.Declared) && !f.Refused.Contains(o.Id)),
+            (x, y) => J.Or(s.RelValue(y.Id, c.Id) - s.RelValue(x.Id, c.Id), x.Id - y.Id));
+        foreach (var o in asked)
+        {
+            if (helped.Count >= AID_HELPERS) break;
+            double surplus = s.FoodTotal(o) - s.CivPop(o) * Sim.FOOD_PER_POP * AID_KEEP;
+            if (surplus < perDay * 5) continue;   // verecek fazlası yok: kimse onu suçlamaz
+            double rel = s.RelValue(o.Id, c.Id);
+            double p = 0.3 + rel / 100 + o.Align.Good * 0.3 + (GENEROUS.Contains(o.Cls) ? 0.15 : 0) - (Diplomacy.IsEvil(s, o) ? 0.25 : 0);
+            if (!s.Rng.Chance(JsMath.Max(0.05, JsMath.Min(0.95, p))))
+            {
+                f.Refused.Add(o.Id);
+                s.AddMod(c.Id, o.Id, "noaid", "Kıtlıkta yüz çevirdi", -12, -24, 0.01, false);
+                s.Metric("famineRefused");
+                refused.Add(o.Name);
+                continue;
+            }
+            double amount = Math.Floor(JsMath.Min(surplus * 0.35, perDay * AID_DAYS));
+            double left = amount;
+            // en bol gıdadan başlayarak yüklenir
+            foreach (var g in J.Sorted(FOOD_KINDS, (x, y) => J.Or(s.St(o, y) * D.GOODS[y].Food.Value - s.St(o, x) * D.GOODS[x].Food.Value, FOOD_KINDS.IndexOf(x) - FOOD_KINDS.IndexOf(y))))
+            {
+                if (left <= 0) break;
+                double fv = D.GOODS[g].Food.Value;
+                double q = Math.Floor(JsMath.Min(s.St(o, g), left / fv));
+                if (q <= 0) continue;
+                s.Add(o, g, -q); s.Add(c, g, q);
+                left -= q * fv;
+            }
+            double sent = amount - JsMath.Max(0, left);
+            if (sent <= 0) continue;
+            f.AidFood += sent;
+            if (!f.Helped.Contains(o.Id)) f.Helped.Add(o.Id);
+            s.AddMod(c.Id, o.Id, "aid", "Kıtlıkta uzanan el", 20, 30, 0.005, false);
+            s.AddMod(o.Id, c.Id, "aidgiven", "Kıtlıkta yardım ettiğimiz halk", 5, 10, 0.01, false);
+            s.Metric("famineAid"); s.Metric("famineAidFood", sent);
+            helped.Add($"{o.Name} ({J.S(JsMath.Round(sent))} gıda)");
+        }
+        if (helped.Count == 0 && refused.Count == 0) return;
+        string text = helped.Count > 0 && refused.Count > 0 ? $"{Lore.JoinVe(helped)} aç {c.Name} halkına erzak kervanı yolladı; {Lore.JoinVe(refused)} yüz çevirdi."
+            : helped.Count > 0 ? $"{Lore.JoinVe(helped)} aç {c.Name} halkına erzak kervanı yolladı."
+            : $"{c.Name} kıtlıkta komşularından yardım istedi; {Lore.JoinVe(refused)} yüz çevirdi.";
+        s.Log("diplomacy", text, civ: c.Id, tile: s.Capital(c)?.Tile, major: true,
+            cause: helped.Count > 0 ? "Minnet unutulmaz; kapısını kapatanlar da unutulmaz" : "Ambarları dolu komşular kapılarını kapattı");
+    }
+
+    private static readonly List<string> FOOD_KINDS = new() { "grain", "fish", "meat", "bread" };
+
+    // ------------------------------------------------------------ C3: kamu işleri (imar)
+    /// <summary>
+    /// Kamu işleri (imar). Hazine yedeğini (PW_RESERVE + PW_RESERVE_DAYS günlük bakım) aşan altının yılda PW_SPEND payı kamu işlerine
+    /// akar; altın yetmezse ambarın fazlası (PW_FOOD_KEEP günlük gıdanın üstü, yılda PW_FOOD_SPEND payı) amele tayını olur (angarya).
+    /// Yerleşimlerdeki boştakilerden (zanaatçı) nüfusun PW_SLOTS payına dek amele tutulur: önce altınla (amele başı en az AMELE_WAGE),
+    /// sonra ambarla (amele başı AMELE_FOOD gıda). Her amele günde AMELE_MAT yapı malı (taş, kereste ya da tuğla; en bol olandan) harcar;
+    /// malzeme yoksa iş durur. Kıtlıkta ve hazine boşken durur. Harcanan altın (ve ambarla beslenen amele başı AMELE_WAGE değeri)
+    /// yerleşimin imarını yükseltir (kişi başı × IMAR_RATE; günde IMAR_DECAY payı söner). Kalan boştakiler IDLE_GOLD getirir; dönen
+    /// değer boştakilerin altınıdır (bütçe için).
+    /// </summary>
+    private static double PublicWorks(Sim s, Civ c, List<Settlement> ss, double totalPop)
+    {
+        double upk = c.Budget?.Upkeep ?? 0;
+        double reserve = PW_RESERVE + upk * PW_RESERVE_DAYS;
+        bool stop = (c.Famine != null && c.Famine.Declared) || c.Broke != null;
+        double budget = stop ? 0 : JsMath.Max(0, s.St(c, "gold") - reserve) * PW_SPEND / Sim.YEAR;
+        double foodBudget = stop ? 0 : JsMath.Max(0, s.FoodTotal(c) - totalPop * Sim.FOOD_PER_POP * PW_FOOD_KEEP) * PW_FOOD_SPEND / Sim.YEAR;
+        double hireGold = Math.Floor(budget / AMELE_WAGE);
+        // yapı malı: amele başı AMELE_MAT taş, kereste ya da tuğla (ambarda ne kadar varsa)
+        double mats = s.St(c, "stone") + s.St(c, "wood") + s.St(c, "bricks");
+        double cap = 0;
+        foreach (var st in ss) if (st.Alive) cap += JsMath.Min(st.Jobs.Get("zanaatçı") ?? 0, Math.Floor(s.Pop(st) * PW_SLOTS[st.Tier]));
+        double hire = JsMath.Min(cap, JsMath.Min(hireGold + Math.Floor(foodBudget / AMELE_FOOD), Math.Floor(mats / AMELE_MAT)));
+        double ratio = cap > 0 ? hire / cap : 0;
+        // amele yerleşimlere boştakilerinin (yuva payına dek) oranıyla dağıtılır
+        var hired = new List<double>();
+        double used = 0;
+        foreach (var st in ss)
+        {
+            double a = 0;
+            if (st.Alive && hire > 0)
+            {
+                double z = st.Jobs.Get("zanaatçı") ?? 0;
+                a = Math.Floor(JsMath.Min(z, Math.Floor(s.Pop(st) * PW_SLOTS[st.Tier])) * ratio + 1e-9);
+            }
+            hired.Add(a);
+            used += a;
+        }
+        // önce altınla tutulur (bütçenin tamamı harcanır), kalanı ambar besler
+        double fed = JsMath.Max(0, used - hireGold);
+        double spend = used > fed ? budget : 0;
+        double worth = spend + fed * AMELE_WAGE;   // imara giden değer (altın cinsinden)
+        double idleGold = 0;
+        for (int i = 0; i < ss.Count; i++)
+        {
+            var st = ss[i];
+            if (!st.Alive) continue;
+            double a = hired[i];
+            double z = st.Jobs.Get("zanaatçı") ?? 0;
+            if (a > 0)
+            {
+                st.Jobs.Set("zanaatçı", z - a);
+                st.Jobs.Set("amele", a);
+                z -= a;
+            }
+            idleGold += z * IDLE_GOLD;
+            double P = s.Pop(st);
+            double im = (st.Imar ?? 0) * (1 - IMAR_DECAY) + (a > 0 ? IMAR_RATE * worth * (a / used) / JsMath.Max(10, P) : 0);
+            st.Imar = im >= 0.05 ? JsMath.Min(100, im) : null;
+            if ((st.Imar ?? 0) >= IMAR_LOG && !J.T(st.ImarLog))
+            {
+                st.ImarLog = true;
+                s.Metric("imarTown");
+                bool isCap = s.Capital(c)?.Id == st.Id;
+                s.Log("build", $"{st.Name} bayındır bir {(st.Tier >= 3 ? "şehre" : st.Tier == 2 ? "kasabaya" : "köye")} dönüştü: taş döşeli yollar, çeşmeler, su kanalları.", civ: c.Id, tile: st.Tile, major: isCap,
+                    cause: $"{c.Name} {(fed > 0 && spend <= 0 ? "ambarlarının fazlası yıllardır angaryaya" : "hazinesinin fazlası yıllardır imara")} akıyor; halk daha hızlı çoğalıyor, yangın yerleri çabuk onarılıyor");
+            }
+        }
+        if (used > 0)
+        {
+            // yapı malı: önce en bol olandan
+            double need = used * AMELE_MAT;
+            foreach (var g in J.Sorted(PW_MATS, (x, y) => J.Or(s.St(c, y) - s.St(c, x), PW_MATS.IndexOf(x) - PW_MATS.IndexOf(y))))
+            {
+                if (need <= 0) break;
+                double take = JsMath.Min(need, s.St(c, g));
+                s.Add(c, g, -take); need -= take;
+            }
+            if (spend > 0) { s.Add(c, "gold", -spend); s.Metric("publicWorks", spend); }
+            if (fed > 0)
+            {
+                // amele tayını: önce çabuk bozulan, ucuz gıdadan
+                double ration = fed * AMELE_FOOD;
+                foreach (var g in FOOD_KINDS)
+                {
+                    if (ration <= 1e-9) break;
+                    double fv = D.GOODS[g].Food.Value;
+                    double take = JsMath.Min(ration, s.St(c, g) * fv);
+                    s.Add(c, g, -take / fv); ration -= take;
+                }
+                s.Metric("publicWorksFood", fed * AMELE_FOOD);
+            }
+            s.Metric("amele", used);
+        }
+        s.Add(c, "gold", idleGold);
+        return idleGold;
+    }
+
+    private static readonly List<string> PW_MATS = new() { "stone", "wood", "bricks" };
+
+    /// <summary>İmarın büyüme katsayısı (100'de 1 + IMAR_GROWTH).</summary>
+    private static double ImarGrowth(Settlement st) => 1 + IMAR_GROWTH * (st.Imar ?? 0) / 100;
+
+    /// <summary>İmarın huzursuzluğu azaltması (Diplomacy.Unrest): 100'de IMAR_CALM.</summary>
+    public static double ImarCalm(Settlement st) => IMAR_CALM * (st.Imar ?? 0) / 100;
 
     /// <summary>Orman yeniden büyümesi (30 günde bir, dünya düzeyinde)</summary>
     public static void RegrowForests(Sim s)
@@ -780,10 +1229,11 @@ public static class Economy
         bool unarmed = s.E(c, "unarmed") > 0;
         if (s.Has(c, "training") || tribal || unarmed) ratio = (0.07 + cls.Aggression * 0.07 + s.E(c, "warband")) * (war ? 1.8 : 1) * (c.Threat > 0.5 ? 1.3 : 1);
         double deficit = 0;
+        bool broke = c.Broke != null;   // C3: hazine boşken yeni asker yazılmaz
         foreach (var st in s.CivSettlements(c))
         {
             double target = Math.Floor(s.Pop(st) * ratio);
-            if (st.Soldiers < target)
+            if (st.Soldiers < target && !broke)
             {
                 double n = JsMath.Min(2, target - st.Soldiers);
                 for (int i = 0; i < n; i++)

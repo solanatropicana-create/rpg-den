@@ -617,8 +617,8 @@
    "group": "gıda",
    "food": 2.4,
    "src": "Fırın (2 tahıl)",
-   "use": "Yemek: tahıldan %20 daha doyurucu",
-   "lack": "Tahıl çiğ yenir, gıda daha çabuk biter"
+   "use": "Yemek: tahıldan %20 daha doyurucu; kasabalılar gıdasının %30'unu, şehirliler %50'sini ekmekten ister",
+   "lack": "Tahıl çiğ yenir; kasaba ve şehirde büyüme yavaşlar, halk huzursuzlanır"
   },
   "beer": {
    "id": "beer",
@@ -627,8 +627,8 @@
    "tier": "işlenmiş",
    "group": "gıda",
    "src": "Bira evi (2 tahıl)",
-   "use": "Halk içer: nüfus daha hızlı büyür; hanlara satılır",
-   "lack": "Büyüme yavaşlar"
+   "use": "Halk içer (kasabada iki, şehirde üç kat): nüfus daha hızlı büyür; hanlara satılır",
+   "lack": "Büyüme yavaşlar; kasaba ve şehirde meyhaneler kurur, halk huzursuzlanır"
   },
   "wood": {
    "id": "wood",
@@ -697,8 +697,8 @@
    "tier": "işlenmiş",
    "group": "metal",
    "src": "Aletçi (bronz ya da demir)",
-   "use": "L2+ yapılarda aşınır; inşaatı hızlandırır; taş konak, sur, kale",
-   "lack": "L2+ yapılar %25 az üretir, inşaat yavaşlar"
+   "use": "L2+ yapılarda aşınır (L3 iki kat); kasaba ve şehir zanaatkârları tüketir; inşaatı hızlandırır; taş konak, sur, kale",
+   "lack": "L2+ yapılar %25 az üretir, inşaat yavaşlar; kentlerde zanaat durur, büyüme yavaşlar"
   },
   "arms": {
    "id": "arms",
@@ -5616,5 +5616,23 @@
    "wage": 3,
    "serve": 1
   }
- }
+ },
+ "TOWN_NEEDS": [
+  {
+   "beer": 0.002
+  },
+  {
+   "beer": 0.004
+  },
+  {
+   "beer": 0.008,
+   "tools": 0.0001,
+   "bread": 0.3
+  },
+  {
+   "beer": 0.012,
+   "tools": 0.0002,
+   "bread": 0.5
+  }
+ ]
 }

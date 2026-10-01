@@ -30,6 +30,9 @@ public static class D
     public static List<string> WORKSHOP_IDS;
     public static JsObj<CivicDef> CIVICS;
     public static JsObj<ShipDef> SHIPS;
+    /// <summary>Faz 1 C3: kent tüketimi, kademe başına (0 kamp … 3 şehir): kişi başı günlük bira ve alet; "bread": gıdanın
+    /// ekmekten karşılanması gereken payı</summary>
+    public static List<JsObj<double>> TOWN_NEEDS;
     // ---- classes.ts
     public static JsObj<RaceDef> RACES;
     public static JsObj<ClassDef> CLASSES;

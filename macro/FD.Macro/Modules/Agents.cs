@@ -550,6 +550,10 @@ public static class Agents
         if (cp != null && cp.Alive) { cp.Count = JsMath.Min(18, cp.Count + (a.Troops ?? 0)); if (J.T(a.Boss)) cp.Boss = true; cp.Loot += a.Loot ?? 0; }
     }
 
+    /// <summary>Faz 1 C3: yağmalanan kasabanın hazine payından (nüfus payı) canavarların götürdüğü oran; tahıl ambarından (kasabanın
+    /// ambarı yağmalanır, taşıyabildikleri kadar)</summary>
+    public const double RAID_TAKE = 0.6, RAID_FOOD = 1.5;
+
     private static void RaidSettlement(Sim s, Agent a, Settlement st)
     {
         var c = s.W.Civs[st.Civ];
@@ -580,9 +584,13 @@ public static class Agents
         s.Metric("raids");
         if (b.Winner == "B")
         {
-            double food = Math.Floor(s.St(c, "grain") * 0.25), gold = Math.Floor(s.St(c, "gold") * 0.3);
+            // Faz 1 C3: canavarlar yalnız yağmaladıkları kasabanın payını alır: hazineden nüfus payı × RAID_TAKE (en çok %30), ambardan
+            // nüfus payı × RAID_FOOD (en çok %25); tek yerleşimde eskisi gibi. Eskiden bütün medeniyetin hazinesinin %30'u gidiyordu.
+            double share = s.Pop(st) / JsMath.Max(1, s.CivPop(c));
+            double food = Math.Floor(s.St(c, "grain") * JsMath.Min(0.25, share * RAID_FOOD)), gold = Math.Floor(s.St(c, "gold") * JsMath.Min(0.3, share * RAID_TAKE));
             s.Add(c, "grain", -food); s.Add(c, "gold", -gold);
             a.Loot = food + gold;
+            s.Metric("raidGold", gold); s.Metric("raidFood", food);
             double burnt = s.Rng.Int(1, 3);
             st.BurnedHouses = (st.BurnedHouses ?? 0) + burnt; st.BurnedAt = s.Day;
             c.Threat += 0.45;
@@ -1134,13 +1142,16 @@ public static class Agents
         {
             st.BurnedHouses = (st.BurnedHouses ?? 0) + s.Rng.Int(1, 3); st.BurnedAt = s.Day;
             string loot = LootFrom(s, att, dfc, 0.2 * (1 + s.E(att, "lootMult")));
+            bool hungry = att.Famine != null && att.Famine.Declared;
+            if (hungry) loot = FamineLoot(s, att, dfc, loot);   // Faz 1 C3: aç akıncılar ambarı boşaltır
             string stolen = "";
             if (s.E(att, "lootTech") > 0 && s.Rng.Chance(s.E(att, "lootTech")))
             {
                 var cand = J.Filter(dfc.Research.Done, td => !s.Has(att, td) && D.TECH[td].Tree == "main" && D.TECH[td].Era <= att.Era && J.Every(D.TECH[td].Req, rq => s.Has(att, rq)));
                 if (cand.Count > 0) { string t = s.Rng.Pick(cand); Research.StealTech(s, att, t); stolen = $" ve {D.TECH[t].Name} bilgisini zorla öğrendi"; }
             }
-            s.Log("war", $"{att.Name} akıncıları {Tr.Ek(st.Name, "i")} yağmaladı: {loot}{stolen}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true, cause: $"{D.CLASSES[att.Cls].Feature}: yağma ekonomisi");
+            s.Log("war", $"{att.Name} akıncıları {Tr.Ek(st.Name, "i")} yağmaladı: {loot}{stolen}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true,
+                cause: hungry ? "Kıtlık: aç akıncılar komşunun ambarını boşalttı" : $"{D.CLASSES[att.Cls].Feature}: yağma ekonomisi");   // Faz 1 C3
         }
         else
         {
@@ -1149,6 +1160,27 @@ public static class Agents
         s.AddMod(dfc.Id, att.Id, "plunder", "Yağma baskını", -15, -45, 0.015, false);
         s.AddMod(att.Id, dfc.Id, "blood", "Dökülen kan", -4, -20, 0.02, false);
         ArmyReturn(s, a);
+    }
+
+    /// <summary>Faz 1 C3: kıtlıktaki akıncıların yağmada ayrıca taşıdığı erzak payı (her gıdanın)</summary>
+    public const double FAMINE_LOOT = 0.25;
+    private static readonly string[] FAMINE_LOOT_GOODS = { "grain", "bread", "meat", "fish" };
+
+    /// <summary>Faz 1 C3: kıtlıktaki medeniyetin akıncıları yağmalanan kentin ambarından her gıdanın FAMINE_LOOT payını da taşır.</summary>
+    private static string FamineLoot(Sim s, Civ att, Civ dfc, string loot)
+    {
+        double food = 0;
+        foreach (var g in FAMINE_LOOT_GOODS)
+        {
+            double q = Math.Floor(s.St(dfc, g) * FAMINE_LOOT);
+            if (q <= 0) continue;
+            s.Add(dfc, g, -q); s.Add(att, g, q);
+            food += q * D.GOODS[g].Food.Value;
+        }
+        if (food <= 0) return loot;
+        s.Metric("famineLootFood", food);
+        string part = $"{J.S(JsMath.Round(food))} gıdalık erzak";
+        return loot == "boş ambarlar" ? part : $"{loot}, {part}";
     }
 
     private static string LootFrom(Sim s, Civ att, Civ dfc, double frac)

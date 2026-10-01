@@ -117,6 +117,14 @@ public sealed class Settlement
     public double? LostDay;       // son el değiştirdiği gün (fetih ya da bölünme)
     public int? ClaimBy;          // üzerinde tarihî hakkı olan medeniyet (kurucusu olarak kaybeden ya da elinden ayrılan)
     public double? ClaimUntil;    // hakkın düştüğü gün
+    // ---- altın ve ambar (Faz 1, C3)
+    /// <summary>kent tüketiminde yokluk: mal ("bread" | "beer" | "tools") → art arda yoksun geçen gün; null: yokluk yok</summary>
+    public JsObj<double> Lack;
+    /// <summary>imar (bayındırlık, 0–100): hazinenin kamu işleriyle (amele) yükselir, bakımsız kalınca yavaşça söner; büyüme, huzur ve
+    /// onarım hızı verir (Economy.PublicWorks); null: hiç</summary>
+    public double? Imar;
+    /// <summary>imar ilk kez Economy.IMAR_LOG'a vardı ve kroniğe düştü</summary>
+    public bool? ImarLog;
 }
 
 public sealed class RelMod
@@ -225,6 +233,13 @@ public sealed class Civ
     public double? CapitalLostDay;       // başkentini son kaybettiği gün
     public string FallCause;             // son yerleşimini neden kaybetti (yok oluşun kroniğe düşen nedeni)
     public double? CrusadeDay;           // kendisine karşı son Kutsal Sefer çağrısının günü
+    // ---- altın ve ambar (Faz 1, C3)
+    /// <summary>süren kıtlık (null: yok); bkz. <see cref="FamineState"/></summary>
+    public FamineState Famine;
+    /// <summary>hazinenin bakım giderlerini karşılayamadığı ilk gün (null: hazine ödüyor)</summary>
+    public double? Broke;
+    /// <summary>son günün bütçesi (gelir ve bakım gideri, altın/gün); yapay zekâ ve gösterim için</summary>
+    public CivBudget Budget;
 }
 
 public sealed class HeroGoal
@@ -324,6 +339,8 @@ public sealed class Hero
     public string Epitaph;               // ölünce yazılan destan (kronikteki metnin aynısı)
     public int? DeathTile;               // öldüğü karo
     public string Killer;                // katili (yalın hâl: "Kırıkdiş Kampı'ndan bir goblin")
+    // ---- altın ve ambar (Faz 1, C3)
+    public double? Unpaid;               // maaşı art arda ödenmeyen mevsim (Economy.PayHeroes); null: maaşı ödeniyor
 }
 
 /// <summary>Kahramanın kilometre taşı (destanda kullanılır).</summary>
@@ -809,6 +826,8 @@ public sealed class DragonState
     public double SlainDay = -1;
     public string SlainBy;
     public double Hoard;
+    /// <summary>Faz 1 C3: uyandığında inindeki (uykudan kalan) hazine; ejderha bundan sonra kaçırdığı altınla büyür</summary>
+    public double Loot0;
 }
 
 public sealed class DragonMarch
@@ -816,4 +835,37 @@ public sealed class DragonMarch
     public int Civ;
     /// <summary>yola çıkış günü; ordusu başka seferdeyse en geç Until'e dek ertelenir</summary>
     public double Day, Until;
+}
+
+// ---- Faz 1, C3: altın ve ambar (bakım, kent tüketimi, kıtlık)
+
+/// <summary>Medeniyetin kıtlığı: tek büyük olay olarak yaşanır (Economy.FamineDay). Açık birkaç gün sürünce ilan edilir;
+/// ölenler, komşuların yardımı ya da reddi burada tutulur; ambar art arda birkaç gün yetince biter.</summary>
+public sealed class FamineState
+{
+    /// <summary>gıda açığının başladığı gün</summary>
+    public double Since;
+    /// <summary>açık geçen gün sayısı ve günlük açık paylarının toplamı (açık / ihtiyaç, gün başına en çok 1)</summary>
+    public double Days, Short;
+    /// <summary>büyük olay olarak ilan edildi mi (açık Economy.FAMINE_DECLARE gün sürünce)</summary>
+    public bool Declared;
+    /// <summary>açlıktan ölenler</summary>
+    public double Dead;
+    /// <summary>art arda tok geçen gün (Economy.FAMINE_END olunca kıtlık biter)</summary>
+    public double OkDays;
+    /// <summary>komşulara bir sonraki yardım çağrısının günü ve yapılan çağrı sayısı</summary>
+    public double NextAid, Rounds;
+    /// <summary>komşulardan gelen gıda (gıda birimi)</summary>
+    public double AidFood;
+    /// <summary>yardım eden ve yüz çeviren medeniyetler (bu kıtlıkta)</summary>
+    public List<int> Helped = new(), Refused = new();
+    /// <summary>kıtlığın nedeni (kronik)</summary>
+    public string Why;
+}
+
+/// <summary>Medeniyetin günlük bütçesi (altın/gün): vergi, darphane, zanaatçılar; asker, kahraman ve yapı bakımı.</summary>
+public sealed class CivBudget
+{
+    public double Income, Upkeep;
+    public double Soldiers, Heroes, Buildings;
 }

@@ -85,6 +85,7 @@ public sealed class WorldStats
     public const int YearDays = Sim.YEAR;
 
     private const string G_CIV = "Medeniyet", G_EV = "Olaylar", G_WAR = "Savaş", G_MON = "Canavarlar", G_HERO = "Kahramanlar", G_INN = "Han ve ticaret";
+    private const string G_ECO = "Altın ve ambar";   // Faz 1 C3
 
     /// <summary>Skaler ölçüler (sıra JSON ve rapor sırasıdır).</summary>
     public static readonly StatDef[] Defs =
@@ -150,6 +151,23 @@ public sealed class WorldStats
         new("questsDone", "Biten ilan", G_INN, StatKind.Flow),
         new("tradeTrips", "Ticaret seferi (kervan)", G_INN, StatKind.Flow),
         new("supplyTrips", "İkmal seferi", G_INN, StatKind.Flow),
+        // Faz 1 C3: altın ve ambar (bakım, kent tüketimi, kıtlık; W.Metrics farkları ve yıl içi oranlar)
+        new("goldP90", "Altın p90 (medeniyetler)", G_ECO, StatKind.Stock),
+        new("upkeepGold", "Bakım gideri (altın; asker, kahraman, L2–L3)", G_ECO, StatKind.Flow),
+        new("publicWorksGold", "Kamu işlerine (imar) harcanan altın", G_ECO, StatKind.Flow),
+        new("publicWorksFood", "Ambarla beslenen amele tayını (gıda)", G_ECO, StatKind.Flow),
+        new("ameleShare", "Kamu işlerindeki (amele) iş gücü payı", G_ECO, StatKind.Mean, true),
+        new("imarMean", "İmar ortalaması (köy+, 0–100)", G_ECO, StatKind.Stock),
+        new("raidGold", "Canavar baskınında yitirilen altın", G_ECO, StatKind.Flow),
+        new("dragonGold", "Ejderhaya giden altın (haraç + akın)", G_ECO, StatKind.Flow),
+        new("brokeShare", "Hazinesi boş medeniyet payı", G_ECO, StatKind.Mean, true),
+        new("lackShare", "Kent tüketiminde yokluk payı (köy+; ekmek, bira ya da alet)", G_ECO, StatKind.Mean, true),
+        new("lackFoodShare", "Ekmek ya da bira yokluğu payı (köy+)", G_ECO, StatKind.Mean, true),
+        new("famines", "Kıtlık (büyük olay)", G_ECO, StatKind.Flow),
+        new("starved", "Açlıktan ölen", G_ECO, StatKind.Flow),
+        new("famineAid", "Kıtlık yardımı (sevkiyat)", G_ECO, StatKind.Flow),
+        new("famineRefused", "Kıtlıkta yüz çeviren", G_ECO, StatKind.Flow),
+        new("famineRaids", "Kıtlık akını", G_ECO, StatKind.Flow),
     };
 
     /// <summary>Anahtarlı yıllık sayımlar: (ad, Türkçe etiket, tür). Flow = yıl içi toplam, Stock = yıl sonu.</summary>
@@ -242,7 +260,11 @@ public sealed class WorldStats
         I_QDONE = IndexOf("questsDone"), I_TRADE = IndexOf("tradeTrips"), I_SUPPLY = IndexOf("supplyTrips"),
         I_SECEDE = IndexOf("secessions"), I_MAXSETL = IndexOf("maxCivSettlements"), I_RECLAIM = IndexOf("reclaimWars"), I_PACTWAR = IndexOf("pactWars"),
         I_CRUSADE = IndexOf("crusades"), I_BETRAY = IndexOf("betrayals"), I_PACTS = IndexOf("pactsActive"),
-        I_TROLLS = IndexOf("trollCamps"), I_DRAGON = IndexOf("dragonAlive"), I_DRAIDS = IndexOf("dragonRaids"), I_CRISES = IndexOf("crises"), I_RELIEFS = IndexOf("reliefs");   // B2
+        I_TROLLS = IndexOf("trollCamps"), I_DRAGON = IndexOf("dragonAlive"), I_DRAIDS = IndexOf("dragonRaids"), I_CRISES = IndexOf("crises"), I_RELIEFS = IndexOf("reliefs"),   // B2
+        I_GOLD90 = IndexOf("goldP90"), I_UPKEEP = IndexOf("upkeepGold"), I_RAIDGOLD = IndexOf("raidGold"), I_DRAGONGOLD = IndexOf("dragonGold"), I_BROKE = IndexOf("brokeShare"),
+        I_LACK = IndexOf("lackShare"), I_FAMINES = IndexOf("famines"), I_STARVED = IndexOf("starved"), I_AID = IndexOf("famineAid"), I_REFUSED = IndexOf("famineRefused"),
+        I_FRAIDS = IndexOf("famineRaids"),
+        I_PWGOLD = IndexOf("publicWorksGold"), I_PWFOOD = IndexOf("publicWorksFood"), I_AMELE = IndexOf("ameleShare"), I_IMAR = IndexOf("imarMean"), I_LACKFOOD = IndexOf("lackFoodShare");   // C3
 
     // ------------------------------------------------------------ çıktı
     public Sim Sim { get; private set; }
@@ -284,6 +306,7 @@ public sealed class WorldStats
     // yıl birikimleri
     private YearStats _cur;
     private double _birthSum, _birthN, _deathSum, _deathN, _idle, _work, _campsSum, _campDays;
+    private double _brokeN, _civDays, _lackN, _lackFoodN, _setlDays, _amele, _ameleWork;   // C3
 
     public WorldStats(Sim sim)
     {
@@ -423,7 +446,27 @@ public sealed class WorldStats
         ScanWars();
         ScanBattles();
         AccumulateIdle();
+        AccumulateEconomy();
         if (day % YearDays == 0) CloseYear(day, false);
+    }
+
+    /// <summary>C3: hazinesi boş medeniyet günleri; köy ve üstü yerleşimlerde kent tüketiminde yokluk günleri (en az bir mal).</summary>
+    private void AccumulateEconomy()
+    {
+        foreach (var c in Sim.W.Civs)
+        {
+            if (!c.Alive) continue;
+            _civDays++;
+            if (c.Broke != null) _brokeN++;
+        }
+        foreach (var st in Sim.W.Settlements)
+        {
+            if (!st.Alive) continue;
+            if (st.Jobs != null) foreach (var kv in st.Jobs) { _ameleWork += kv.Value; if (kv.Key == "amele") _amele += kv.Value; }
+            if (st.Tier < 1) continue;
+            _setlDays++;
+            if (st.Lack != null && st.Lack.Count > 0) { _lackN++; if (st.Lack.Has("bread") || st.Lack.Has("beer")) _lackFoodN++; }
+        }
     }
 
     private void ScanSettlements()
@@ -589,6 +632,15 @@ public sealed class WorldStats
 
     private double Delta(string key) => (Sim.W.Metrics.Get(key) ?? 0) - (_metrics0.TryGetValue(key, out double v) ? v : 0);
 
+    /// <summary>Sıralı listede doğrusal aradeğerli yüzdelik (boşsa NaN). C3: altın p90.</summary>
+    private static double Quantile(List<double> sorted, double q)
+    {
+        if (sorted.Count == 0) return double.NaN;
+        double h = (sorted.Count - 1) * q;
+        int lo = (int)Math.Floor(h), hi = Math.Min(lo + 1, sorted.Count - 1);
+        return sorted[lo] + (h - lo) * (sorted[hi] - sorted[lo]);
+    }
+
     private void CloseYear(int day, bool partial)
     {
         var s = Sim; var w = s.W; var y = _cur;
@@ -674,6 +726,25 @@ public sealed class WorldStats
         foreach (var cp in w.Camps) if (cp.Alive) { if (cp.Kind == "troll") trolls++; else if (cp.Kind == "dragon") dragons++; }
         y.V[I_TROLLS] = trolls; y.V[I_DRAGON] = dragons;
         y.V[I_DRAIDS] = Delta("dragonRaid"); y.V[I_CRISES] = Delta("crisis"); y.V[I_RELIEFS] = Delta("relief");
+        // Faz 1 C3: altın ve ambar
+        y.V[I_GOLD90] = Quantile(golds, 0.9);
+        y.V[I_UPKEEP] = Delta("upkeepGold");
+        y.V[I_RAIDGOLD] = Delta("raidGold");
+        y.V[I_DRAGONGOLD] = Delta("dragonTributeGold") + Delta("dragonRaidGold");
+        y.V[I_BROKE] = _civDays > 0 ? _brokeN / _civDays : double.NaN;
+        y.V[I_LACK] = _setlDays > 0 ? _lackN / _setlDays : double.NaN;
+        y.V[I_LACKFOOD] = _setlDays > 0 ? _lackFoodN / _setlDays : double.NaN;
+        y.V[I_FAMINES] = Delta("famine");
+        y.V[I_STARVED] = Delta("starved");
+        y.V[I_AID] = Delta("famineAid");
+        y.V[I_REFUSED] = Delta("famineRefused");
+        y.V[I_FRAIDS] = Delta("famineRaid");
+        y.V[I_PWGOLD] = Delta("publicWorks");
+        y.V[I_PWFOOD] = Delta("publicWorksFood");
+        y.V[I_AMELE] = _ameleWork > 0 ? _amele / _ameleWork : double.NaN;
+        double imSum = 0; int imN = 0;
+        foreach (var st in w.Settlements) if (st.Alive && st.Tier >= 1) { imSum += st.Imar ?? 0; imN++; }
+        y.V[I_IMAR] = imN > 0 ? imSum / imN : double.NaN;
         foreach (var kv in w.Metrics)
         {
             if (PerCivMetric(kv.Key)) continue;
@@ -684,6 +755,7 @@ public sealed class WorldStats
         // yeni yıl
         _metrics0 = SnapshotMetrics(w);
         _birthSum = _birthN = _deathSum = _deathN = _idle = _work = _campsSum = _campDays = 0;
+        _brokeN = _civDays = _lackN = _lackFoodN = _setlDays = _amele = _ameleWork = 0;   // C3
         _warsYear.Clear();
         foreach (var war in _warsNow) _warsYear.Add(war);
         _cur = NewYear(day + 1);

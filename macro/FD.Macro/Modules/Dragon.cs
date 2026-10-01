@@ -18,11 +18,17 @@ public static class Dragon
     public const double INN_RANGE = 30;
     /// <summary>inde ve akında alınan yaralar günde en büyük canının bu kadarı kapanır</summary>
     public const double HEAL = 0.005;
-    /// <summary>ejderha hazinesiyle büyür (yaşlanıp semirir): her GROW_GOLD altın +1 can (en çok +GROW_HP); her BREATH_GOLD altın
-    /// nefesine +1 zar (en çok +BREATH_MAX)</summary>
-    public const double GROW_GOLD = 20, GROW_HP = 3000, BREATH_GOLD = 4000, BREATH_MAX = 6;
+    /// <summary>ejderha hazinesiyle büyür (yaşlanıp semirir): uyandıktan sonra kaçırdığı (haraç ve akın) her GROW_GOLD altın +1 can
+    /// (en çok +GROW_HP); her BREATH_GOLD altın nefesine +1 zar (en çok +BREATH_MAX). Faz 1 C3: haraç tavanlandı, hazineler küçüldü
+    /// (dünya başına ~150 bin → ~15 bin altın); büyüme eğrisi korunsun diye 20 → 1,5 ve 4000 → 750 (uykudan kalan hazine sayılmaz).</summary>
+    public const double GROW_GOLD = 1.5, GROW_HP = 3000, BREATH_GOLD = 750, BREATH_MAX = 6;
     /// <summary>haraç: hazinenin payı; ejderha her yıl biraz daha açgözlü olur (yılda +%2, en çok %30)</summary>
     public const double TRIBUTE = 0.12;
+    /// <summary>Faz 1 C3: haracın tavanı: TRIBUTE_CAP + nüfus × TRIBUTE_POP altın</summary>
+    public const double TRIBUTE_CAP = 100, TRIBUTE_POP = 0.6;
+    /// <summary>Faz 1 C3: haracı reddeden medeniyetin ejderha ilanı: en az BOUNTY_GOLD altını varsa hazinenin BOUNTY_SHARE payı (en az 100,
+    /// en çok BOUNTY_MAX). Eskiden 1500 / %6 / 2500: küçülen hazinelere göre ölçeklendi.</summary>
+    public const double BOUNTY_GOLD = 500, BOUNTY_SHARE = 0.15, BOUNTY_MAX = 1000;
     /// <summary>ün: son darbeyi vuran kahraman (efsane eşiğinin tamamı: ne olursa olsun efsane olur) ve savaşta sağ kalan diğer kahramanlar</summary>
     public const double R_SLAYER = Heroes.LEGEND_RENOWN, R_PARTY = 6;
     /// <summary>akında ejderha canının bu payını yitirirse yarım işle inine çekilir (püskürtülür). Ejderha kolay altın arar: üç turda
@@ -71,16 +77,19 @@ public static class Dragon
         if (d != null && d.Camp == cp.Id)
         {
             u.Name = d.Name; u.MaxHp = d.MaxHp; u.Hp = JsMath.Max(1, JsMath.Min(d.MaxHp, d.Hp));
-            u.Breath = (u.Breath ?? 0) + JsMath.Min(BREATH_MAX, Math.Floor(cp.Loot / BREATH_GOLD));
+            u.Breath = (u.Breath ?? 0) + JsMath.Min(BREATH_MAX, Math.Floor(Taken(d, cp) / BREATH_GOLD));
         }
         return new List<Combatant> { u };
     }
+
+    /// <summary>Faz 1 C3: ejderhanın uyandıktan sonra kaçırdığı altın (hazinesi − uykudan kalan hazine).</summary>
+    private static double Taken(DragonState d, Camp cp) => JsMath.Max(0, cp.Loot - d.Loot0);
 
     /// <summary>Hazine büyüdükçe ejderha da büyür: en büyük canı (uyandığı yaşın canı + her GROW_GOLD altın için 1, en çok
     /// GROW_HP) ve büyüme kadar canı artar; hiç küçülmez.</summary>
     private static void Grow(DragonState d, Camp cp)
     {
-        double max = d.BaseHp + JsMath.Min(GROW_HP, Math.Floor(cp.Loot / GROW_GOLD));
+        double max = d.BaseHp + JsMath.Min(GROW_HP, Math.Floor(Taken(d, cp) / GROW_GOLD));
         if (max > d.MaxHp) { d.Hp += max - d.MaxHp; d.MaxHp = max; }
     }
 
@@ -175,6 +184,7 @@ public static class Dragon
         var cp = WorldGen.MakeCamp(s.Id(), "dragon", t, $"{name} İni", s.Day, s.Rng);
         cp.Count = 1; cp.Boss = true; cp.HadBoss = true; cp.Captain = name;
         cp.Loot = s.Rng.Int(400, 900);   // yüzyıllık uykusundan kalan hazine
+        d.Loot0 = cp.Loot;               // Faz 1 C3: büyüme bundan sonra kaçırılan altınla
         w.Camps.Add(cp); w.Tiles[t].Camp = cp.Id; w.Tiles[t].Owner = -1;
         double hp = WakeHp(s, t);
         d.Camp = cp.Id; d.Name = name; d.BaseHp = hp; d.MaxHp = hp; d.Hp = hp; d.WakeDay = s.Day;
@@ -358,8 +368,9 @@ public static class Dragon
         }
         double houses = driven ? s.Rng.Int(1, 2) : s.Rng.Int(2, 4) + st.Tier;
         st.BurnedHouses = (st.BurnedHouses ?? 0) + houses; st.BurnedAt = s.Day;
-        double gold = driven ? 0 : Math.Floor(s.St(c, "gold") * 0.2);
-        if (gold > 0) { s.Add(c, "gold", -gold); cp.Loot += gold; }
+        // Faz 1 C3: ejderha yaktığı kentin hazine payını kaçırır (nüfus payının yarısı, en çok %20; eskiden bütün hazinenin %20'si)
+        double gold = driven ? 0 : Math.Floor(s.St(c, "gold") * JsMath.Min(0.2, s.Pop(st) / JsMath.Max(1, s.CivPop(c)) * 0.5));
+        if (gold > 0) { s.Add(c, "gold", -gold); cp.Loot += gold; s.Metric("dragonRaidGold", gold); }
         double grain = Math.Floor(s.St(c, "grain") * (driven ? 0.03 : 0.1));
         if (grain > 0) s.Add(c, "grain", -grain);
         c.Threat += driven ? 0.3 : 0.6;
@@ -396,7 +407,7 @@ public static class Dragon
 
     /// <summary>
     /// Yılda bir (uyanışından 60 gün sonra ve her yıl): menzildeki medeniyetlerden haraç ister (hazinenin %12'si, her yıl +%2, en
-    /// çok %30; en az 40 altın). Ödeyen bir yıl dokunulmaz kalır. Karar: korku (ejderhanın gücü / çıkarabileceği ordunun gücü),
+    /// çok %30; en az 40 altın; Faz 1 C3: en çok TRIBUTE_CAP + nüfus × TRIBUTE_POP). Ödeyen bir yıl dokunulmaz kalır. Karar: korku (ejderhanın gücü / çıkarabileceği ordunun gücü),
     /// yediği akınlar ve tabiatı (düzenciler pazarlığa yatkın, iyiler değil); paladinler hiç ödemez, ittifak üyeleri ödemez,
     /// altını yetmeyen ödeyemez.
     /// </summary>
@@ -412,7 +423,8 @@ public static class Dragon
         {
             if (!c.Alive || !J.Some(s.CivSettlements(c), x => s.G.Dist(x.Tile, cp.Tile) <= RANGE)) continue;
             double gold = s.St(c, "gold");
-            double tribute = JsMath.Round(JsMath.Max(40, gold * share));
+            // Faz 1 C3: haraç hazinenin payıdır ama nüfusla tavanlı (TRIBUTE_CAP + kişi başı TRIBUTE_POP): koca hazineler haracı saçmalaştırıyordu
+            double tribute = JsMath.Round(JsMath.Max(40, JsMath.Min(gold * share, TRIBUTE_CAP + s.CivPop(c) * TRIBUTE_POP)));
             double hits = d.Hits.Get(c.Id) ?? 0;
             var (pa, pb) = Combat.PowerVs(Force(s, c), dragon);
             double fear = pb / JsMath.Max(1, pa);
@@ -444,8 +456,8 @@ public static class Dragon
     }
 
     /// <summary>Yılda bir: menzildeki hanlar panolarına büyük ejderha ilanı asar (en az 150 altını olan han, altınının yarısı, en çok
-    /// 500); haracı reddeden zengin medeniyetler (en az 1500 altın) de en yakın hana kendi ödüllerini koyar (hazinenin %6'sı, en az
-    /// 150, en çok 2500): ejderha başına birkaç düzine altınlık ilan asılmaz. İlanlar 3 yıl açık kalır.</summary>
+    /// 500); haracı reddeden zengin medeniyetler (en az BOUNTY_GOLD altın) de en yakın hana kendi ödüllerini koyar (hazinenin
+    /// BOUNTY_SHARE payı, en az 100, en çok BOUNTY_MAX): ejderha başına birkaç düzine altınlık ilan asılmaz. İlanlar 3 yıl açık kalır.</summary>
     private static void Bounties(Sim s, DragonState d, Camp cp)
     {
         var w = s.W;
@@ -467,12 +479,12 @@ public static class Dragon
         for (int i = 0; i < civs.Count; i++)
         {
             var c = civs[i];
-            if (!c.Alive || (d.Refused.Get(c.Id) ?? -1) != s.Year || s.St(c, "gold") < 1500) continue;
+            if (!c.Alive || (d.Refused.Get(c.Id) ?? -1) != s.Year || s.St(c, "gold") < BOUNTY_GOLD) continue;
             if (J.Some(w.Quests, q => q.Open && q.Camp == cp.Id && q.Civ == c.Id)) continue;
             var cap = s.Capital(c);
             if (cap == null) continue;
             var inn = J.At(J.Sort(J.Filter(w.Inns, x => x.Alive), (a, b) => J.Or(s.G.Dist(a.Tile, cp.Tile) - s.G.Dist(b.Tile, cp.Tile), a.Id - b.Id)), 0);
-            double bounty = JsMath.Round(JsMath.Min(JsMath.Max(150, s.St(c, "gold") * 0.06), 2500));
+            double bounty = JsMath.Round(JsMath.Min(JsMath.Max(100, s.St(c, "gold") * BOUNTY_SHARE), BOUNTY_MAX));
             s.Add(c, "gold", -bounty);
             w.Quests.Add(new Quest { Id = s.Id(), Civ = c.Id, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn != null && s.G.Dist(inn.Tile, cp.Tile) <= INN_RANGE ? inn.Id : null, Expires = s.Day + 3 * Sim.YEAR });
             s.Metric("questPosted"); s.Metric("dragonBounty");
