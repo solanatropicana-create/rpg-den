@@ -7,15 +7,12 @@ namespace FD.Macro;
 /// <summary>
 /// The world simulation: state (<see cref="W"/>) + daily <see cref="Step"/>. Exact port of
 /// <c>src/sim/sim.ts</c>. Module logic lives in static classes named after the TS files
-/// (Economy, Research, Diplomacy, ...), all taking the Sim as first argument like in TS.
+/// (Economy, Classes, Diplomacy, ...), all taking the Sim as first argument like in TS.
 /// </summary>
 public sealed partial class Sim
 {
     public const double FOOD_PER_POP = 0.1;
     public const int YEAR = 120;
-    public static readonly string[] SEASONS = { "İlkbahar", "Yaz", "Sonbahar", "Kış" };
-    public static readonly string[] TIER_TR = { "Kamp", "Köy", "Kasaba", "Şehir" };
-    public static readonly double[] TIER_POP = { 0, 12, 40, 100 };
     public static readonly double[] TIER_SLOTS = { 4, 8, 14, 20 };
     public static readonly double[] TIER_CROWD = { 24, 55, 120, 230 };
 
@@ -43,7 +40,7 @@ public sealed partial class Sim
         Rng = new Rng(JsMath.ToInt32(W.RngState) ^ unchecked((int)0x9e3779b9));
         UpdateTerritory();
         Discover();
-        foreach (var c in W.Civs) { RecomputeEff(c); Research.ChooseResearch(this, c); }
+        foreach (var c in W.Civs) RecomputeEff(c);
         Log("world", $"Dünya uyandı. {W.Civs.Count} topluluk ilk kamplarını kurdu: {string.Join(", ", W.Civs.Select(c => $"{c.Name} ({D.RACES[c.Race].Plural}, {D.CLASSES[c.Cls].Name})"))}.", major: true);
     }
 
@@ -59,10 +56,10 @@ public sealed partial class Sim
 
     // ------------------------------------------------------------ time & log
     public int Day => W.Day;
-    public int Season => (W.Day % YEAR) / (YEAR / 4);
     public int Year => W.Day / YEAR + 1;
     public string DateStr() => DateStr(W.Day);
-    public string DateStr(double d) => $"Yıl {J.S(Math.Floor(d / YEAR) + 1)}, {SEASONS[(int)Math.Floor((d % YEAR) / (YEAR / 4))]}";
+    /// <summary>Faz 1b-3: mevsimler kalktı; geçici tarih biçimi "Yıl N, Gün D" (D = yılın 1–120. günü).</summary>
+    public string DateStr(double d) => $"Yıl {J.S(Math.Floor(d / YEAR) + 1)}, Gün {J.S(d % YEAR + 1)}";
     public int Id() => W.NextId++;
 
     public GameEvent Log(string kind, string text, string cause = null, int? civ = null, int? tile = null, int? battle = null, bool? major = null)
@@ -168,15 +165,6 @@ public sealed partial class Sim
         return n;
     }
 
-    public int TierOf(Settlement s)
-    {
-        var c = W.Civs[s.Civ];
-        double P = Pop(s);
-        int t = 0;
-        for (int i = 1; i < 4; i++) if (P >= TIER_POP[i] && c.Era >= i + 1) t = i;
-        return t;
-    }
-
     public int RadiusOf(Settlement s) => 2 + s.Tier;
 
     // ------------------------------------------------------------ stock
@@ -212,33 +200,9 @@ public sealed partial class Sim
         return v;
     }
 
-    // ------------------------------------------------------------ research & effects
-    public bool Has(Civ c, string t) => c.Research.Done.Contains(t);
-
-    public void RecomputeEff(Civ c)
-    {
-        var cls = D.CLASSES[c.Cls];
-        var e = new JsObj<double>();
-        void AddE(JsObj<double> x)
-        {
-            if (x == null) return;
-            foreach (var kv in x) e.Set(kv.Key, (e.Get(kv.Key) ?? 0) + kv.Value);
-        }
-        AddE(cls.Base);
-        foreach (var t in c.Research.Done) AddE(D.TECH[t]?.Eff);
-        var sub = J.Find(cls.Subclasses, x => x.Id == c.Subclass);
-        if (sub != null) { AddE(sub.Eff); if (c.Research.Done.Contains($"{c.Cls}_cap")) AddE(sub.CapEff); }
-        if (J.Some(W.Settlements, x => x.Alive && x.Civ == c.Id && J.T(x.Civics.Get("wonder")))) AddE(D.WONDERS[c.Cls].Eff);
-        c.Eff = e;
-    }
-
+    // ------------------------------------------------------------ effects (Faz 1b-3: Core/Tiers.cs RecomputeEff)
     /// <summary>TS <c>s.e(c, k)</c>: summed effect value (0 when absent).</summary>
     public double E(Civ c, string k) => c.Eff.Get(k) ?? 0;
-
-    public string SubclassName(Civ c) => J.Find(D.CLASSES[c.Cls].Subclasses, s => s.Id == c.Subclass)?.Name;
-    public string CapName(Civ c) => J.Find(D.CLASSES[c.Cls].Subclasses, s => s.Id == c.Subclass)?.CapName ?? "Uç güç";
-    public string TechName(Civ c, string id) => id == $"{c.Cls}_cap" && J.T(c.Subclass) ? $"{D.TECH[id].Name}: {CapName(c)}" : D.TECH[id].Name;
-    public string EraName(Civ c) => D.ERA_TR[c.Era];
 
     /// <summary>Resource gate: own deposit or stock.</summary>
     public bool Access(Civ c, string key)
@@ -255,10 +219,11 @@ public sealed partial class Sim
         J.Some(W.Deposits, d => d.Kind == kind && !d.Depleted && DepositVisible(c, d)
             && J.Some(d.Tiles, t => TileCiv(t) == c.Id && (D.DEPOSITS[d.Kind].Reserve == 0 || W.Tiles[t].Reserve > 0)));
 
+    /// <summary>Yatak medeniyete görünür mü: bilinen ve (gizliyse) medeniyet gerekli kademede (Faz 1b-3: eskiden bir düğüm).</summary>
     public bool DepositVisible(Civ c, Deposit d)
     {
-        string h = D.DEPOSITS[d.Kind].HiddenUntil;
-        return (!J.T(h) || Has(c, h)) && d.KnownBy.Contains(c.Id);
+        int? h = D.DEPOSITS[d.Kind].HiddenTier;
+        return (h == null || CivTier(c) >= h.Value) && d.KnownBy.Contains(c.Id);
     }
 
     private static readonly string[] MajorFinds = { "mana", "mithril", "gold", "tin" };
@@ -368,7 +333,15 @@ public sealed partial class Sim
     public void UpdateTerritory()
     {
         var w = W;
-        foreach (var s in w.Settlements) if (s.Alive) s.Tier = TierOf(s);
+        foreach (var s in w.Settlements)
+        {
+            if (!s.Alive) continue;
+            int from = s.Tier;
+            s.Tier = TierOf(s);
+            if (s.Tier > from) TierRise(s, from);
+        }
+        // Faz 1b-3: kademeye bağlı etkiler (sınıf ayrıcalıkları, kademe etkileri) kademe değişince güncel kalsın
+        foreach (var c in w.Civs) if (c.Alive) RecomputeEff(c);
         var prev = new int[w.Tiles.Count];
         for (int i = 0; i < prev.Length; i++) prev[i] = w.Tiles[i].Owner;
         foreach (var t in w.Tiles) t.Owner = -1;
@@ -440,7 +413,7 @@ public sealed partial class Sim
         foreach (var c in w.Civs) if (c.Alive && (w.Day + c.Id * 3) % 10 == 0) CivAI(c);
         if (w.Day % 10 == 0) { UpdateTerritory(); Cp?.Invoke("territory"); Diplomacy.RelationsTick(this); Cp?.Invoke("relations"); }
         if (w.Day % 30 == 0) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); }
-        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Research.ClassYearly(this, c); Cp?.Invoke("yearly"); }
+        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Classes.ClassYearly(this, c); Cp?.Invoke("yearly"); }
         Monsters.CampsTick(this); Cp?.Invoke("camps");
         Storyteller.Tick(this); Cp?.Invoke("story");   // Faz 1 B2: anlatıcı (gerilim, kriz, rahatlama) ve ejderha
         Heroes.TavernsTick(this); Cp?.Invoke("taverns");
@@ -453,7 +426,7 @@ public sealed partial class Sim
         foreach (var c in w.Civs) c.Threat = JsMath.Min(1.5, JsMath.Max(0, c.Threat - 0.0015));
         if (w.Day % 60 == 0)
             foreach (var c in w.Civs)
-                if (c.Alive) c.History.Add(new HistPoint { Day = w.Day, Pop = CivPop(c), Gold = JsMath.Round(St(c, "gold")), Techs = c.Research.Done.Count });
+                if (c.Alive) c.History.Add(new HistPoint { Day = w.Day, Pop = CivPop(c), Gold = JsMath.Round(St(c, "gold")), Tier = CivTier(c) });
         w.RngState = Rng.State();
         Cp?.Invoke("end");
     }
@@ -462,9 +435,6 @@ public sealed partial class Sim
     {
         string p = Cp != null ? "ai:" + c.Id + ":" : null;
         if (CivSettlements(c).Count == 0) { Extinct(c); Cp?.Invoke(p + "extinct"); return; }
-        if (!J.T(c.Research.Current)) Research.ChooseResearch(this, c);
-        Cp?.Invoke(p + "research");
-        Research.EraCheck(this, c); Cp?.Invoke(p + "era");
         Economy.ChooseBuilds(this, c); Cp?.Invoke(p + "builds");
         Economy.RecruitTick(this, c); Cp?.Invoke(p + "recruit");
         Diplomacy.ConsiderExpansion(this, c); Cp?.Invoke(p + "expand");

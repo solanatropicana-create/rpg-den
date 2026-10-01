@@ -4,7 +4,7 @@ using System.Linq;
 
 // Faz 1 B2: anlatıcı. Dünyanın gerilimini 2 yıllık kayan pencerede ölçer: muharebeler ve ölüleri, canavar baskınları,
 // yanan yapılar ve evler, salgın ve açlık ölüleri, kıtlık günleri, fetih ve yağmalar, kahraman ölümleri. Uzun sessizlikte
-// dünyanın durumuna göre bir kriz seçer (istila dalgası, Kızıl Ay, sert kış, kara veba, trol çetesi, ejderha akını); gerilim
+// dünyanın durumuna göre bir kriz seçer (istila dalgası, Kızıl Ay, kuraklık, kara veba, trol çetesi, ejderha akını); gerilim
 // zirve yapınca bir süre rahatlama gelir (yeni kriz yok; bereketli hasat ya da şenlik). Krizler kalıcı kronikte büyük olay
 // ("crisis") olarak Türkçe nedenleriyle yazılır. Ejderhanın günlük işi de buradan çağrılır (Dragon.Tick). Durum: World.Story.
 
@@ -32,21 +32,21 @@ public static class Storyteller
     /// <summary>"Kızıl Ay" sürüyor mu (kamplar daha kalabalık akın eder).</summary>
     public static bool Surging(Sim s) => s.W.Story != null && s.Day < s.W.Story.SurgeUntil;
 
-    /// <summary>Günlük (Sim.Step, kamplardan hemen sonra): gerilim ölçümü, ejderha, sert kış, rahatlama olayı; 10 günde bir
-    /// pencere kapanır ve kriz/rahatlama kararı verilir.</summary>
+    /// <summary>Günlük (Sim.Step, kamplardan hemen sonra): gerilim ölçümü, ejderha, kuraklığın bitişi, rahatlama olayı; 10 günde
+    /// bir pencere kapanır ve kriz/rahatlama kararı verilir.</summary>
     public static void Tick(Sim s)
     {
         var st = State(s);
         Measure(s, st);
         Dragon.Tick(s);
-        WinterTick(s, st);
+        DroughtTick(s, st);
         if (st.ReliefEvent > 0 && s.Day >= st.ReliefEvent) { st.ReliefEvent = 0; ReliefEvent(s); }
         if (s.Day % BUCKET == 0) { Close(st); Decide(s, st); }
     }
 
     // ------------------------------------------------------------ gerilim
-    private static readonly string[] KEYS = { "raids", "extBurned", "plagueDead", "starved", "winterDead", "townFire", "shantyFire", "heroDeath", "conquest", "plunder", "innRuined", "famineMigration", "dragonRaid" };
-    private static readonly double[] WEIGHTS = { 1.5, 1.5, 0.5, 1, 0.5, 2, 1, 2, 6, 2, 3, 2, 4 };
+    private static readonly string[] KEYS = { "raids", "extBurned", "plagueDead", "starved", "townFire", "shantyFire", "heroDeath", "conquest", "plunder", "innRuined", "famineMigration", "dragonRaid" };
+    private static readonly double[] WEIGHTS = { 1.5, 1.5, 0.5, 1, 2, 1, 2, 6, 2, 3, 2, 4 };
 
     /// <summary>Günün gerilimi: izlenen sayaçların artışı (ağırlıklı), yeni muharebeler (1 + ölüler × 0,3), kıtlıktaki yerleşimler (0,1/gün).</summary>
     private static void Measure(Sim s, StoryState st)
@@ -106,10 +106,10 @@ public static class Storyteller
     }
 
     // ------------------------------------------------------------ kriz
-    private static readonly List<string> KINDS = new() { "campWave", "raidSurge", "winter", "plague", "trolls", "dragon" };
+    private static readonly List<string> KINDS = new() { "campWave", "raidSurge", "drought", "plague", "trolls", "dragon" };
 
     /// <summary>Dünyanın durumuna göre kriz: kamp azsa istila, kamp çoksa Kızıl Ay, büyük kent varsa veba, 15. yıldan sonra
-    /// troller, ejderha uyanıksa akın; sert kış en az 6 yılda bir. Bir önceki krizin türü daha az seçilir. Kriz tutmazsa
+    /// troller, ejderha uyanıksa akın; kuraklık en az 6 yılda bir (Faz 1b-3: mevsimlerle birlikte kalkan sert kışın yerine). Bir önceki krizin türü daha az seçilir. Kriz tutmazsa
     /// (yer yok, hedef yok) bir sonraki 10 günde yeniden denenir.</summary>
     private static void Crisis(Sim s, StoryState st)
     {
@@ -125,7 +125,7 @@ public static class Storyteller
             {
                 "campWave" => 1 + 0.25 * JsMath.Max(0, target - land.Count),
                 "raidSurge" => land.Count >= 3 ? 0.5 + 0.1 * land.Count : 0,
-                "winter" => s.Year - st.LastWinter >= 6 && st.WinterYear == 0 ? 0.8 : 0,
+                "drought" => s.Year - st.LastDrought >= 6 && st.DroughtUntil <= s.Day ? 0.8 : 0,
                 "plague" => big != null ? 0.7 : 0,
                 "trolls" => s.Year >= 15 && trolls < 3 ? 0.6 + s.Year / 50.0 : 0,
                 "dragon" => dragon ? 1.4 : 0,
@@ -138,7 +138,7 @@ public static class Storyteller
         {
             "campWave" => CampWave(s),
             "raidSurge" => RaidSurge(s, st, land),
-            "winter" => ScheduleWinter(s, st),
+            "drought" => StartDrought(s, st),
             "plague" => Plague(s, big),
             "trolls" => TrollBand(s),
             "dragon" => DragonRage(s),
@@ -203,43 +203,37 @@ public static class Storyteller
         return true;
     }
 
-    /// <summary>Sert kış: bu yılın (kış geçtiyse gelecek yılın) kışında gelir (<see cref="WinterTick"/>).</summary>
-    private static bool ScheduleWinter(Sim s, StoryState st)
-    {
-        if (s.Year - st.LastWinter < 6 || st.WinterYear != 0) return false;
-        st.WinterYear = s.Season < 3 ? s.Year : s.Year + 1;
-        return true;
-    }
-
-    private static readonly string[] FOODS = { "grain", "meat", "fish", "bread" };
-    private static readonly List<string> WINTER_WHY = new() { "Kuzeyden inen kar fırtınaları aylarca dinmedi", "Kış erken geldi, bahar geç kaldı", "Dağlardan inen buz rüzgârı nehirleri dondurdu" };
+    private static readonly List<string> DROUGHT_WHY = new() { "Yağmurlar aylardır yağmadı; dereler kurudu", "Güneyden esen kavurucu rüzgâr ekinleri yaktı", "Nemli ambarlarda kara pas başladı, tarlalara da sıçradı" };
     private static readonly List<string> PLAGUE_WHY = new() { "Uzak diyarlardan gelen bir kervan hastalığı taşıdı; kalabalık sokaklarda hızla yayılıyor", "Kirli kuyular ve tıklım tıklım pazarlar hastalığı büyüttü", "Ambarlardan sokaklara taşan fareler hastalığı yaydı" };
     private static readonly List<string> TROLL_WHY = new() { "Troller yaralarını kapatır; onları ancak ateş durdurur", "Dağ geçitlerindeki av tükenince troller ovaya indi", "Yaşlı bir trol anası yavrularını yeni av yerlerine saldı" };
 
-    /// <summary>Kışın ilk günü sert kış bastırır: bütün medeniyetler ambarlarının %30–50'sini (sürülerin yarısı kadarını) yitirir,
-    /// halk üşür (büyüme yavaşlar, salgın riski artar), barakalarda yaşayanlar ve yaşlılar soğuktan ölür.</summary>
-    private static void WinterTick(Sim s, StoryState st)
+    /// <summary>Kuraklık (Faz 1b-3: sert kışın yerine, mevsimsiz): 60–90 gün boyunca tarla ve toplayıcı verimi yarıya iner
+    /// (Economy.DROUGHT_FARM), kasaba yangınları sıklaşır; ambarlardaki tahılın %20–40'ını kara pas çürütür. Kıtlık ve açlık
+    /// olursa Economy'nin kıtlık düzeninden gelir.</summary>
+    private static bool StartDrought(Sim s, StoryState st)
     {
-        if (st.WinterYear != s.Year || s.Season != 3) return;
-        st.WinterYear = 0; st.LastWinter = s.Year;
-        double share = 0.3 + Math.Floor(s.Rng.Next() * 5) * 0.05;
-        double dead = 0;
+        if (s.Year - st.LastDrought < 6 || st.DroughtUntil > s.Day) return false;
+        double days = s.Rng.Int(60, 90);
+        double share = 0.2 + Math.Floor(s.Rng.Next() * 5) * 0.05;
+        st.DroughtUntil = s.Day + days; st.LastDrought = s.Year;
+        double lost = 0;
         foreach (var c in s.W.Civs)
         {
             if (!c.Alive) continue;
-            foreach (var g in FOODS) { double q = Math.Floor(s.St(c, g) * share); if (q > 0) s.Add(c, g, -q); }
-            double horses = Math.Floor(s.St(c, "horses") * share * 0.5);
-            if (horses > 0) s.Add(c, "horses", -horses);
-            c.Yearly.Set("cold", s.Year);   // üşüyen kış (Gear.IsCold): büyüme yavaşlar, salgın riski artar
-            foreach (var x in s.CivSettlements(c))
-            {
-                double n = JsMath.Min(Math.Floor(s.Homeless(x) * 0.15 + s.Pop(x) * 0.01), s.Pop(x) - 3);
-                if (n > 0) { s.RemovePop(x, n); x.Graves = (x.Graves ?? 0) + n; dead += n; }
-            }
+            double q = Math.Floor(s.St(c, "grain") * share);
+            if (q > 0) { s.Add(c, "grain", -q); lost += q; }
         }
-        s.Metric("harshWinter"); s.Metric("winterDead", dead);
-        s.Log("crisis", $"Sert bir kış bastırdı: nehirler dondu, sürüler kırıldı, ambarların %{J.S(JsMath.Round(share * 100))} kadarı çürüdü{(dead > 0 ? $"; {J.S(dead)} kişi soğuktan öldü" : "")}.", major: true,
-            cause: s.Rng.Pick(WINTER_WHY));
+        s.Metric("drought"); s.Metric("droughtGrain", lost);
+        s.Log("crisis", $"Kuraklık! Yağmurlar kesildi, tarlalar çatladı; ambarlardaki tahılın %{J.S(JsMath.Round(share * 100))} kadarını kara pas sardı.", major: true,
+            cause: $"{s.Rng.Pick(DROUGHT_WHY)}; hasat {J.S(days)} gün boyunca yarıya düşecek");
+        return true;
+    }
+
+    /// <summary>Kuraklığın bittiği gün kroniğe düşer.</summary>
+    private static void DroughtTick(Sim s, StoryState st)
+    {
+        if (st.DroughtUntil <= 0 || s.Day != st.DroughtUntil) return;
+        s.Log("world", "Yağmurlar geri döndü; kuraklık sona erdi.", cause: "Toprak yeniden yeşeriyor");
     }
 
     /// <summary>Kara veba: en kalabalık kentte ağır bir salgın (salgının yayılması ve ölümleri Events.DisastersTick'te).</summary>

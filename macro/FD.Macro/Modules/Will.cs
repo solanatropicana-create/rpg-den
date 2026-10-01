@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 // Kahraman iradesi: serbest kahramanlar kiralanana dek kendi yollarını izler.
-// Yol (avcı, gezgin, şifacı, bilge, paralı, karanlık), her mevsim hedef seçimi, izler ve efsane.
+// Yol (avcı, gezgin, şifacı, bilge, paralı, karanlık), 30 günde bir hedef seçimi, izler ve efsane.
 // Port of src/sim/will.ts.
 
 namespace FD.Macro;
@@ -303,7 +303,7 @@ public static class Will
         ["duel"] = new() { ["hunter"] = 0.9, ["healer"] = 0.6 },
     };
 
-    /// <summary>Serbest kahramanlar: hedefte bekleyenler ilerler, tavernadakiler mevsimde bir kez hedef seçer.</summary>
+    /// <summary>Serbest kahramanlar: hedefte bekleyenler ilerler, tavernadakiler 30 günde bir kez hedef seçer.</summary>
     public static void WillTick(Sim s)
     {
         var w = s.W;
@@ -315,7 +315,7 @@ public static class Will
             if (h.State == "quest" && h.Goal != null && HeroAgent(s, h) == null) { ProgressGoal(s, h); continue; }
             if (h.State != "tavern") continue;
             if (h.Hp < h.MaxHp * 0.8) continue;
-            if ((Math.Floor(s.Day / 5.0) + h.Id) % 6 != 0) continue;   // her kahraman mevsimde bir kez karar verir
+            if ((Math.Floor(s.Day / 5.0) + h.Id) % 6 != 0) continue;   // her kahraman 30 günde bir kez karar verir
             ChooseGoal(s, h);
         }
     }

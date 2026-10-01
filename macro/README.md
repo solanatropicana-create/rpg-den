@@ -45,7 +45,7 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 --yea
 | `--saveload` | `1` | `Sim.Save`/`Sim.Load` varsa ilk N seed yıl ortasında kaydedilip yüklenir, sonraki hash'ler karşılaştırılır |
 
 Çıktı:
-- `report.md`: bitiş ölçütleri tablosu (✓/✗, ölçülen değerler ve tanımlar), eski analizdeki sorunların durumu, on yıllık özet,
+- `report.md`: bitiş ölçütleri tablosu (✓/✗, ölçülen değerler ve tanımlar), eski analizdeki sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
   kahraman seviye dağılımları, olay/muharebe/ölüm nedeni türleri, dünya tablosu, her ölçü için yıllık medyan (p10–p90);
 - `report.json`: aynı veriler (yıllık medyan/p10/p90 dizileri, on yıllık değerler, ölçütler);
 - `seed-N.json`: dünyanın yıllık değerleri (her ölçü bir dizi), anahtarlı sayımlar (olay türleri, seviye dağılımları, `W.Metrics`
@@ -88,7 +88,7 @@ sim.Save(stream);                       // akış sürümleri: Save(Stream, comp
 - `Save`'i iki `Step` arasında çağırın, bir `Cp`/`OnEvent` kancasının içinden değil. `Save` simülasyonda hiçbir şeyi değiştirmez.
 - Kancalar kaydedilmez: `OnEvent`, `Cp` ve `Rng.Trace` yüklemeden sonra yeniden bağlanır (ör. `new WorldStats(sim2)`).
 
-**Dosyada ne var.** `{"format":"fd-macro-save","version":1,"day":…,"seed":…,"state":{…}}`. `state` (`SaveState`) şunları tutar:
+**Dosyada ne var.** `{"format":"fd-macro-save","version":2,"day":…,"seed":…,"state":{…}}` (sürüm 2: Faz 1b-3; sürüm 1 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
 `World`, RNG durumu ve `Rng.Calls`, kara yol önbelleği, deniz yol önbelleği (`NavCache`) ve `ShoreW`. Önbellekler sonucu etkiler
 (bayat girdiler bilerek yeniden kullanılır, boyut sınırında temizlenir), o yüzden onlar da kaydedilir. RNG durumu ayrı saklanır:
 `new Sim(seed)`'ten hemen sonra `World.RngState` henüz dünya üretiminin durumunu tutar. İlk `Step`'ten sonra ikisi hep eşittir.

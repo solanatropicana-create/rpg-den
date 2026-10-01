@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 // Tüketilen mallar: teçhizat (efsunlu silah, mithril zırh askerin üstündedir), iksir (salgın ve yaralı),
-// at (kervan atı, yaşlanma), deri (kış giysisi). Her malın harcandığı yer burada toplanır.
+// at (kervan atı). Faz 1b-3: atlar artık yaşlanmaz; deri kış giysisi değil (kentin ve askerin deri tüketimi Economy'de).
 // Port of src/sim/gear.ts.
 
 namespace FD.Macro;
@@ -45,7 +45,8 @@ public static class Gear
         double n = TotalSoldiers(s, c);
         g.N = n;
         int enc = 0, mit = 0;
-        if (s.Has(c, "enchanting"))
+        int ct = s.CivTier(c);
+        if (ct >= Gate.ENCHANTING)
         {
             // yeni askerlere silah ayrıldıktan sonra artan silah efsunlanır: 1 silah + 1 mana
             for (int i = 0; i < 3 && Math.Floor(g.Ench) < n && s.St(c, "mana") >= 1 && s.St(c, "arms") >= 2; i++)
@@ -53,7 +54,7 @@ public static class Gear
                 s.Add(c, "mana", -1); s.Add(c, "arms", -1); g.Ench += 1; enc++;
             }
         }
-        if (s.Has(c, "mithrilwork"))
+        if (ct >= Gate.MITHRILWORK)
         {
             for (int i = 0; i < 3 && Math.Floor(g.Mith) < n && s.St(c, "mithril") >= 1; i++) { s.Add(c, "mithril", -1); g.Mith += 1; mit++; }
         }
@@ -74,7 +75,7 @@ public static class Gear
     /// <summary>savaştan sonra yaralı askerler: iksir varsa bir kısmı kurtarılır. Kurtarılan sayıyı döndürür.</summary>
     public static double HealWounded(Sim s, Civ c, double dead)
     {
-        if (dead <= 0 || !s.Has(c, "medicine")) return 0;
+        if (dead <= 0 || !s.CivAt(c, Gate.MEDICINE)) return 0;
         double saved = JsMath.Min(Math.Floor(s.St(c, "potion")), Math.Floor(dead * 0.4));
         if (saved <= 0) return 0;
         s.Add(c, "potion", -saved);
@@ -100,27 +101,4 @@ public static class Gear
         s.Add(c, "horses", -1);
         return true;
     }
-
-    /// <summary>Günlük: atlar yaşlanır (yılda ~%9), kışın halk deri giysi giyer.</summary>
-    public static void WearTick(Sim s, Civ c, List<Settlement> ss)
-    {
-        double h = s.St(c, "horses");
-        if (h > 0) s.Add(c, "horses", -h * 0.0008);
-        if (s.Season != 3) return;
-        double need = 0;
-        foreach (var st in ss) need += s.Pop(st) * 0.008 * (s.W.Tiles[st.Tile].Terrain == "tundra" ? 1.5 : 1);
-        double have = s.St(c, "leather");
-        if (have >= need) { s.Add(c, "leather", -need); return; }
-        s.Add(c, "leather", -have);
-        if (c.Yearly.Get("cold") != s.Year)
-        {
-            // yalnız soğuk kış serisinin ilk yılı akışa düşer
-            if (c.Yearly.Get("cold") != s.Year - 1) s.Log("economy", $"{c.Name} kışa yeterince deri giysiyle giremedi; halk üşüyor.", civ: c.Id, cause: "Deri yetmedi: kışın büyüme yavaşlar, salgın riski artar");
-            c.Yearly.Set("cold", s.Year);
-            s.Metric("coldWinter");
-        }
-    }
-
-    /// <summary>bu kış üşüyen medeniyet</summary>
-    public static bool IsCold(Sim s, Civ c) => s.Season == 3 && c.Yearly.Get("cold") == s.Year;
 }

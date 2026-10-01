@@ -32,8 +32,24 @@ public sealed class Cand
 
 public static class Economy
 {
-    private static readonly double[] SEASON_FARM = { 1.0, 1.3, 1.1, 0.25 };
-    private static readonly double[] SEASON_WILD = { 1.0, 1.2, 1.1, 0.5 };
+    /// <summary>Faz 1b-3: mevsimler kalktı; tarla ve yaban (av, balık, ot, toplayıcı) verimi eski mevsim çarpanlarının yıllık
+    /// ortalaması: tarla (1 + 1,3 + 1,1 + 0,25) / 4, yaban (1 + 1,2 + 1,1 + 0,5) / 4</summary>
+    public const double FARM_YIELD = 0.9125, WILD_YIELD = 0.95;
+    /// <summary>Faz 1b-3: kademe verimi (eski ana ağacın verim düğümlerinin yerine: Bronz Aletler, Lonca, Taç ve Kanun her biri +0,1):
+    /// yapının bağlı olduğu yerleşimin kademesine göre çıkarma verimine eklenir (atölyelere yarısı)</summary>
+    public static readonly double[] TIER_PROD = { 0, 0.1, 0.2, 0.3 };
+    /// <summary>Faz 1b-3: kademe vergisi (eski Para +0,5 ve Taç ve Kanun +0,3): devletin hazine düzeni medeniyetin kademesiyle
+    /// (en büyük yerleşimi) gelir ve bütün nüfusun vergisine eklenir</summary>
+    public static readonly double[] TIER_TAX = { 0, 0, 0.5, 0.8 };
+    /// <summary>Faz 1b-3: kademe büyümesi (eski İnanç +0,05 baştan, Hekimlik +0,1 Kasaba'dan)</summary>
+    public static readonly double[] TIER_GROWTH = { 0.05, 0.05, 0.15, 0.15 };
+    /// <summary>Faz 1b-3: Ormancılık (eski düğüm) yerine Kasaba+ yerleşimin kereste verimi</summary>
+    public const double FORESTRY_WOOD = 0.25;
+    /// <summary>Faz 1b-3: askerin deri bakımı (kayış, çizme, kalkan kaplaması): asker başı günlük deri (deri artık kış giysisi değil;
+    /// kentler de deri tüketir: TOWN_NEEDS "leather")</summary>
+    public const double SOLDIER_LEATHER = 0.003;
+    /// <summary>Faz 1b-3: kuraklıkta (anlatıcı krizi) tarla ve toplayıcı verimi bu kadar düşer</summary>
+    public const double DROUGHT_FARM = 0.5;
     private static readonly string[] HOUSING = { "hut", "house", "stonehouse" };
 
     private static readonly string[] DEPOSIT_EXTRACTS = { "farm", "mine", "claypit", "pasture", "herbalist", "crystal", "mithril", "grove" };
@@ -50,10 +66,15 @@ public static class Economy
         return k == "lumber" ? "wood" : k == "hunt" ? "meat" : k == "dock" ? "fish" : "stone";
     }
 
-    /// <summary>Hex'teki yapının işçi başına günlük verimi (level/kind default: t.Ext.Level / t.Ext.Kind).</summary>
-    public static (string Good, double Y) ExtractYield(Sim s, Civ c, Tile t, int? level = null, string kind = null)
+    /// <summary>Kuraklık sürüyor mu (Storyteller krizi): tarla ve toplayıcı verimi düşer.</summary>
+    public static bool Drought(Sim s) => s.W.Story != null && s.Day < s.W.Story.DroughtUntil;
+
+    /// <summary>Hex'teki yapının işçi başına günlük verimi (level/kind default: t.Ext.Level / t.Ext.Kind; tier: yapının bağlı
+    /// olduğu yerleşimin kademesi, verilmezse hex'in sahibinden okunur).</summary>
+    public static (string Good, double Y) ExtractYield(Sim s, Civ c, Tile t, int? level = null, string kind = null, int? tier = null)
     {
         int lvl = level ?? t.Ext.Level;
+        int tr = tier ?? (t.Owner >= 0 ? s.Settlement(t.Owner)?.Tier ?? 0 : 0);
         string knd = kind ?? t.Ext.Kind;
         double rate = 0.1; string good = "stone";
         double richness = 1;
@@ -66,18 +87,17 @@ public static class Economy
         else if (knd == "hunt") { rate = 0.17; good = "meat"; }
         else if (knd == "dock") { rate = 0.26; good = "fish"; }
         else if (knd == "quarry") { rate = 0.2; good = "stone"; }
-        double m = 1 + s.E(c, "prodAll");
+        double m = 1 + s.E(c, "prodAll") + TIER_PROD[tr];
         bool food = good == "grain" || good == "meat" || good == "fish";
         if (food) m += s.E(c, "prodFood");
-        if (good == "wood") m += s.E(c, "prodWood");
+        if (good == "wood") m += s.E(c, "prodWood") + (tr >= Gate.FORESTRY ? FORESTRY_WOOD : 0);
         if (knd == "mine" || knd == "mithril" || knd == "quarry") m += s.E(c, "prodMine");
         if (good == "herbs") m += s.E(c, "prodHerbs");
         if (good == "mana") m += s.E(c, "prodMana");
+        // Faz 1b-3: mevsim yok (yıllık ortalama); kuraklıkta tarlalar yarı verir
         double season = 1;
-        bool winterImmune = s.E(c, "winterImmune") > 0;
-        // harvest (Kadim Şampiyon: kayıpsız hasat): tarlalar hiçbir mevsimde verim kaybetmez (yaz/güz artısı kalır)
-        if (knd == "farm") season = winterImmune || s.E(c, "harvest") > 0 ? JsMath.Max(1, SEASON_FARM[s.Season]) : SEASON_FARM[s.Season];
-        else if (knd == "hunt" || knd == "dock" || knd == "herbalist") season = winterImmune ? 1 : SEASON_WILD[s.Season];
+        if (knd == "farm") season = FARM_YIELD * (Drought(s) ? 1 - DROUGHT_FARM : 1);
+        else if (knd == "hunt" || knd == "dock" || knd == "herbalist") season = WILD_YIELD;
         double toolF = 1;
         if (lvl >= 2 && s.St(c, "tools") < 0.5) toolF = 0.75;
         if (lvl >= 2 && c.Broke != null) toolF *= BROKE_EXT;   // C3: hazine boşken L2+ yapıların bakımı aksar
@@ -93,10 +113,10 @@ public static class Economy
     public const double IDLE_GOLD = 0.004;
     /// <summary>asker bakımı: günlük maaş (altın; eskiden 0,006) ve erzak (kişi başı gıdanın üstüne)</summary>
     public const double SOLDIER_PAY = 0.01, SOLDIER_RATION = 0.05;
-    /// <summary>L2 ve L3 çıkarma yapısının günlük bakımı: altın ve alet aşınması (Demircilik'le alet yarı hızda aşınır)</summary>
+    /// <summary>L2 ve L3 çıkarma yapısının günlük bakımı: altın ve alet aşınması (Kasaba+ yerleşimde demir aletler yarı hızda aşınır)</summary>
     public static readonly double[] EXT_GOLD = { 0, 0, 0.004, 0.01 }, EXT_TOOLS = { 0, 0, 0.0015, 0.003 };
-    /// <summary>medeniyete bağlı kahramanın yıllık maaşı: taban + seviye başına; mevsimde bir (30 günde) dörtte biri ödenir. Maaşı art
-    /// arda HERO_UNPAID mevsim ödenmeyen kahraman (yurttaysa) hizmetten ayrılır.</summary>
+    /// <summary>medeniyete bağlı kahramanın yıllık maaşı: taban + seviye başına; 30 günde bir dörtte biri ödenir. Maaşı art
+    /// arda HERO_UNPAID kez ödenmeyen kahraman (yurttaysa) hizmetten ayrılır.</summary>
     public const double HERO_WAGE = 12, HERO_WAGE_LV = 6, HERO_UNPAID = 2;
     /// <summary>hazine boşken L2+ yapılar bu katla üretir; ödenemeyen her 10 günde yerleşim başına askerlerin bu payı firar eder</summary>
     public const double BROKE_EXT = 0.8, DESERT = 0.1;
@@ -112,8 +132,8 @@ public static class Economy
     /// <summary>aynı malın yokluğu medeniyet başına en çok bu kadar yılda bir kroniğe düşer</summary>
     public const double LACK_LOG_GAP = 3;
     private static readonly string[] LACK_GOODS = { "bread", "beer", "tools" };
-    /// <summary>kıtlık: açık bu kadar gün sürünce büyük olay olur; ambar art arda bu kadar gün (bir yıl) yetince biter: her kış
-    /// tekrarlayan açık aynı kıtlıktır. Kış sonunda birkaç günlük açık kıtlık sayılmaz: ilan için 10 gün ve ortalama %25 açık gerekir.</summary>
+    /// <summary>kıtlık: açık bu kadar gün sürünce büyük olay olur; ambar art arda bu kadar gün (bir yıl) yetince biter: arada
+    /// tekrarlayan açık aynı kıtlıktır. Birkaç günlük açık kıtlık sayılmaz: ilan için 10 gün ve ortalama %25 açık gerekir.</summary>
     public const double FAMINE_DECLARE = 10, FAMINE_END = 120;
     /// <summary>kıtlık ilanı için açık gıdanın ortalama bu payı olmalı (birkaç lokmalık açık kıtlık sayılmaz)</summary>
     public const double FAMINE_SHORT = 0.25;
@@ -142,14 +162,15 @@ public static class Economy
         {
             case "wood": return 30 + P * 1.5 + w;
             case "stone": return 15 + P * 0.8 + w;
-            case "bricks": return (s.Has(c, "pottery") ? 8 + P * 0.15 : 0) + w;
-            case "leather": return 6 + P * 0.3 + w;        // bir kışlık giysi + silah
-            case "tools": return (s.Has(c, "bronzetools") ? 4 + P * 0.05 : 0) + w;
-            case "arms": return (s.Has(c, "enchanting") ? 3 : 0) + w;
-            case "horses": return (s.Has(c, "husbandry") ? 4 + P * 0.03 : 1) + w;
-            case "potion": return (s.Has(c, "medicine") ? 4 + P * 0.06 : 0) + w;
-            case "mana": return (s.Has(c, "arcana1") ? 5 + P * 0.04 : 0) + (s.Has(c, "enchanting") ? 6 : 0) + w;
-            case "mithril": return (s.Has(c, "mithrilwork") ? 8 : 1) + w;
+            // Faz 1b-3: eskiden düğüme bağlı talepler medeniyetin kademesine bağlı (I. çağ düğümleri baştan açık)
+            case "bricks": return 8 + P * 0.15 + w;
+            case "leather": return 6 + P * 0.3 + w;        // koşum, ayakkabı, asker teçhizatı ve silah
+            case "tools": return (s.CivAt(c, Gate.TOOLS) ? 4 + P * 0.05 : 0) + w;
+            case "arms": return (s.CivAt(c, Gate.ENCHANTING) ? 3 : 0) + w;
+            case "horses": return 4 + P * 0.03 + w;
+            case "potion": return (s.CivAt(c, Gate.MEDICINE) ? 4 + P * 0.06 : 0) + w;
+            case "mana": { int ct = s.CivTier(c); return (ct >= Gate.ARCANA ? 5 + P * 0.04 : 0) + (ct >= Gate.ENCHANTING ? 6 : 0) + w; }
+            case "mithril": return (s.CivAt(c, Gate.MITHRILWORK) ? 8 : 1) + w;
             case "beer": return P * 0.3 + w;
             case "salt": return 3 + P * 0.05 + w;
             case "gold": return 1e9;
@@ -231,7 +252,7 @@ public static class Economy
     private static readonly string[] SPOIL_ORDER = { "grain", "meat", "fish", "bread" };
     private static readonly double[] MILESTONES = { 25, 50, 100, 200 };
 
-    /// <summary>Daily economy of a civ: jobs and production, consumption/spoilage, growth or famine, research progress, deposit regen.</summary>
+    /// <summary>Daily economy of a civ: jobs and production, consumption/spoilage, growth or famine, deposit regen.</summary>
     public static void EconomyTick(Sim s, Civ c)
     {
         var ss = s.CivSettlements(c);
@@ -244,9 +265,6 @@ public static class Economy
         // ihtiyacın çok üstünde biriken mal için kimse çalışmaz (yiyecek ve altın hariç)
         bool glut(string g) => IsGlut(s, c, g, totalPop);
         var W = s.W;
-        double researchPts = 0;
-        var cls = D.CLASSES[c.Cls];
-        double resShare = JsMath.Max(0.08, 0.17 + (c.Cls == "wizard" ? 0.07 : 0) + (c.Cls == "barbarian" ? -0.05 : 0));
 
         foreach (var st in ss)
         {
@@ -254,12 +272,9 @@ public static class Economy
             if (P <= 0) { s.Abandon(st, "Yerleşimde kimse kalmadı"); continue; }
             var jobs = new JsObj<double>();
             bool famine = daysFood < 12;
-            // kıtlıkta askerler de toplayıcılığa çıkar, araştırma durur
+            // kıtlıkta askerler de toplayıcılığa çıkar
             double avail = famine ? P : JsMath.Max(0, P - st.Soldiers);
             jobs.Set("asker", famine ? 0 : st.Soldiers);
-            // araştırmacılar önce ayrılır
-            double nr = J.T(c.Research.Current) && !famine ? JsMath.Min(avail, JsMath.Max(avail >= 3 ? 1 : 0, JsMath.Round(avail * resShare))) : 0;
-            avail -= nr; jobs.Set("araştırmacı", nr);
 
             var opts = new List<JobOpt>();
             // çıkarma yapıları
@@ -273,7 +288,7 @@ public static class Economy
                 if (t.Terrain == "forest" || t.Terrain == "grass" || t.Terrain == "tundra" || t.Terrain == "oldforest" || t.Terrain == "hill" || t.Terrain == "swamp") forestGrass++;
                 if (t.Ext == null || !s.ExtWorking(t)) { if (t.Ext != null) t.Ext.Workers = 0; continue; }
                 t.Ext.Workers = 0;
-                var (good, y) = ExtractYield(s, c, t);
+                var (good, y) = ExtractYield(s, c, t, tier: st.Tier);
                 double v = y * s.Price(c, good);
                 if (t.Ext.Kind == "hunt") v += y * (t.Terrain == "tundra" ? D.HIDE_TUNDRA : D.HIDE) * s.Price(c, "leather");
                 if (t.Ext.Kind == "claypit") v -= y * D.BRICK_FUEL * s.Price(c, "wood");
@@ -284,7 +299,7 @@ public static class Economy
                 opts.Add(new JobOpt { Key = good, Slots = D.LEVEL_SLOTS[t.Ext.Level], V = v, Run = n => { tile.Ext.Workers = n; ProduceTile(s, c, tIdx, tile, good, y * n); } });
             }
             // toplayıcılar
-            double gy = 0.14 * SEASON_WILD[s.Season] * (1 + s.E(c, "prodFood") * 0.5);
+            double gy = 0.14 * WILD_YIELD * (Drought(s) ? 1 - DROUGHT_FARM : 1) * (1 + s.E(c, "prodFood") * 0.5);
             opts.Add(new JobOpt { Key = "toplayıcı", Slots = JsMath.Min(10, forestGrass), V = gy * s.Price(c, "grain") * foodUrg * 0.9 + 0.03 * s.Price(c, "wood"), Run = n => { s.Add(c, "grain", gy * n); s.Add(c, "wood", 0.03 * n); } });
             // atölyeler
             foreach (var k in D.WORKSHOP_IDS)
@@ -292,10 +307,10 @@ public static class Economy
                 double cnt = st.Workshops.Get(k) ?? 0;
                 if (!J.T(cnt)) continue;
                 var def = D.WORKSHOPS[k];
-                var inp = PickInputs(s, c, def.Inputs, def.Alt != null && (!J.T(def.AltTech) || s.Has(c, def.AltTech)) ? def.Alt : null);
+                var inp = PickInputs(s, c, def.Inputs, Sim.WorkshopAltOk(st, def) ? def.Alt : null);
                 if (inp == null) continue;
                 double margin = (s.Price(c, def.Output) - s.Worth(c, inp)) * (s.St(c, def.Output) > 150 + totalPop * 12 || glut(def.Output) ? 0.08 : 1);
-                double perW = def.Rate * (1 + s.E(c, "prodAll") * 0.5);
+                double perW = def.Rate * (1 + (s.E(c, "prodAll") + TIER_PROD[st.Tier]) * 0.5);
                 opts.Add(new JobOpt
                 {
                     Key = def.Name, Slots = Math.Floor(def.Slots * cnt * WS_TIER[st.Tier]), V = perW * JsMath.Max(0.05, margin), Run = n =>
@@ -330,15 +345,6 @@ public static class Economy
             }
             jobs.Set("zanaatçı", avail);   // C3: boştakiler; altını ve kamu işleri PublicWorks'te
             st.Jobs = jobs;
-            // araştırma puanı (ırk yatkınlığı yok; sınıf etkileri); bilginler mana kristali yakarsa +%25
-            if (J.T(nr) && J.T(c.Research.Current))
-            {
-                double lib = (st.Civics.Get("library") ?? 0) > 0 ? 0.2 : 0;
-                double manaUse = nr * 0.01;
-                double mana = s.Has(c, "arcana1") && s.St(c, "mana") >= manaUse ? 0.25 : 0;
-                if (J.T(mana)) s.Add(c, "mana", -manaUse);
-                researchPts += nr * 0.3 * (1 + s.E(c, "research") + lib + mana);
-            }
         }
 
         // C3: hazine yedeğinin üstündeki altın kamu işlerine (imar) akar: boştakilerden amele tutulur; kalan boştakiler az altın getirir
@@ -348,7 +354,7 @@ public static class Economy
         foreach (var x in ss) soldiers = soldiers + x.Soldiers;
         double need = (totalPop * Sim.FOOD_PER_POP + soldiers * SOLDIER_RATION) * (1 - JsMath.Min(0.5, s.E(c, "frugal")));
         // C3: kent tüketimi (kademe başına, kişi başı): bira ve alet; kasaba ve şehir gıdasının bir payını ekmekten ister
-        double beerNeed = 0, toolNeed = 0, breadNeed = 0;
+        double beerNeed = 0, toolNeed = 0, breadNeed = 0, leatherNeed = soldiers * SOLDIER_LEATHER;
         foreach (var st in ss)
         {
             var tn = D.TOWN_NEEDS[st.Tier];
@@ -356,6 +362,7 @@ public static class Economy
             beerNeed += P * (tn.Get("beer") ?? 0);
             toolNeed += P * (tn.Get("tools") ?? 0);
             breadNeed += P * Sim.FOOD_PER_POP * (tn.Get("bread") ?? 0);
+            leatherNeed += P * (tn.Get("leather") ?? 0) * (s.W.Tiles[st.Tile].Terrain == "tundra" ? 1.5 : 1);   // Faz 1b-3: tundrada kürk
         }
         // ekmek önce yenir (FOOD_ORDER); kentlerin ekmek payı karşılanmıyorsa yokluk
         bool lackBread = breadNeed > 0 && s.St(c, "bread") * D.GOODS["bread"].Food.Value < breadNeed * 0.8;
@@ -388,10 +395,18 @@ public static class Economy
             if (haveBeer >= beerNeed) { s.Add(c, "beer", -beerNeed); happy = 0.15; }
             else { s.Add(c, "beer", -haveBeer); lackBeer = haveBeer < beerNeed * 0.8; }
         }
-        // L2–L3 yapılar aleti aşındırır (L3 iki kat; demir aletler yarı hızda) ve altın bakımı ister
-        double l2 = 0, l3 = 0;
-        for (int i = 0; i < W.Tiles.Count; i++) { var t = W.Tiles[i]; if (t.Ext != null && t.Ext.Level >= 2 && t.Owner >= 0 && J.Some(ss, x => x.Id == t.Owner)) { if (t.Ext.Level >= 3) l3++; else l2++; } }
-        if (J.T(l2 + l3)) s.Add(c, "tools", -(l2 * EXT_TOOLS[2] + l3 * EXT_TOOLS[3]) * (s.Has(c, "smithing") ? 0.5 : 1)); // demir aletler geç aşınır
+        // L2–L3 yapılar aleti aşındırır (L3 iki kat; Kasaba+ yerleşimin demir aletleri yarı hızda) ve altın bakımı ister
+        double l2 = 0, l3 = 0, wear = 0;
+        for (int i = 0; i < W.Tiles.Count; i++)
+        {
+            var t = W.Tiles[i];
+            if (t.Ext == null || t.Ext.Level < 2 || t.Owner < 0) continue;
+            var ow = J.Find(ss, x => x.Id == t.Owner);
+            if (ow == null) continue;
+            if (t.Ext.Level >= 3) l3++; else l2++;
+            wear += EXT_TOOLS[Math.Min(3, t.Ext.Level)] * (ow.Tier >= Gate.IRON_TOOLS ? 0.5 : 1);
+        }
+        if (J.T(l2 + l3)) s.Add(c, "tools", -wear);
         // C3: köy, kasaba ve şehir zanaatkârları alet tüketir
         bool lackTools = false;
         if (toolNeed > 0)
@@ -400,10 +415,13 @@ public static class Economy
             if (haveTools >= toolNeed) s.Add(c, "tools", -toolNeed);
             else { s.Add(c, "tools", -haveTools); lackTools = haveTools < toolNeed * 0.8; }
         }
-        // yokluk ancak malı yapmayı bilen medeniyette sayılır (fırın, bira evi, aletçi): bilmeyen halk onu aramaz
-        lackBread = lackBread && s.Has(c, D.WORKSHOPS["bakery"].Tech);
-        lackBeer = lackBeer && s.Has(c, D.WORKSHOPS["brewery"].Tech);
-        lackTools = lackTools && s.Has(c, D.WORKSHOPS["toolmaker"].Tech);
+        // Faz 1b-3: deri: kentlerin koşum ve ayakkabısı, askerin teçhizat bakımı (eski kış giysisinin yerine; yokluğu cezasız)
+        if (leatherNeed > 0) s.Add(c, "leather", -JsMath.Min(leatherNeed, s.St(c, "leather")));
+        // yokluk ancak malı yapan zanaatı olan medeniyette sayılır (bir yerleşiminde fırın, bira evi, aletçi): zanaatı olmayan halk
+        // onu aramaz (Faz 1b-3: eskiden düğüm; köyler artık bira evinden önce kurulabiliyor)
+        lackBread = lackBread && HasWorkshop(ss, "bakery");
+        lackBeer = lackBeer && HasWorkshop(ss, "brewery");
+        lackTools = lackTools && HasWorkshop(ss, "toolmaker");
         foreach (var st in ss)
         {
             var tn = D.TOWN_NEEDS[st.Tier];
@@ -412,13 +430,12 @@ public static class Economy
             SetLack(st, "tools", lackTools && J.T(tn.Get("tools") ?? 0));
         }
         LackLog(s, c, ss);
-        Gear.WearTick(s, c, ss);
         Gear.GearTick(s, c);
         double mint = 0;
         foreach (var x in ss) mint += MintIncome(s, x);
-        double income = totalPop * 0.004 * (1 + s.E(c, "tax")) + mint;
+        double income = totalPop * 0.004 * (1 + s.E(c, "tax") + TIER_TAX[s.CivTier(c)]) + mint;   // Faz 1b-3: kademe vergisi
         s.Add(c, "gold", income);
-        // C3: bakım: asker maaşı ve L2–L3 yapılar (kahraman maaşı mevsimde bir: PayHeroes)
+        // C3: bakım: asker maaşı ve L2–L3 yapılar (kahraman maaşı 30 günde bir: PayHeroes)
         double extGold = l2 * EXT_GOLD[2] + l3 * EXT_GOLD[3];
         double upkeep = soldiers * SOLDIER_PAY + extGold;
         var bud = c.Budget ??= new CivBudget();
@@ -431,18 +448,14 @@ public static class Economy
 
         if (need > 0.01)
         {
-            if (s.E(c, "noFamine") > 0) { s.Add(c, "grain", need); }
-            else
+            // C3: kıtlık medeniyetin tek büyük olayıdır (yerleşim başına "kıtlık başladı" akışı yerine)
+            var fam = FamineDay(s, c, need, totalPop);
+            foreach (var st in s.CivSettlements(c))
             {
-                // C3: kıtlık medeniyetin tek büyük olayıdır (yerleşim başına "kıtlık başladı" akışı yerine)
-                var fam = FamineDay(s, c, need, totalPop);
-                foreach (var st in s.CivSettlements(c))
-                {
-                    st.Starving++;
-                    // açlık, açığın büyüklüğüyle orantılı birikir
-                    st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
-                    if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); fam.Dead++; }
-                }
+                st.Starving++;
+                // açlık, açığın büyüklüğüyle orantılı birikir
+                st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
+                if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); fam.Dead++; }
             }
         }
         else
@@ -458,7 +471,7 @@ public static class Economy
                     double rate = 0;
                     foreach (var kv in st.Pop) rate += kv.Value * D.RACES[kv.Key].Growth;
                     double crowd = JsMath.Max(0.05, 1 - P / Sim.TIER_CROWD[st.Tier]) / (1 + JsMath.Max(0, totalPop - 60) / 70);
-                    st.GrowthAcc += rate * 0.0058 * (daysFood > 30 ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + happy) * (Gear.IsCold(s, c) ? 0.5 : 1) * LackGrowth(st) * ImarGrowth(st); // üşüyen halk yavaş büyür; C3: kentte yokluk, imar
+                    st.GrowthAcc += rate * 0.0058 * (daysFood > 30 ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + TIER_GROWTH[st.Tier] + happy) * LackGrowth(st) * ImarGrowth(st); // C3: kentte yokluk, imar; Faz 1b-3: kademe
                     while (st.GrowthAcc >= 1)
                     {
                         st.GrowthAcc -= 1;
@@ -467,21 +480,6 @@ public static class Economy
                     }
                 }
                 if (s.Rng.Chance(P * 0.00025)) s.RemovePop(st, 1);
-            }
-        }
-
-        // Araştırma
-        if (J.T(c.Research.Current))
-        {
-            var t = D.TECH[c.Research.Current];
-            c.Research.Progress += researchPts;
-            double cost = ResearchCost(s, c, t);
-            if (c.Research.Progress >= cost)
-            {
-                c.Research.Done.Add(t.Id);
-                c.Research.Current = null;
-                c.Research.Progress = 0;
-                Research.OnTechDone(s, c, t.Id);
             }
         }
 
@@ -499,6 +497,13 @@ public static class Economy
         double tp = s.CivPop(c);
         foreach (double m in MILESTONES) if (tp >= m && c.Stats.PeakPop < m) s.Log("growth", $"{c.Name} nüfusu {J.S(m)} kişiye ulaştı.", civ: c.Id, major: m >= 50);
         c.Stats.PeakPop = JsMath.Max(c.Stats.PeakPop, tp);
+    }
+
+    /// <summary>Medeniyetin herhangi bir yerleşiminde bu atölye var mı.</summary>
+    private static bool HasWorkshop(List<Settlement> ss, string k)
+    {
+        foreach (var x in ss) if ((x.Workshops.Get(k) ?? 0) > 0) return true;
+        return false;
     }
 
     // ------------------------------------------------------------ C3: kent tüketiminde yokluk
@@ -553,7 +558,7 @@ public static class Economy
     }
 
     // ------------------------------------------------------------ C3: bakım ve hazine
-    /// <summary>Kahramanın mevsimlik maaşı (yıllık HERO_WAGE + HERO_WAGE_LV × seviye'nin dörtte biri, yuvarlanmış).</summary>
+    /// <summary>Kahramanın 30 günlük maaşı (yıllık HERO_WAGE + HERO_WAGE_LV × seviye'nin dörtte biri, yuvarlanmış).</summary>
     public static double HeroWage(Hero h) => JsMath.Round((HERO_WAGE + HERO_WAGE_LV * h.Level) / 4);
 
     /// <summary>Günlük bakımı öder. Hazine yetmezse ödeyebildiğini öder ve medeniyet "hazinesi boş" olur: ödenemeyen her 10 günde
@@ -589,7 +594,7 @@ public static class Economy
                 if (st.Soldiers > 0) { double n = JsMath.Max(1, Math.Floor(st.Soldiers * DESERT)); st.Soldiers -= n; s.Metric("deserted", n); }
     }
 
-    /// <summary>Mevsimde bir (30 günde): medeniyete bağlı kahramanların maaşı (kahramanın kesesine). Maaşı art arda HERO_UNPAID mevsim
+    /// <summary>30 günde bir: medeniyete bağlı kahramanların maaşı (kahramanın kesesine). Maaşı art arda HERO_UNPAID kez
     /// ödenmeyen (ya da hazinesi bir aydır boş medeniyetin) kahramanı yurttaysa hizmetten ayrılır (sözleşmeli olan hanına, öteki
     /// tavernasına döner).</summary>
     private static void PayHeroes(Sim s, Civ c)
@@ -612,7 +617,7 @@ public static class Economy
             s.Metric("heroQuit");
             Will.Note(s, h, $"{c.Name} maaşını ödeyemeyince hizmetten ayrıldı");
             s.Log("hero", $"{h.Name}, maaşı ödenmeyince {Tr.Ek(c.Name, "in")} hizmetinden ayrıldı.", civ: c.Id, tile: h.Pos, major: true,
-                cause: broke ? $"{c.Name} hazinesi {J.S(s.Day - c.Broke.Value)} gündür boş" : $"{J.S(seasons)} mevsimdir maaş alamadı; hazinede {J.S(Math.Floor(s.St(c, "gold")))} altın var");
+                cause: broke ? $"{c.Name} hazinesi {J.S(s.Day - c.Broke.Value)} gündür boş" : $"{J.S(seasons)} aydır maaş alamadı; hazinede {J.S(Math.Floor(s.St(c, "gold")))} altın var");
             Will.ReturnToBase(s, h);
         }
     }
@@ -622,7 +627,7 @@ public static class Economy
 
     /// <summary>Gıda açığı olan gün: kıtlık kaydı açılır ya da sürer; açık FAMINE_DECLARE gün sürünce ve ortalama açık ihtiyacın
     /// FAMINE_SHORT payını geçince büyük olay olarak ilan edilir, komşulara yardım çağrısı gider (AID_GAP günde bir, en çok AID_ROUNDS
-    /// kez). Ambar FAMINE_END gün art arda yetmeden kıtlık bitmez (kışın tekrarlayan açık aynı kıtlıktır).</summary>
+    /// kez). Ambar FAMINE_END gün art arda yetmeden kıtlık bitmez (arada tekrarlayan açık aynı kıtlıktır).</summary>
     private static FamineState FamineDay(Sim s, Civ c, double need, double totalPop)
     {
         var f = c.Famine ??= new FamineState { Since = s.Day, NextAid = s.Day };
@@ -642,7 +647,7 @@ public static class Economy
         return f;
     }
 
-    /// <summary>Kıtlığın nedeni: yanan tarlalar, kuşatma ve savaş, kış, salgın, yoksa ambarın nüfusa yetmemesi.</summary>
+    /// <summary>Kıtlığın nedeni: yanan tarlalar, kuşatma ve savaş, kuraklık, salgın, yoksa ambarın nüfusa yetmemesi.</summary>
     private static string FamineWhy(Sim s, Civ c)
     {
         var why = new List<string>();
@@ -650,7 +655,7 @@ public static class Economy
         foreach (var t in s.W.Tiles) if (t.Ext != null && t.Ext.Kind == "farm" && J.T(t.Ext.Burned) && t.Owner >= 0 && s.Settlement(t.Owner)?.Civ == c.Id) burned++;
         if (burned > 0) why.Add($"{J.S(burned)} tarla yanmış");
         if (s.InWar(c)) why.Add("savaş tarlaları boş bıraktı");
-        if (s.Season == 3) why.Add(s.W.Story != null && s.W.Story.LastWinter == s.Year ? "sert kış ambarları tüketti" : "kış ortası");
+        if (Drought(s)) why.Add("kuraklık tarlaları kuruttu");
         if (J.Some(s.CivSettlements(c), x => x.Plague != null)) why.Add("salgın çiftçileri yatağa düşürdü");
         if (why.Count == 0) why.Add("ambarlar büyüyen nüfusa yetmedi");
         return J.TrCap(string.Join(", ", why));
@@ -848,8 +853,7 @@ public static class Economy
         {
             var t = s.W.Tiles[i];
             if (t.CutDay == null || t.Terrain != "grass" || t.Ext != null || t.Deposit >= 0) continue;
-            int owner = s.TileCiv(i);
-            bool fast = owner >= 0 && s.Has(s.W.Civs[owner], "forestry");
+            bool fast = s.TileTier(i) >= Gate.FORESTRY;   // Faz 1b-3: Kasaba+ yerleşimin ormancıları
             if (s.Day - t.CutDay.Value > D.FOREST_REGROW_DAYS * (fast ? 0.5 : 1)) { t.Terrain = "forest"; t.Wood = 160; t.CutDay = null; }
         }
     }
@@ -948,16 +952,6 @@ public static class Economy
                 return;
             }
             if (k == "lighthouse") { s.Log("sea", $"{Tr.Ek(st.Name, "da")} Fener Kulesi yükseldi; gece gemilere yol gösterecek.", civ: c.Id, tile: st.Port ?? st.Tile, major: true); return; }
-            if (k == "wonder")
-            {
-                s.RecomputeEff(c);
-                bool first = !J.T(s.W.Metrics.Get("wonder") ?? 0);
-                s.Metric("wonder");
-                var wd = D.WONDERS[c.Cls];
-                foreach (var o in s.W.Civs) if (o.Alive && o.Id != c.Id && s.Rel(o.Id, c.Id).Contact) s.AddMod(o.Id, c.Id, "wonder", $"{wd.Name} hayranlığı", first ? 12 : 6, 12, 0.01, false);
-                s.Log("wonder", first ? $"DÜNYANIN İLK HARİKASI: {c.Name}, {Tr.Ek(st.Name, "da")} {wd.Name} inşasını tamamladı!" : $"{c.Name}, {Tr.Ek(st.Name, "da")} {wd.Name} inşasını tamamladı.", civ: c.Id, tile: st.Tile, major: true, cause: $"{wd.Desc}{(first ? "; bütün diyar hayranlıkla izliyor" : "")}");
-                return;
-            }
             if (Array.IndexOf(HOUSING, k) < 0 || (k == "house" && st.Civics.Get("house") == 1) || (k == "stonehouse" && st.Civics.Get("stonehouse") == 1))
                 s.Log("build", $"{Tr.Ek(st.Name, "da")} {CivicName(c, k)} yükseldi.", civ: c.Id, tile: st.Tile, major: k == "tavern" || k == "unique" || k == "castle");
         }
@@ -1014,16 +1008,8 @@ public static class Economy
         ["bard"] = "Ozanlar Salonu", ["fighter"] = "Lejyon Kışlası", ["monk"] = "Manastır", ["ranger"] = "Korucu Locası", ["sorcerer"] = "Kan Soyu Mabedi", ["warlock"] = "Pakt Mihrabı",
     };
 
-    /// <summary>Effective research cost of a tech for this civ (hard path ×2.2, cheapKnown ×0.5), Math.round'ed.</summary>
-    public static double ResearchCost(Sim s, Civ c, TechDef t)
-    {
-        double cost = D.TechCost(t) * (J.T(c.Research.Hard) && c.Research.Current == t.Id ? 2.2 : 1);
-        if (J.T(s.E(c, "cheapKnown")) && J.Some(s.W.Civs, o => o.Id != c.Id && o.Alive && s.Rel(c.Id, o.Id).Contact && o.Research.Done.Contains(t.Id))) cost *= 0.5;
-        return JsMath.Round(cost);
-    }
-
-    /// <summary>Display name of a civic ('unique' and 'wonder' resolve per class).</summary>
-    public static string CivicName(Civ c, string k) => k == "unique" ? UNIQUE_BUILDING[c.Cls] ?? "Sınıf yapısı" : k == "wonder" ? D.WONDERS[c.Cls].Name : D.CIVICS[k].Name;
+    /// <summary>Display name of a civic ('unique' resolves per class).</summary>
+    public static string CivicName(Civ c, string k) => k == "unique" ? UNIQUE_BUILDING[c.Cls] ?? "Sınıf yapısı" : D.CIVICS[k].Name;
 
     /// <summary>Picks a project for each idle settlement; an unaffordable best candidate adds its cost to c.Want.</summary>
     public static void ChooseBuilds(Sim s, Civ c)
@@ -1061,14 +1047,14 @@ public static class Economy
         var outp = new List<Cand>();
         double P = s.Pop(st);
         double cap = s.Housing(st);
-        bool civicAvail(string k) { var d = D.CIVICS[k]; return !J.T(d.Tech) || s.Has(c, d.Tech); }
+        bool civicAvail(string k) => Sim.CivicOk(st, k);   // Faz 1b-3: yerleşimin kademesi
         // Barınma
         if (P >= cap - 2)
         {
             foreach (var (k, sc) in HOUSING_CANDS)
             {
                 if (!civicAvail(k)) continue;
-                if (k == "hut" && (st.Civics.Get("hut") ?? 0) >= 6 && s.Has(c, "woodwork")) continue;
+                if (k == "hut" && (st.Civics.Get("hut") ?? 0) >= 6) continue;
                 outp.Add(new Cand { Score = sc + (P >= cap ? 15 : 0) + JsMath.Min(30, (P - cap) * 2.5 * (P > cap ? 1 : 0)), Cost = D.CIVICS[k].Cost, Work = D.CIVICS[k].Work, Project = new Project { Type = "civic", Kind = k } });
             }
         }
@@ -1084,12 +1070,12 @@ public static class Economy
             {
                 var t = W.Tiles[ti];
                 if (t.Ext != null || ti == st.Tile || t.Camp != null) continue;
-                foreach (var kind in PossibleKinds(s, c, t, ti))
+                foreach (var kind in PossibleKinds(s, c, t, ti, st))
                 {
                     int lvl = D.EXTRACTS[kind].StartLevel ?? 1;
                     var fake = t.Clone();
                     fake.Ext = new ExtractBuilding { Kind = kind, Level = lvl, Settlement = st.Id, Workers = 0 };
-                    var (good, y) = ExtractYield(s, c, fake, lvl, kind);
+                    var (good, y) = ExtractYield(s, c, fake, lvl, kind, st.Tier);
                     double v = y * D.LEVEL_SLOTS[lvl] * s.Price(c, good);
                     if (kind == "hunt") v += y * D.LEVEL_SLOTS[lvl] * (t.Terrain == "tundra" ? D.HIDE_TUNDRA : D.HIDE) * s.Price(c, "leather");
                     if (kind == "claypit") v -= y * D.LEVEL_SLOTS[lvl] * D.BRICK_FUEL * s.Price(c, "wood");
@@ -1109,17 +1095,18 @@ public static class Economy
             if (t.Ext == null || J.T(t.Ext.Depleted) || t.Ext.Level >= 3) continue;
             var def = D.EXTRACTS[t.Ext.Kind];
             int nl = t.Ext.Level + 1;
-            if (!J.T(def.Names[nl - 1]) || !J.T(def.Tech[nl - 1]) || !s.Has(c, def.Tech[nl - 1])) continue;
+            if (!J.T(def.Names[nl - 1]) || !Sim.ExtractLevelOk(st, t.Ext.Kind, nl)) continue;   // Faz 1b-3: yerleşimin kademesi
             if (t.Ext.Kind == "dock" && nl == 3 && !J.Some(s.G.Neighbors(ti), n => J.T(W.Tiles[n].Sea))) continue; // balıkçı filosu açık denize açılır
             if (t.Ext.Workers < D.LEVEL_SLOTS[t.Ext.Level] - 1) continue;
-            var cur = ExtractYield(s, c, t);
-            var nxt = ExtractYield(s, c, t, nl);
+            var cur = ExtractYield(s, c, t, tier: st.Tier);
+            var nxt = ExtractYield(s, c, t, nl, tier: st.Tier);
             double gain = (nxt.Y * D.LEVEL_SLOTS[nl] - cur.Y * t.Ext.Workers) * s.Price(c, cur.Good);
             outp.Add(new Cand { Score = gain * 10 + 8, Cost = D.LEVEL_COST[nl], Work = 10 + nl * 8, Project = new Project { Type = "upgrade", Kind = t.Ext.Kind, Tile = ti, Level = nl } });
         }
-        // Denizcilik: tersane, fener, gemiler (yerleşim yuvası kullanmaz); filo medeniyet çapında hedeflenir
+        // Denizcilik: tersane, fener, gemiler (yerleşim yuvası kullanmaz); filo medeniyet çapında hedeflenir.
+        // Faz 1b-3: kıyısı olan her yerleşim liman kurabilir (eskiden Tekne Yapımı düğümü)
         var yards = J.Filter(s.CivSettlements(c), x => J.T(x.Civics.Get("shipyard")) && x.Port != null);
-        if (s.Has(c, "boatbuilding") && !J.T(st.Civics.Get("shipyard")) && Sea.PickPort(s, st) >= 0)
+        if (civicAvail("shipyard") && !J.T(st.Civics.Get("shipyard")) && Sea.PickPort(s, st) >= 0)
         {
             bool near = J.Some(yards, x => s.G.Dist(x.Tile, st.Tile) <= 10);
             double sc = yards.Count == 0 ? 30 + (D.CLASSES[c.Cls].Prefer.Get("deniz") ?? 1) * 6 : J.T(st.Overseas) || (st.Tier >= 2 && !near) ? 12 : 0;
@@ -1127,13 +1114,14 @@ public static class Economy
         }
         if (J.T(st.Civics.Get("shipyard")) && st.Port != null)
         {
-            if (s.Has(c, "seatrade") && !J.T(st.Civics.Get("lighthouse")) && (st.Tier >= 2 || !J.Some(yards, x => J.T(x.Civics.Get("lighthouse"))))) outp.Add(new Cand { Score = 14, Cost = D.CIVICS["lighthouse"].Cost, Work = D.CIVICS["lighthouse"].Work, Project = new Project { Type = "civic", Kind = "lighthouse" } });
+            if (civicAvail("lighthouse") && !J.T(st.Civics.Get("lighthouse"))) outp.Add(new Cand { Score = 14, Cost = D.CIVICS["lighthouse"].Cost, Work = D.CIVICS["lighthouse"].Work, Project = new Project { Type = "civic", Kind = "lighthouse" } });
             double routes = J.Filter(W.Routes, r => r.Alive && J.T(r.Sea) && (s.Settlement(r.A)?.Civ == c.Id || s.Settlement(r.B)?.Civ == c.Id)).Count;
-            double want = JsMath.Min(7, 1 + (s.Has(c, "shipbuilding") ? 1 : 0) + (s.Has(c, "navigation") ? 1 : 0) + (s.Has(c, "seatrade") ? 1 : 0) + routes);
+            int ct = s.CivTier(c);
+            double want = JsMath.Min(7, 1 + (ct >= Gate.SHIPBUILDING ? 1 : 0) + (ct >= Gate.NAVIGATION ? 1 : 0) + (ct >= Gate.SEATRADE ? 1 : 0) + routes);
             var fl = Sea.Fleet(s, c); double n = JsMath.Max(1, yards.Count);
             double have = st.Ships ?? 0;
             if (fl.Ships < want && have < Math.Ceiling(want / n)) outp.Add(new Cand { Score = 22 + (fl.Ships == 0 ? 14 : 0) + routes * 3, Cost = D.SHIPS["hull"].Cost, Work = D.SHIPS["hull"].Work, Project = new Project { Type = "ship", Kind = "hull" } });
-            if (s.Has(c, "navy"))
+            if (ct >= Gate.NAVY)
             {
                 double gw = 2 + (war ? 2 : 0) + (D.CLASSES[c.Cls].Aggression >= 0.5 ? 1 : 0);
                 if (fl.Galleys < gw && (st.Galleys ?? 0) < Math.Ceiling(gw / n)) outp.Add(new Cand { Score = 20 + (war ? 16 : 0) + D.CLASSES[c.Cls].Aggression * 10, Cost = D.SHIPS["galley"].Cost, Work = D.SHIPS["galley"].Work, Project = new Project { Type = "ship", Kind = "galley" } });
@@ -1145,10 +1133,10 @@ public static class Economy
             foreach (var k in D.WORKSHOP_IDS)
             {
                 var def = D.WORKSHOPS[k];
-                if (!s.Has(c, def.Tech)) continue;
+                if (!Sim.WorkshopOk(st, k)) continue;   // Faz 1b-3: yerleşimin kademesi
                 double have = st.Workshops.Get(k) ?? 0;
                 if (have >= (st.Tier >= 2 ? 2 : 1) || IsGlut(s, c, def.Output, s.CivPop(c))) continue;
-                var alt = def.Alt != null && (!J.T(def.AltTech) || s.Has(c, def.AltTech)) ? def.Alt : null;
+                var alt = Sim.WorkshopAltOk(st, def) ? def.Alt : null;
                 bool inputsOk = J.Every(def.Inputs.Keys(), g => s.St(c, g) >= (def.Inputs.Get(g) ?? 0) * 4 || Producing(s, c, g))
                     || (alt != null && J.Every(alt.Keys(), g => s.St(c, g) >= (alt.Get(g) ?? 0) * 4 || Producing(s, c, g)));
                 if (!inputsOk) continue;
@@ -1173,19 +1161,9 @@ public static class Economy
             if (isCap) AddCivic("guild", 26);
             double threat = c.Threat + (war ? 1 : 0);
             AddCivic("palisade", 8 + threat * 35 + st.Tier * 6);
-            if (st.Tier >= 1) AddCivic("stonewall", 10 + threat * 30 + st.Tier * 6);
-            if (isCap && st.Tier >= 2) AddCivic("castle", 20 + threat * 25);
-            if (isCap && c.Era >= 4 && st.Tier >= 2 && !J.T(st.Civics.Get("wonder")) && !J.Some(s.CivSettlements(c), x => J.T(x.Civics.Get("wonder"))))
-            {
-                var d = D.CIVICS["wonder"];
-                double rivals = J.Filter(s.W.Settlements, x => x.Alive && x.Civ != c.Id && (J.T(x.Civics.Get("wonder")) || x.Project?.Kind == "wonder")).Count;
-                outp.Add(new Cand { Score = 44 + rivals * 6, Cost = d.Cost, Work = d.Work, Project = new Project { Type = "civic", Kind = "wonder" } });
-            }
-            if (isCap && J.T(c.Subclass) && !J.T(st.Civics.Get("unique")))
-            {
-                var d = D.CIVICS["unique"];
-                outp.Add(new Cand { Score = 40, Cost = d.Cost, Work = d.Work, Project = new Project { Type = "civic", Kind = "unique" } });
-            }
+            AddCivic("stonewall", 10 + threat * 30 + st.Tier * 6);   // Faz 1b-3: Kasaba+ (CivicDef.Tier)
+            if (isCap) AddCivic("castle", 20 + threat * 25);         // Faz 1b-3: Şehir
+            if (isCap) AddCivic("unique", 40);                        // sınıf yapısı: başkent Köy olunca (eskiden alt sınıf seçimi)
         }
         return outp;
     }
@@ -1196,17 +1174,18 @@ public static class Economy
         return false;
     }
 
-    /// <summary>Extraction building kinds (ExtractKind) that can be built on tile ti.</summary>
-    public static List<string> PossibleKinds(Sim s, Civ c, Tile t, int ti)
+    /// <summary>Extraction building kinds (ExtractKind) that can be built on tile ti (st: the settlement it would belong to;
+    /// Faz 1b-3: its tier gates the start level).</summary>
+    public static List<string> PossibleKinds(Sim s, Civ c, Tile t, int ti, Settlement st)
     {
         var outp = new List<string>();
-        bool lv1(string k) { var def = D.EXTRACTS[k]; int sl = def.StartLevel ?? 1; string tech = def.Tech[sl - 1]; return !J.T(tech) || s.Has(c, tech); }
+        bool lv1(string k) => Sim.ExtractLevelOk(st, k, D.EXTRACTS[k].StartLevel ?? 1);
         if (t.Deposit >= 0)
         {
             var d = J.Find(s.W.Deposits, x => x.Id == t.Deposit);
             if (!s.DepositVisible(c, d) || d.Depleted) return outp;
             string kind = D.DEPOSITS[d.Kind].Building;
-            if (kind == "grove") { if (c.Cls == "druid" && s.Has(c, "druid_grove")) outp.Add("grove"); return outp; }
+            if (kind == "grove") { if (c.Cls == "druid" && lv1("grove")) outp.Add("grove"); return outp; }
             if (t.Reserve <= 0 && D.DEPOSITS[d.Kind].Reserve > 0) return outp;
             if (lv1(kind)) outp.Add(kind);
             return outp;
@@ -1225,9 +1204,10 @@ public static class Economy
         bool war = s.InWar(c);
         var cls = D.CLASSES[c.Cls];
         double ratio = 0;
-        bool tribal = c.Cls == "barbarian" && (s.Has(c, "barbarian_totem") || s.Has(c, "barbarian_raiders"));
-        bool unarmed = s.E(c, "unarmed") > 0;
-        if (s.Has(c, "training") || tribal || unarmed) ratio = (0.07 + cls.Aggression * 0.07 + s.E(c, "warband")) * (war ? 1.8 : 1) * (c.Threat > 0.5 ? 1.3 : 1);
+        bool training = s.CivAt(c, Gate.TRAINING);   // Faz 1b-3: Talim yerine Köy kademesi
+        bool tribal = c.Cls == "barbarian" && training;
+        bool unarmed = s.E(c, "unarmed") > 0;          // Keşiş: Yumruk Keşişleri ayrıcalığı (Kasaba)
+        if (training || tribal || unarmed) ratio = (0.07 + cls.Aggression * 0.07 + s.E(c, "warband")) * (war ? 1.8 : 1) * (c.Threat > 0.5 ? 1.3 : 1);
         double deficit = 0;
         bool broke = c.Broke != null;   // C3: hazine boşken yeni asker yazılmaz
         foreach (var st in s.CivSettlements(c))
@@ -1242,7 +1222,7 @@ public static class Economy
                     else if (tribal && s.St(c, "leather") >= 2) { s.Add(c, "leather", -2); st.Soldiers++; }
                     else if (unarmed && s.St(c, "grain") >= 4) { s.Add(c, "grain", -4); st.Soldiers++; }
                     // silah yoksa: mızrak ve deri zırhla hafif piyade
-                    else if (s.Has(c, "training") && s.St(c, "leather") >= 2 && s.St(c, "wood") >= 3) { s.Add(c, "leather", -2); s.Add(c, "wood", -3); st.Soldiers++; }
+                    else if (training && s.St(c, "leather") >= 2 && s.St(c, "wood") >= 3) { s.Add(c, "leather", -2); s.Add(c, "wood", -3); st.Soldiers++; }
                     else deficit++;
                 }
             }

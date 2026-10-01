@@ -14,7 +14,7 @@ using System.Text.Json;
 // Kayıt/yükleme (DESIGN-FAZ1.md A2): kaydet → yükle → devam et, kesintisiz koşuyla gün gün aynı.
 //
 // File: gzip-compressed UTF-8 JSON
-//   {"format":"fd-macro-save","version":1,"day":D,"seed":S,"state":{ SaveState }}
+//   {"format":"fd-macro-save","version":2,"day":D,"seed":S,"state":{ SaveState }}
 // SaveState = World + the Sim state that lives outside it (RNG state, land path cache, nav cache, ShoreW), all
 // under one root so a path list shared by a trade route, an agent and a cache stays one list after loading.
 //
@@ -134,7 +134,11 @@ public sealed class SaveInfo
 public static class SaveCodec
 {
     public const string Format = "fd-macro-save";
-    public const int Version = 1;
+    /// <summary>2: Faz 1b-3 (araştırma, çağ, alt sınıf, harika ve mevsim alanları kalktı; kademe alanları geldi). Sürüm 1 kayıtlar
+    /// açılmaz (alan adları değişti).</summary>
+    public const int Version = 2;
+    /// <summary>bu yapının açabildiği en eski sürüm</summary>
+    public const int MinVersion = 2;
 
     internal static readonly JsonWriterOptions WriterOptions = new()
     {
@@ -210,7 +214,7 @@ public static class SaveCodec
             {
                 SvReader.Next(ref r);
                 version = r.TokenType == JsonTokenType.Number ? r.GetInt32() : 0;
-                if (version < 1 || version > Version) throw rd.Bad(ref r, $"unsupported save version {version} (this build reads 1..{Version})");
+                if (version < MinVersion || version > Version) throw rd.Bad(ref r, $"unsupported save version {version} (this build reads {MinVersion}..{Version})");
             }
             else if (r.ValueTextEquals("state"u8))
             {

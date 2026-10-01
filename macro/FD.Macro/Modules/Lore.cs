@@ -101,12 +101,11 @@ public static class Lore
 
     // ------------------------------------------------------------ Türkçe yardımcılar
     private const string VOWELS = "aıoueiöüâîû";
-    private static readonly string[] SEASON_LOC = { "ilkbaharında", "yazında", "sonbaharında", "kışında" };
     private static readonly string[] ORD = { "sıfırıncı", "birinci", "ikinci", "üçüncü", "dördüncü", "beşinci", "altıncı", "yedinci", "sekizinci", "dokuzuncu", "onuncu" };
     private static readonly string[] NUMW = { "hiç", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz", "on" };
 
-    /// <summary>"3. yılın ilkbaharında"</summary>
-    public static string DateTr(double day) => $"{J.S(Math.Floor(day / Sim.YEAR) + 1)}. yılın {SEASON_LOC[(int)Math.Floor((day % Sim.YEAR) / (Sim.YEAR / 4.0))]}";
+    /// <summary>"3. yılın 41. gününde" (Faz 1b-3: mevsimler kalktı; geçici biçim, takvim sonraki adımda)</summary>
+    public static string DateTr(double day) => $"{J.S(Math.Floor(day / Sim.YEAR) + 1)}. yılın {J.S(day % Sim.YEAR + 1)}. gününde";
 
     /// <summary>seviye sıra sayısı: 6 → "altıncı"</summary>
     public static string Ord(int lv) => lv >= 0 && lv <= 10 ? ORD[lv] : $"{lv}.";

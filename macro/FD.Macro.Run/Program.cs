@@ -877,21 +877,17 @@ internal static class StatsMode
         private void KnownProblems()
         {
             int y30 = Math.Min(30, Y), y60 = Math.Min(60, Y);
-            // araştırma ağacı
+            // araştırma ağacı (Faz 1b-3: kaldırıldı; ilerleme yerleşim kademesinde)
             {
                 var civs = Ok.SelectMany(r => r.Stats.Civs.Where(c => c.Founded == 0)).ToList();
-                var doneYears = civs.Where(c => c.TreeDoneDay >= 0).Select(c => (double)WorldStats.YearOf((int)c.TreeDoneDay)).ToList();
-                double med = Median(doneYears);
-                double at30 = PooledShareAt(y30, K("treeDone"), K("civsAlive"));
-                double idle30 = PooledShareAt(y30, K("researchIdle"), K("civsAlive"));
-                int y19 = Math.Min(19, Y);
-                double frac19 = Yearly(K("researchDone"), y19).Med, frac30 = Yearly(K("researchDone"), y30).Med;
+                var t2 = civs.Where(c => c.TierDays.Count > 1 && c.TierDays[1] >= 0).Select(c => (double)WorldStats.YearOf((int)c.TierDays[1])).ToList();
+                var t3 = civs.Where(c => c.TierDays.Count > 2 && c.TierDays[2] >= 0).Select(c => (double)WorldStats.YearOf((int)c.TierDays[2])).ToList();
                 KnownRows.Add(new Known
                 {
                     Name = "Araştırma ağacı erken bitiyor",
                     Old = "~19. yılda bitiyor; 30. yılda medeniyetlerin %98'i bitirmiş",
-                    Now = $"başlangıç medeniyetlerinde ağaç bitişi (son çağ, araştıracak düğüm yok) medyanı {F(med)}. yıl ({doneYears.Count}/{civs.Count} bitirdi); {y30}. yılda bitirmiş medeniyet payı {Pct(at30)}, araştırması duran (her çağ) {Pct(idle30)}; ağacın biten payı {y19}. yılda {Pct(frac19)}, {y30}. yılda {Pct(frac30)}",
-                    Persists = doneYears.Count > 0 && med <= 35,
+                    Now = $"ağaç ve çağlar kaldırıldı (Faz 1b-3); başlangıç medeniyetlerinin ilk kasabası medyan {F(Median(t2))}. yılda ({t2.Count}/{civs.Count}), ilk şehri {F(Median(t3))}. yılda ({t3.Count}/{civs.Count}); {y30}. yılda başkent kademesi ortalaması {F(Yearly(K("capTierMean"), y30).Med)}",
+                    Persists = false,
                 });
             }
             // 5 yerleşim (anakara sınırı, diplomacy.ts:223; denizaşırı koloniler ayrı)
@@ -1060,8 +1056,8 @@ internal static class StatsMode
             o.Add("maxHeroLevel", r.Stats.MaxHeroLevel);
             o.Add("heroesBorn", r.Stats.HeroesBornTotal);
             o.Add("heroesBornDead", r.Stats.HeroesBornDead);
-            var tree = r.Stats.Civs.Where(c => c.Founded == 0 && c.TreeDoneDay >= 0).Select(c => (double)WorldStats.YearOf((int)c.TreeDoneDay)).ToList();
-            o.Add("treeDoneYearMedian", tree.Count > 0 ? Median(tree) : double.NaN);
+            var city = r.Stats.Civs.Where(c => c.Founded == 0 && c.TierDays.Count > 2 && c.TierDays[2] >= 0).Select(c => (double)WorldStats.YearOf((int)c.TierDays[2])).ToList();
+            o.Add("firstCityYearMedian", city.Count > 0 ? Median(city) : double.NaN);
             o.Add("json", r.JsonPath != null ? Rel(r.JsonPath) : null);
             return o;
         }
@@ -1121,7 +1117,7 @@ internal static class StatsMode
             L();
             L("## Eski analizdeki sorunlar");
             L();
-            L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: ağaç bitişi medyanı ≤ 35. yıl; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");
+            L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");
             L();
             L("| Bulgu | Eski analiz | Bu ölçüm | Sürüyor mu? |");
             L("|---|---|---|---|");
@@ -1167,31 +1163,37 @@ internal static class StatsMode
             MapMd(sb, "Büyük olay türleri", "majorByKind", "Dünya başına yıllık büyük olay sayısı: dünyalar arası medyan (p10–p90).");
             MapMd(sb, "Muharebe türleri", "battleTypes", "Dünya başına yıllık muharebe sayısı: dünyalar arası medyan (p10–p90).");
             MapMd(sb, "Kamp türleri", "campsByKind", "Dünya başına yaşayan kamp (yıl sonu değerlerinin on yıllık ortalaması): dünyalar arası medyan (p10–p90).");
-            L("## Çağ dağılımı");
+            L("## Kademe dağılımı");
             L();
             {
-                var eras = MapKeys("eraDist");
-                L("Yaşayan medeniyetlerin çağlara dağılımı, bütün dünyalar (yıl sonu).");
-                L();
-                L("| Yıl | " + string.Join(" | ", eras.Select(e => EraName(e))) + " |");
-                L("|---|" + string.Concat(eras.Select(_ => "---|")));
-                for (int y = 10; y <= Y; y += 10)
+                // Faz 1b-3: yerleşim kademesi (0 Kamp, 1 Köy, 2 Kasaba, 3 Şehir), bütün dünyalar, on yılın sonunda
+                string[] tierTr = { "Kamp", "Köy", "Kasaba", "Şehir" };
+                string TierName(string k) => int.TryParse(k, out int i) && i >= 0 && i < tierTr.Length ? $"{i} {tierTr[i]}" : k;
+                foreach (var (map, what) in new[] { ("tierDist", "Yaşayan yerleşimlerin"), ("capTierDist", "Başkentlerin") })
                 {
-                    var m = PoolMap("eraDist", y, y);
-                    double tot = m.Values.Sum();
-                    L($"| {y} | " + string.Join(" | ", eras.Select(e => Pct(tot > 0 ? (m.TryGetValue(e, out double v) ? v : 0) / tot : double.NaN))) + " |");
+                    var keys = new List<string> { "0", "1", "2", "3" };
+                    L($"{what} kademelere dağılımı, bütün dünyalar (yıl sonu; parantezde sayı).");
+                    L();
+                    L("| Yıl | " + string.Join(" | ", keys.Select(TierName)) + " |");
+                    L("|---|" + string.Concat(keys.Select(_ => "---|")));
+                    for (int y = 10; y <= Y; y += 10)
+                    {
+                        var m = PoolMap(map, y, y);
+                        double tot = m.Values.Sum();
+                        L($"| {y} | " + string.Join(" | ", keys.Select(e => { double v = m.TryGetValue(e, out double x) ? x : 0; return $"{Pct(tot > 0 ? v / tot : double.NaN)} ({F(v)})"; })) + " |");
+                    }
+                    L();
                 }
-                L();
             }
             L("## Dünyalar");
             L();
-            L("| Seed | Medeniyet | Yerleşim | Nüfus | Çöküş | Efsane | En yüksek Sv | Doğan / ölü kahraman | Ağaç bitişi (yıl, medyan) | Süre (sn) | Son hash |");
+            L("| Seed | Medeniyet | Yerleşim | Nüfus | Çöküş | Efsane | En yüksek Sv | Doğan / ölü kahraman | İlk şehir (yıl, medyan) | Süre (sn) | Son hash |");
             L("|---|---|---|---|---|---|---|---|---|---|---|");
             foreach (var r in All)
             {
                 if (!r.Ok) { L($"| {S(r.Seed)} | HATA gün {r.ErrorDay}: {r.Error} | | | | | | | | {F(r.Sec)} | |"); continue; }
                 var w = WorldRow(r);
-                L($"| {S(r.Seed)} | {F(Num(w["civsAlive"]))} | {F(Num(w["settlements"]))} | {F(Num(w["population"]))} | {r.Stats.CollapseLog.Count} | {r.Stats.LegendList.Count} | {r.Stats.MaxHeroLevel} | {r.Stats.HeroesBornTotal} / {r.Stats.HeroesBornDead} | {F(Num(w["treeDoneYearMedian"]))} | {F(r.Sec)} | `{r.FinalHash}` |");
+                L($"| {S(r.Seed)} | {F(Num(w["civsAlive"]))} | {F(Num(w["settlements"]))} | {F(Num(w["population"]))} | {r.Stats.CollapseLog.Count} | {r.Stats.LegendList.Count} | {r.Stats.MaxHeroLevel} | {r.Stats.HeroesBornTotal} / {r.Stats.HeroesBornDead} | {F(Num(w["firstCityYearMedian"]))} | {F(r.Sec)} | `{r.FinalHash}` |");
             }
             L();
             var cl = Ok.SelectMany(r => r.Stats.CollapseLog.Select(c => (r.Seed, c))).ToList();
@@ -1226,9 +1228,6 @@ internal static class StatsMode
         }
 
         private static double Num(object v) => v is double d ? d : v is int i ? i : double.NaN;
-
-        private static string EraName(string e) =>
-            int.TryParse(e, out int i) && i >= 0 && i < D.ERA_TR.Count ? $"{D.ERA_ROMAN[i]} {D.ERA_TR[i]}" : e;
 
         private static string FmtSec(double s) => s >= 120 ? $"{Math.Floor(s / 60).ToString("0", Inv)} dk {Math.Round(s % 60).ToString("0", Inv)} sn" : $"{F(s)} sn";
 

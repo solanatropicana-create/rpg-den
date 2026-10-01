@@ -98,7 +98,9 @@ public sealed class Settlement
     public double Soldiers;
     public bool Alive;
     public double Starving;
-    public int Tier;             // 0 camp, 1 village, 2 town, 3 city
+    public int Tier;             // 0 camp, 1 village, 2 town, 3 city (Faz 1b-3: yalnız nüfusla, eşikte histerezis; Sim.TierOf)
+    /// <summary>Faz 1b-3: yerleşimin ulaştığı en yüksek kademe (yükselişi bir kez kroniğe yazmak için; null: 0)</summary>
+    public int? PeakTier;
     public JsObj<double> MixedSince = new();
     public double? Hunger;
     public double? BurnedHouses;
@@ -162,15 +164,6 @@ public sealed class Relation
     public double? Pact;         // B1: savunma paktı (imza günü; iki yönde de yazılır)
 }
 
-public sealed class ResearchState
-{
-    public string Current;
-    public double Progress;
-    public List<string> Done = new();
-    public string Reason;
-    public bool? Hard;
-}
-
 public sealed class CivStats
 {
     public double PeakPop;
@@ -186,7 +179,8 @@ public sealed class HistPoint
     public double Day;
     public double Pop;
     public double Gold;
-    public double Techs;
+    /// <summary>Faz 1b-3: medeniyetin kademesi (en büyük yerleşiminin; eskiden bilinen düğüm sayısı)</summary>
+    public double Tier;
 }
 
 public sealed class GearState
@@ -207,10 +201,7 @@ public sealed class Civ
     public JsObj<double> Stock = new();
     public JsObj<double> Price = new();
     public JsObj<double> Want = new();
-    public ResearchState Research;
-    public int Era;
-    public List<double> EraDay = new();
-    public string Subclass;
+    /// <summary>etkiler: sınıf tabanı + kademeye bağlı sınıf ayrıcalıkları ve medeniyet etkileri (Sim.RecomputeEff)</summary>
     public JsObj<double> Eff = new();
     public bool Alive;
     public double Founded;
@@ -395,7 +386,8 @@ public sealed class InnLog
 
 public sealed class InnBook
 {
-    public double Season;
+    /// <summary>hesap dönemi (InnLife.BOOK_DAYS günlük; gün / BOOK_DAYS, aşağı yuvarlanmış)</summary>
+    public double Period;
     public double Room;
     public double Food;
     public double Ale;
@@ -789,9 +781,9 @@ public sealed class StoryState
     public double LastPeak = -9999;
     /// <summary>dünyanın olağan gerilimi: yerleşim başına gerilimin 4 yıllık üssel ortalaması (zirve buna göre; 0: henüz yok)</summary>
     public double Base;
-    /// <summary>sert kışın geleceği yıl (0: yok) ve son sert kışın yılı</summary>
-    public double WinterYear;
-    public double LastWinter = -99;
+    /// <summary>Faz 1b-3: kuraklığın (eski sert kışın yerine) sona ereceği gün (0: yok) ve son kuraklığın yılı</summary>
+    public double DroughtUntil;
+    public double LastDrought = -99;
     /// <summary>"Kızıl Ay" (baskın dalgası) sonu: kamplar daha kalabalık akın eder</summary>
     public double SurgeUntil;
     /// <summary>hedef kamp sayısı (3 + yıl/6): bir sonraki kampın en erken günü</summary>

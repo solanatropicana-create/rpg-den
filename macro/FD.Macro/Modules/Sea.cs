@@ -124,8 +124,8 @@ public static class Sea
         return (ships, galleys);
     }
 
-    /// <summary>gemi adı: Gemicilik'e dek kıyı teknesi, sonra koga</summary>
-    public static string HullName(Sim s, Civ c, bool plural = false) => s.Has(c, "shipbuilding") ? (plural ? "kogalar" : "koga") : (plural ? "tekneler" : "tekne");
+    /// <summary>gemi adı: Kasaba kademesine (eskiden Gemicilik) dek kıyı teknesi, sonra koga</summary>
+    public static string HullName(Sim s, Civ c, bool plural = false) => s.CivAt(c, Gate.SHIPBUILDING) ? (plural ? "kogalar" : "koga") : (plural ? "tekneler" : "tekne");
 
     // ------------------------------------------------------------ yol bulma
     /// <summary>JS <c>arr.join(',')</c> for tile indices.</summary>
@@ -138,7 +138,7 @@ public static class Sea
 
     /// <summary>
     /// Kara + deniz A*: karada yürünür, yalnız <c>embark</c> karolarından (limanlar) gemiye binilir,
-    /// denizde kıyı suyu (Seyir ile açık deniz) izlenir, istenen yerde (ya da <c>landOnly</c>) karaya çıkılır.
+    /// denizde kıyı suyu (Seyir, yani Kasaba kademesiyle açık deniz) izlenir, istenen yerde (ya da <c>landOnly</c>) karaya çıkılır.
     /// s.NavCache ile önbellekli (önbellekteki aynı listeyi döner; bayat girdiler bilerek yeniden kullanılır); null = yol yok.
     /// </summary>
     public static List<int> NavPath(Sim s, int from, int to, NavOpts o)
@@ -197,17 +197,21 @@ public static class Sea
         return J.Find(Ports(s, c), x => x.Port == t);
     }
 
-    /// <summary>medeniyet için kara/deniz yolu: boş gemisi olan limanlardan binilir (TS <c>o.landOnly</c> düzleştirildi; null = yol yok)</summary>
+    /// <summary>medeniyet için kara/deniz yolu: boş gemisi olan limanlardan binilir (TS <c>o.landOnly</c> düzleştirildi; null = yol yok).
+    /// Faz 1b-3: limanı olan her medeniyet denize açılır (eskiden Tekne Yapımı düğümü).</summary>
     public static CivPathResult CivPath(Sim s, Civ c, int from, int to, List<int> landOnly = null)
     {
         var emb = J.Map(J.Filter(Ports(s, c), x => FreeHulls(s, x) > 0), x => x.Port.Value);
-        if (!s.Has(c, "boatbuilding") || emb.Count == 0) { var lp = s.Path(from, to); return lp != null ? new CivPathResult { Path = lp } : null; }
-        var p = NavPath(s, from, to, new NavOpts { Embark = emb, Open = s.Has(c, "navigation"), LandOnly = landOnly });
+        if (emb.Count == 0) { var lp = s.Path(from, to); return lp != null ? new CivPathResult { Path = lp } : null; }
+        var p = NavPath(s, from, to, new NavOpts { Embark = emb, Open = OpenSea(s, c), LandOnly = landOnly });
         if (p == null) return null;
         if (!HasSea(s, p)) return new CivPathResult { Path = p };
         var hull = EmbarkPort(s, c, p);
         return hull != null ? new CivPathResult { Path = p, Hull = hull } : null;
     }
+
+    /// <summary>Faz 1b-3: açık denizde yön bulma (eskiden Seyir düğümü): medeniyet Kasaba kademesinde</summary>
+    public static bool OpenSea(Sim s, Civ c) => s.CivAt(c, Gate.NAVIGATION);
 
     // ------------------------------------------------------------ hareket
     /// <summary>denizde günlük ilerleme (karo/gün)</summary>
@@ -216,8 +220,9 @@ public static class Sea
         var c = a.Civ >= 0 ? s.W.Civs[a.Civ] : null;
         if (a.Monster == "pirate") return 1.25; // hafif korsan kayıkları
         double v = 0.85;
-        if (c != null && s.Has(c, "navigation")) v += 0.2;
-        if (c != null && s.Has(c, "seatrade") && (a.Kind == "caravan" || a.Kind == "ship")) v += 0.1;
+        int ct = c != null ? s.CivTier(c) : 0;
+        if (c != null && ct >= Gate.NAVIGATION) v += 0.2;
+        if (c != null && ct >= Gate.SEATRADE && (a.Kind == "caravan" || a.Kind == "ship")) v += 0.1;
         if (a.Kind == "ship" && !StartsExplore(a.Purpose)) v += 0.05;
         return v;
     }
@@ -233,7 +238,7 @@ public static class Sea
         a.Hull = null;
         if (home == null || !home.Alive || home.Port == null) return;
         var c = s.W.Civs[a.Civ];
-        var p = NavPath(s, seaTile, home.Port.Value, new NavOpts { Embark = new List<int>(), Open = s.Has(c, "navigation"), LandOnly = new List<int> { home.Port.Value } });
+        var p = NavPath(s, seaTile, home.Port.Value, new NavOpts { Embark = new List<int>(), Open = OpenSea(s, c), LandOnly = new List<int> { home.Port.Value } });
         if (p == null || p.Count < 2) return;
         s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = a.Civ, Path = p, Step = 0, Progress = 0, Speed = 1, Hull = home.Id, Purpose = "return" });
     }
@@ -245,8 +250,9 @@ public static class Sea
         var c = s.W.Civs[a.Civ];
         var home = s.Settlement(a.Hull.Value);
         var land = home != null && home.Alive && home.Civ == a.Civ && home.Port != null ? new List<int> { home.Port.Value } : null;
-        return NavPath(s, Agents.TileOf(a), to, new NavOpts { Embark = new List<int> { a.Landing.Value }, Open = s.Has(c, "navigation"), LandOnly = land })
-            ?? NavPath(s, Agents.TileOf(a), to, new NavOpts { Embark = new List<int> { a.Landing.Value }, Open = s.Has(c, "navigation") });
+        bool open = OpenSea(s, c);
+        return NavPath(s, Agents.TileOf(a), to, new NavOpts { Embark = new List<int> { a.Landing.Value }, Open = open, LandOnly = land })
+            ?? NavPath(s, Agents.TileOf(a), to, new NavOpts { Embark = new List<int> { a.Landing.Value }, Open = open });
     }
 
     // ------------------------------------------------------------ günlük deniz olayları
@@ -302,9 +308,8 @@ public static class Sea
         }
     }
 
-    private static readonly double[] SEASON_STORM = { 1, 0.7, 1.5, 2.6 };
-    private static readonly string[] STORM_ARMY_CAUSE = { "Kış fırtınası", "İlkbahar borası", "Yaz sağanağı", "Güz fırtınası" };
-    private static readonly string[] STORM_SINK_SEASON = { "İlkbahar", "Yaz", "Güz", "Kış" };
+    /// <summary>Faz 1b-3: mevsim yok; fırtına olasılığı eski mevsim çarpanlarının yıllık ortalaması ((1 + 0,7 + 1,5 + 2,6) / 4)</summary>
+    public const double STORM_AVG = 1.45;
 
     private static bool Storm(Sim s, Agent a)
     {
@@ -312,8 +317,8 @@ public static class Sea
         int here = Agents.TileOf(a);
         var c = a.Civ >= 0 ? w.Civs[a.Civ] : null;
         if (c == null) return false; // korsanlar suları bilir
-        double p = 0.00012 * (ShoreWater(s)[here] != 0 ? 0.6 : 1.8) * SEASON_STORM[s.Season];
-        if (c != null && s.Has(c, "navigation")) p *= 0.65;
+        double p = 0.00012 * (ShoreWater(s)[here] != 0 ? 0.6 : 1.8) * STORM_AVG;
+        if (c != null && OpenSea(s, c)) p *= 0.65;
         if (c != null && J.Some(s.CivSettlements(c), x => J.T(x.Civics.Get("lighthouse")) && x.Port != null && s.G.Dist(x.Port.Value, here) <= 8)) p *= 0.4;
         if (!s.Rng.Chance(p)) return false;
         string who = c != null ? c.Name : "";
@@ -324,7 +329,7 @@ public static class Sea
             a.Troops = JsMath.Max(0, (a.Troops ?? 0) - lost); Agents.RemoveFromPop(s, a.Pop, lost);
             int gl = 0;
             if ((a.Galleys ?? 0) > 0 && s.Rng.Chance(0.4)) { gl = 1; a.Galleys = a.Galleys.Value - 1; var h = a.Hull != null ? s.Settlement(a.Hull.Value) : null; if (h != null) h.Galleys = JsMath.Max(0, (h.Galleys ?? 0) - 1); }
-            s.Log("sea", $"Fırtına {(c != null ? Tr.Ek(who, "in") : "bir")} donanmasını savurdu: {J.S(lost)} asker denize düştü{(gl != 0 ? ", bir kadırga battı" : "")}.", civ: a.Civ, tile: here, major: true, cause: STORM_ARMY_CAUSE[s.Season]);
+            s.Log("sea", $"Fırtına {(c != null ? Tr.Ek(who, "in") : "bir")} donanmasını savurdu: {J.S(lost)} asker denize düştü{(gl != 0 ? ", bir kadırga battı" : "")}.", civ: a.Civ, tile: here, major: true, cause: ShoreWater(s)[here] != 0 ? "Kıyıda ani bir fırtına" : "Açık denizde fırtına");
             return false;
         }
         // tekil gemiler: çoğu hasarla kurtulur, beşte biri batar
@@ -341,7 +346,7 @@ public static class Sea
         string what = a.Kind == "settlers" ? $"{J.S(s.PopSize(a.Pop))} öncüyü taşıyan" : a.Kind == "caravan" ? "yüklü" : a.Purpose == "explore" || a.Purpose == "explore-back" ? "keşif" : "boş dönen";
         // TS `a.kind === 'settlers' || a.kind === 'caravan' || a.purpose?.startsWith('explore')`: true, false or undefined (no purpose)
         bool? major = a.Kind == "settlers" || a.Kind == "caravan" ? true : a.Purpose?.StartsWith("explore", StringComparison.Ordinal);
-        s.Log("sea", $"{(c != null ? Tr.Ek(who, "in") : "Bir")} {what} gemisi fırtınada battı.", civ: a.Civ, tile: here, major: major, cause: $"{STORM_SINK_SEASON[s.Season]} fırtınası{(ShoreWater(s)[here] != 0 ? "" : ", açık denizde")}");
+        s.Log("sea", $"{(c != null ? Tr.Ek(who, "in") : "Bir")} {what} gemisi fırtınada battı.", civ: a.Civ, tile: here, major: major, cause: $"Deniz fırtınası{(ShoreWater(s)[here] != 0 ? "" : ", açık denizde")}");
         return true;
     }
 
@@ -405,10 +410,10 @@ public static class Sea
     }
 
     // ------------------------------------------------------------ keşif gemisi
-    /// <summary>Seyir'le keşif gemisi gönderme kararı</summary>
+    /// <summary>Kasaba kademesiyle (eskiden Seyir) keşif gemisi gönderme kararı</summary>
     public static void ConsiderSeaExplore(Sim s, Civ c)
     {
-        if (J.T(c.SeaScout) || !s.Has(c, "navigation")) return;
+        if (J.T(c.SeaScout) || !OpenSea(s, c)) return;
         var port = J.Find(Ports(s, c), x => FreeHulls(s, x) > 0);
         if (port == null) return;
         var w = s.W;
@@ -446,7 +451,7 @@ public static class Sea
         c.SeaScout = true;
         w.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 1, Hull = port.Id, Purpose = "explore" });
         s.Metric("seaExplore");
-        s.Log("sea", $"{c.Name} denizcileri {Tr.Ek(port.Name, "dan")} ufkun ötesine yelken açtı.", civ: c.Id, tile: port.Port, major: true, cause: "Seyir: yıldızlarla yön bulmak");
+        s.Log("sea", $"{c.Name} denizcileri {Tr.Ek(port.Name, "dan")} ufkun ötesine yelken açtı.", civ: c.Id, tile: port.Port, major: true, cause: "Açık denizde yıldızlarla yön bulmak");
     }
 
     /// <summary>keşif gemisinin gözü: kıyılar, adalar, yataklar, uzak halklar</summary>
@@ -473,7 +478,7 @@ public static class Sea
         var home = a.Hull != null ? s.Settlement(a.Hull.Value) : null;
         if (home == null || !home.Alive || home.Port == null) return true;
         var c = s.W.Civs[a.Civ];
-        var p = NavPath(s, Agents.TileOf(a), home.Port.Value, new NavOpts { Embark = new List<int>(), Open = s.Has(c, "navigation"), LandOnly = new List<int> { home.Port.Value } });
+        var p = NavPath(s, Agents.TileOf(a), home.Port.Value, new NavOpts { Embark = new List<int>(), Open = OpenSea(s, c), LandOnly = new List<int> { home.Port.Value } });
         if (p == null) return true;
         a.Path = p; a.Step = 0; a.Progress = 0; a.Purpose = "explore-back";
         return false;
@@ -484,7 +489,7 @@ public static class Sea
     /// <summary>savaşta kadırgalar düşman limanına akın eder: limandaki gemileri yakar, denizdeki gemilerini ele geçirir</summary>
     public static void ConsiderFleet(Sim s, Civ c)
     {
-        if (!s.Has(c, "navy") || !s.InWar(c)) return;
+        if (!s.CivAt(c, Gate.NAVY) || !s.InWar(c)) return;
         if (J.Some(s.W.Agents, a => a.Civ == c.Id && IsFleet(a))) return;
         var @base = J.At(J.Sort(J.Filter(Ports(s, c), x => FreeGalleys(s, x) >= 2), (a, b) => FreeGalleys(s, b) - FreeGalleys(s, a)), 0);
         if (@base == null) return;
@@ -496,12 +501,12 @@ public static class Sea
             var o = w.Civs[k];
             if (o.Id == c.Id || !o.Alive || !s.AtWar(c.Id, o.Id)) continue;
             if (s.Day - (c.Yearly.Get("fleet" + J.S(o.Id)) ?? -9999) < 200) continue;
-            foreach (var st in Ports(s, o)) { int d = s.G.Dist(st.Port.Value, @base.Port.Value); if (d < bd && d <= (s.Has(c, "navigation") ? 50 : 30)) { bd = d; best = st; } }
+            foreach (var st in Ports(s, o)) { int d = s.G.Dist(st.Port.Value, @base.Port.Value); if (d < bd && d <= (OpenSea(s, c) ? 50 : 30)) { bd = d; best = st; } }
         }
         if (best == null) return;
         int goal = PortWater(s, best.Port.Value);
         if (goal < 0) return;
-        var path = NavPath(s, @base.Port.Value, goal, new NavOpts { Embark = new List<int> { @base.Port.Value }, Open = s.Has(c, "navigation") });
+        var path = NavPath(s, @base.Port.Value, goal, new NavOpts { Embark = new List<int> { @base.Port.Value }, Open = OpenSea(s, c) });
         if (path == null || path.Count < 3) return;
         var oc = w.Civs[best.Civ];
         c.Yearly.Set("fleet" + J.S(oc.Id), s.Day);
@@ -535,7 +540,7 @@ public static class Sea
     {
         var home = a.Hull != null ? s.Settlement(a.Hull.Value) : null;
         if (home == null || !home.Alive || home.Civ != a.Civ || home.Port == null) { a.Dead = true; return true; }
-        var p = NavPath(s, Agents.TileOf(a), home.Port.Value, new NavOpts { Embark = new List<int>(), Open = s.Has(s.W.Civs[a.Civ], "navigation"), LandOnly = new List<int> { home.Port.Value } });
+        var p = NavPath(s, Agents.TileOf(a), home.Port.Value, new NavOpts { Embark = new List<int>(), Open = OpenSea(s, s.W.Civs[a.Civ]), LandOnly = new List<int> { home.Port.Value } });
         if (p == null) { a.Dead = true; return true; }
         a.Path = p; a.Step = 0; a.Progress = 0; a.Purpose = "fleet-back";
         return false;
@@ -825,7 +830,7 @@ public static class Sea
     /// <summary>korsan avı: gemisi olan medeniyet, kıyılarını ya da gemilerini vuran koya asker ve kadırga gönderir</summary>
     private static void ConsiderPirateHunt(Sim s, Civ c)
     {
-        if (!s.Has(c, "shipbuilding") || J.Some(s.W.Agents, a => a.Civ == c.Id && a.Purpose == "expedition")) return;
+        if (!s.CivAt(c, Gate.SHIPBUILDING) || J.Some(s.W.Agents, a => a.Civ == c.Id && a.Purpose == "expedition")) return;
         var ss = s.CivSettlements(c);
         var my = Ports(s, c);
         if (my.Count == 0) return;

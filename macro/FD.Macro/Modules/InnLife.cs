@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 // Yaşayan han: hancı kafilesi (Settlers gibi yerleşimden çıkıp yer seçer), inşaat, misafirler, kiler,
-// erzak arabası (medeniyetten gerçek alım), personel, ün, genişleme ve mevsimlik kasa defteri.
+// erzak arabası (medeniyetten gerçek alım), personel, ün, genişleme ve 30 günlük kasa defteri.
 // Port of src/sim/innlife.ts.
 
 namespace FD.Macro;
@@ -84,13 +84,16 @@ public static class InnLife
         if (inn.Log.Count > 90) J.Splice(inn.Log, 0, inn.Log.Count - 90);
     }
 
+    /// <summary>hanın hesap dönemi (gün)</summary>
+    public const double BOOK_DAYS = 30;
+
     private static InnBook Book(Sim s, Inn inn)
     {
-        double season = Math.Floor(s.Day / (Sim.YEAR / 4.0));
+        double period = Math.Floor(s.Day / BOOK_DAYS);
         var b = J.Last(inn.Books);
-        if (b == null || b.Season != season)
+        if (b == null || b.Period != period)
         {
-            b = new InnBook { Season = season, Room = 0, Food = 0, Ale = 0, Other = 0, Supply = 0, Wage = 0, Build = 0, Guests = 0, Nights = 0 };
+            b = new InnBook { Period = period, Room = 0, Food = 0, Ale = 0, Other = 0, Supply = 0, Wage = 0, Build = 0, Guests = 0, Nights = 0 };
             inn.Books.Add(b);
             if (inn.Books.Count > 8) J.Shift(inn.Books);
         }
@@ -309,17 +312,20 @@ public static class InnLife
         EnsureStaff(s, inn);
     }
 
+    /// <summary>Faz 1b-3: mevsim yok; inşaat hızı eski kış ×0,6'nın yıllık ortalaması</summary>
+    public const double BUILD_PACE = 0.9;
+
     private static void BuildTick(Sim s, Inn inn)
     {
         var b = inn.Build;
-        double winter = s.Season == 3 ? 0.6 : 1;
+        double pace = BUILD_PACE;
         // gündelikçi: yakın köylerden, günlüğü 0.2 altın
         int hired = inn.Gold > 30 ? (inn.Gold > 90 ? 2 : 1) : 0;
         if (J.T(hired)) { double pay = hired * 0.2; inn.Gold -= pay; Book(s, inn).Build += pay; }
         int hands = 1 + inn.Staff.Count + hired;
         bool forest = ForestNear(s, inn.Tile), quarry = StoneNear(s, inn.Tile);
-        if (b.Wood < b.WoodNeed && forest) { int k = Math.Min(hands - 1, 2); if (k > 0) { b.Wood += 0.6 * k * winter; hands -= k; } }
-        if (b.Stone < b.StoneNeed && quarry) { int k = Math.Min(hands - 1, 1); if (k > 0) { b.Stone += 0.4 * k * winter; hands -= k; } }
+        if (b.Wood < b.WoodNeed && forest) { int k = Math.Min(hands - 1, 2); if (k > 0) { b.Wood += 0.6 * k * pace; hands -= k; } }
+        if (b.Stone < b.StoneNeed && quarry) { int k = Math.Min(hands - 1, 1); if (k > 0) { b.Stone += 0.4 * k * pace; hands -= k; } }
         if (inn.Order == null && ((b.Wood < b.WoodNeed && !forest) || (b.Stone < b.StoneNeed && !quarry)))
         {
             bool ok = PlaceOrder(s, inn, new Want { Wood = forest ? 0 : Math.Ceiling(b.WoodNeed - b.Wood), Stone = quarry ? 0 : Math.Ceiling(b.StoneNeed - b.Stone) });
@@ -328,7 +334,7 @@ public static class InnLife
         }
         double mat = JsMath.Min(J.T(b.WoodNeed) ? b.Wood / b.WoodNeed : 1, J.T(b.StoneNeed) ? b.Stone / b.StoneNeed : 1);
         double cap = b.Need * JsMath.Min(1, mat + 0.15);
-        if (b.Work < cap) b.Work = JsMath.Min(cap, b.Work + (hands * 0.55 + 0.3) * winter);
+        if (b.Work < cap) b.Work = JsMath.Min(cap, b.Work + (hands * 0.55 + 0.3) * pace);
         if (b.Work >= b.Need && mat >= 1) FinishBuild(s, inn);
     }
 
@@ -479,11 +485,12 @@ public static class InnLife
         inn.Traffic = T;
     }
 
-    private static readonly double[] SEASON_RATE = { 1, 1.25, 1.05, 0.55 };
+    /// <summary>Faz 1b-3: mevsim yok; yolcu akışı eski mevsim çarpanlarının yıllık ortalaması ((1 + 1,25 + 1,05 + 0,55) / 4)</summary>
+    public const double ARRIVAL_AVG = 0.9625;
 
     private static double ArrivalRate(Sim s, Inn inn)
     {
-        double season = SEASON_RATE[s.Season];
+        double season = ARRIVAL_AVG;
         double danger = 1;
         foreach (var cp in s.W.Camps) if (cp.Alive && s.G.Dist(cp.Tile, inn.Tile) <= 7) danger *= 0.75;
         double pantry = inn.Stock.Food < 5 ? 0.6 : 1;
@@ -757,7 +764,7 @@ public static class InnLife
             if (def.Mugs > 0.5 && aleGot < mugs * 0.6) m -= 0.15;
             if (J.T(g.Stable)) m -= 0.18;
             if (occ.Persons > cap) m -= 0.15 * JsMath.Min(1, (occ.Persons - cap) / cap);
-            if (s.Season == 3 && inn.Stock.Wood <= 0) m -= 0.25;
+            if (inn.Stock.Wood <= 0) m -= 0.06;   // Faz 1b-3: sönük ocak (eski kışın −0,25'inin yıllık ortalaması)
             if (bard && g.Kind != "bard") m += 0.08;
             m += JsMath.Min(0.06, helpers * 0.03);
             g.Mood = g.Mood * 0.5 + JsMath.Max(0, JsMath.Min(1, m)) * 0.5;
@@ -773,13 +780,13 @@ public static class InnLife
         // hancı ve personel de yer; ocak yanar; bahçe ve kümes
         var L = D.INN_LEVEL[inn.Level];
         inn.Stock.Food = JsMath.Max(0, inn.Stock.Food - (1 + inn.Staff.Count));
-        if (s.Season != 3) inn.Stock.Food = JsMath.Min(L.Food * 1.2, inn.Stock.Food + 1.8 * inn.Level);   // bahçe, kümes, küçük tarla
+        inn.Stock.Food = JsMath.Min(L.Food * 1.2, inn.Stock.Food + 1.35 * inn.Level);   // bahçe, kümes, küçük tarla (Faz 1b-3: kışsız yıllık ortalama)
         // bira biterse hancı kilerdeki tahıldan kendi birasını mayalar
         if (inn.Stock.Ale < L.Ale * 0.2 && inn.Stock.Food > L.Food * 0.5) { inn.Stock.Food -= 5; inn.Stock.Ale += (5 / D.GRAIN_FOOD) * D.GRAIN_ALE; }
         // geçenlerden yol parası: at sulama, yem, nal, su
         double toll = 0.04 + JsMath.Min(200, inn.Traffic) * 0.0014;
         inn.Gold += toll; bk.Other += toll; inn.Total.Income += toll;
-        double woodUse = 0.15 + (s.Season == 3 ? 0.35 : s.Season == 0 || s.Season == 2 ? 0.1 : 0) + occ.Persons * 0.02;
+        double woodUse = 0.2875 + occ.Persons * 0.02;   // Faz 1b-3: ocak ve mutfak, eski mevsimlerin yıllık ortalaması
         if (ForestNear(s, inn.Tile) && inn.Stock.Wood < L.Wood) inn.Stock.Wood += 0.45;   // çırak ya da seyis odun keser
         inn.Stock.Wood = JsMath.Max(0, inn.Stock.Wood - woodUse);
         if (J.T(satN)) inn.Sat = inn.Sat * 0.8 + (satSum / satN) * 0.2;

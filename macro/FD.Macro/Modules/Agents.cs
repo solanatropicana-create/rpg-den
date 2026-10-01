@@ -12,16 +12,16 @@ public static class Agents
     // ------------------------------------------------------------ birlik kompozisyonu
     private static readonly List<string> BASE = new() { "holyguard", "legionary", "shadowguard", "blessed" };
 
-    /// <summary>Medeniyetin n kişilik birliği: araştırılmış özel birimler + temel asker (teçhizat ve etkiler dâhil).</summary>
+    /// <summary>Medeniyetin n kişilik birliği: kademeyle açılmış özel birimler (ClassDef.Perks) + temel asker (teçhizat ve etkiler dâhil).</summary>
     public static List<Combatant> CivTroops(Sim s, Civ c, double n, string side)
     {
         var @out = new List<Combatant>();
         if (n <= 0) return @out;
         var race = D.RACES[c.Race];
-        bool armed = s.Has(c, "smithing");
+        bool armed = s.CivAt(c, Gate.SMITHING);   // Faz 1b-3: demir silah ve zırh Kasaba kademesinden
         var gearN = Gear.GearFor(s, c, n);
         double ench = 0, mith = 0;
-        var units = J.Filter(J.Map(c.Research.Done, t => D.TECH[t].Unit), u0 => J.T(u0));
+        var units = s.CivUnits(c);
         double remaining = n;
         var specials = new List<(string Id, double K)>();
         foreach (var id in units)
@@ -68,7 +68,7 @@ public static class Agents
         return @out;
     }
 
-    /// <summary>Yerleşim savunucuları: askerler, milis, sur/kalkan AC bonusları, evdeki kahramanlar, savaş avatarı.</summary>
+    /// <summary>Yerleşim savunucuları: askerler, milis, sur ve kademe AC bonusları, evdeki kahramanlar.</summary>
     public static List<Combatant> Defenders(Sim s, Settlement st, string side, bool vsMonsters)
     {
         var c = s.W.Civs[st.Civ];
@@ -77,13 +77,11 @@ public static class Agents
         for (int i = 0; i < militia; i++) cs.Add(Combat.Unit(D.UNITS["militia"], side, "militia", D.RACES[c.Race].Hp));
         double ac = (J.T(st.Civics.Get("palisade")) ? 1 : 0) + (J.T(st.Civics.Get("stonewall")) ? 2 : 0) + (J.T(st.Civics.Get("castle")) ? 3 : 0) + s.E(c, "defAc");
         if (vsMonsters && s.E(c, "foresee") > 0) ac += 2;
-        if (s.E(c, "shield") > 0 && s.Capital(c)?.Id == st.Id) ac += 4;
         // B1: başkenti düşen medeniyetin halkı yeni başkentte kenetlenir (Diplomacy.RALLY_DAYS boyunca)
         if (!vsMonsters && s.Day - (c.CapitalLostDay ?? -99999) < Diplomacy.RALLY_DAYS && s.Capital(c)?.Id == st.Id) ac += Diplomacy.RALLY_AC;
         if (c.Cls == "druid" && J.Some(s.G.Neighbors(st.Tile), nb => s.W.Tiles[nb].Terrain == "forest" || s.W.Tiles[nb].Terrain == "oldforest")) ac += 2;
         foreach (var x in cs) x.Ac += ac;
         foreach (var h in s.CivHeroes(c)) if (h.State == "home" && h.Pos == st.Tile) cs.Add(Combat.HeroCombatant(h, side));
-        if (s.E(c, "avatar") > 0) cs.Add(Combat.Unit(new UnitStats { Name = "Savaş Avatarı", Hp = 80, Ac = 19, Atk = 9, Dmg = new List<double> { 2, 12, 5 }, Attacks = 2 }, side, "unique"));
         return cs;
     }
 
@@ -93,7 +91,6 @@ public static class Agents
         {
             if (s.E(c, "noRout") > 0) { if (side == "A") o.NoRoutA = true; else o.NoRoutB = true; }
             if (s.E(c, "firstStrike") > 0) { if (side == "A") o.FirstStrikeA = s.E(c, "firstStrike"); else o.FirstStrikeB = s.E(c, "firstStrike"); }
-            if (s.E(c, "meteor") > 0) { if (side == "A") o.MeteorA = true; else o.MeteorB = true; }
         }
         if (enemy != null && s.E(enemy, "enemyMorale") > 0)
         {
@@ -132,20 +129,6 @@ public static class Agents
         s.RemovePop(st, deadS - back + deadM);
         st.Soldiers = JsMath.Max(0, st.Soldiers - deadS + back);
         SyncHeroes(s, cs, 0, foes, foe, "defend");
-    }
-
-    /// <summary>Yılda bir kaybedilen savaşı yeniden atma (Talihin Dokunuşu / Kader Dokuması)</summary>
-    private static Battle WithLuck(Sim s, Civ c, Func<Battle> fight, Func<Battle, bool> lost)
-    {
-        var b = fight();
-        if (c != null && lost(b) && s.E(c, "luck") > 0 && c.Yearly.Get("luck") != s.Year)
-        {
-            c.Yearly.Set("luck", s.Year);
-            var b2 = fight();
-            J.Unshift(b2.Lines, new BattleLine { T = $"Talih {c.Name} tarafına döndü!", Crit = true });
-            b = b2;
-        }
-        return b;
     }
 
     // ------------------------------------------------------------ hareket
@@ -241,7 +224,7 @@ public static class Agents
             if (d.KnownBy.Contains(c.Id) || !J.Some(d.Tiles, t => s.G.Dist(t, here) <= 4)) continue;
             d.KnownBy.Add(c.Id);
             if (s.DepositVisible(c, d) && Array.IndexOf(SCOUT_FINDS, d.Kind) >= 0)
-                s.Log("discover", $"{c.Name} kâşifleri bir {(d.Kind == "silver" ? "gümüş damarı" : d.Kind == "horses" ? "yaban at sürüsü" : TECH_RES.TryGetValue(d.Kind, out var tr) ? tr : d.Kind)} buldu.", civ: c.Id, tile: d.Tiles[0], major: Array.IndexOf(SCOUT_MAJOR, d.Kind) >= 0);
+                s.Log("discover", $"{c.Name} kâşifleri bir {(d.Kind == "silver" ? "gümüş damarı" : d.Kind == "horses" ? "yaban at sürüsü" : SCOUT_RES.TryGetValue(d.Kind, out var tr) ? tr : d.Kind)} buldu.", civ: c.Id, tile: d.Tiles[0], major: Array.IndexOf(SCOUT_MAJOR, d.Kind) >= 0);
         }
         foreach (var cp in s.W.Camps) if (cp.Alive && s.G.Dist(here, cp.Tile) <= 4 && !J.T(c.Yearly.Get("saw" + J.S(cp.Id))))
             {
@@ -255,7 +238,7 @@ public static class Agents
             if (J.Some(s.CivSettlements(o), x => s.G.Dist(x.Tile, here) <= 5)) MakeContact(s, c, o, $"{c.Name} kâşifleri {s.Capital(o)?.Name ?? "yerleşimlerine"} ulaştı");
         }
     }
-    private static readonly Dictionary<string, string> TECH_RES = new() { ["tin"] = "kalay damarı", ["gold"] = "altın damarı", ["iron"] = "demir damarı", ["mana"] = "mana kristali yatağı", ["mithril"] = "mithril damarı", ["salt"] = "tuz yatağı", ["copper"] = "bakır damarı" };
+    private static readonly Dictionary<string, string> SCOUT_RES = new() { ["tin"] = "kalay damarı", ["gold"] = "altın damarı", ["iron"] = "demir damarı", ["mana"] = "mana kristali yatağı", ["mithril"] = "mithril damarı", ["salt"] = "tuz yatağı", ["copper"] = "bakır damarı" };
 
     /// <summary>İki medeniyet ilk kez karşılaşır (karşılıklı temas + "İlk karşılaşma merakı").</summary>
     public static void MakeContact(Sim s, Civ a, Civ b, string why)
@@ -458,11 +441,11 @@ public static class Agents
                     if (v > bv) { bv = v; best = g; }
                 }
                 if (!J.T(best)) { r.Trips++; continue; }
-                double hold = J.T(r.Sea) ? (s.Has(cs, "seatrade") ? 24 : 18) : 12;
+                double hold = J.T(r.Sea) ? (s.CivAt(cs, Gate.SEATRADE) ? 24 : 18) : 12;
                 double q = Math.Floor(JsMath.Min(hold, s.St(cs, best) * 0.25));
                 s.Add(cs, best, -q); cargo = new JsObj<double> { [best] = q };
             }
-            double guards = s.Has(cs, "training") ? 3 : 2;
+            double guards = s.CivAt(cs, Gate.TRAINING) ? 3 : 2;
             List<int> @base;
             if (reverse) { @base = new List<int>(r.Path); @base.Reverse(); } else @base = r.Path;
             var path = J.T(r.Sea) ? @base : InnLife.InnDetour(s, @base); // deniz yolu hana uğramaz
@@ -507,13 +490,13 @@ public static class Agents
         return true;
     }
 
-    /// <summary>Her 4 günde bir: yol tekniğini bilen medeniyet başkentten yerleşimlerine birer karo yol döşer.</summary>
+    /// <summary>Her 4 günde bir: Köy kademesindeki medeniyet (eskiden Yol Yapımı) başkentten yerleşimlerine birer karo yol döşer.</summary>
     public static void RoadsTick(Sim s)
     {
         if (s.Day % 4 != 0) return;
         foreach (var c in s.W.Civs)
         {
-            if (!c.Alive || !s.Has(c, "roads")) continue;
+            if (!c.Alive || !s.CivAt(c, Gate.ROADS)) continue;
             var cap = s.Capital(c);
             if (cap == null) continue;
             foreach (var st in s.CivSettlements(c))
@@ -560,7 +543,6 @@ public static class Agents
         string kind = a.Monster ?? "goblin";
         var cp = J.Find(s.W.Camps, x => x.Id == a.From);
         var mons = Monsters.MonsterSide(kind, a.Troops ?? 0, J.T(a.Boss), "B");
-        // TS hangs _def / _m on the battle; withLuck always keeps the LAST fight, so the last locals are the same arrays
         List<Combatant> lastDef = null, lastM = null;
         Battle Fight()
         {
@@ -571,7 +553,7 @@ public static class Agents
             lastM = mcopy;
             return b0;
         }
-        var b = WithLuck(s, c, Fight, x => x.Winner == "B");
+        var b = Fight();
         var def = lastDef; var mc = lastM;
         RecordBattle(s, b);
         ApplyDefLosses(s, st, def, 0.15, mc, cp?.Name);
@@ -1041,7 +1023,6 @@ public static class Agents
         bool joint = band.Count > 1;
         string nameA = civsIn.Count > 1 ? $"{JoinNames(J.Map(civsIn, ci => ci.Name))} orduları" : joint ? $"{att.Name} orduları" : $"{att.Name} ordusu";
         var per = new List<List<Combatant>>();
-        // TS hangs _side / _def / _per on the battle and reads them back from the chosen one, which is always the last fight
         List<Combatant> lastSide = null, lastDef = null;
         Battle Fight()
         {
@@ -1049,7 +1030,7 @@ public static class Agents
             per = bs.Per;
             var side0 = bs.Side; var groups = bs.Groups;
             var def0 = Defenders(s, st, "B", false);
-            if (J.Some(civsIn, ci => s.Has(ci, "siege"))) foreach (var d in def0) d.Ac -= 2;
+            if (J.Some(civsIn, ci => s.CivAt(ci, Gate.SIEGE))) foreach (var d in def0) d.Ac -= 2;   // Faz 1b-3: Şehir kademesinin kuşatma makineleri
             foreach (var d in def0) d.Grp = groups.Count;
             groups.Add(new ReplayGroup { Name = $"{st.Name} savunucuları", Side = "B", Civ = dfc.Id });
             var o = new BattleOpts { Id = s.Id(), Day = s.Day, Tile = st.Tile, Title = $"{st.Name} kuşatması", SideA = nameA, SideB = $"{st.Name} savunucuları", MoraleA = 0.55, MoraleB = 0.65, MaxRounds = 20, TimeoutWinner = "B", Groups = groups, CivA = att.Id, CivB = dfc.Id };
@@ -1058,8 +1039,7 @@ public static class Agents
             lastSide = side0; lastDef = def0;
             return b0;
         }
-        var b = WithLuck(s, att, Fight, x => x.Winner == "B");
-        if (b.Winner == "A" && J.T(dfc.Eff.Get("luck")) && dfc.Yearly.Get("luck") != s.Year) { dfc.Yearly.Set("luck", s.Year); b = Fight(); J.Unshift(b.Lines, new BattleLine { T = $"Talih {dfc.Name} tarafına döndü!", Crit = true }); }
+        var b = Fight();
         var side = lastSide; var def = lastDef;
         // per = b._per: already the last fight's per
         RecordBattle(s, b);
@@ -1144,13 +1124,7 @@ public static class Agents
             string loot = LootFrom(s, att, dfc, 0.2 * (1 + s.E(att, "lootMult")));
             bool hungry = att.Famine != null && att.Famine.Declared;
             if (hungry) loot = FamineLoot(s, att, dfc, loot);   // Faz 1 C3: aç akıncılar ambarı boşaltır
-            string stolen = "";
-            if (s.E(att, "lootTech") > 0 && s.Rng.Chance(s.E(att, "lootTech")))
-            {
-                var cand = J.Filter(dfc.Research.Done, td => !s.Has(att, td) && D.TECH[td].Tree == "main" && D.TECH[td].Era <= att.Era && J.Every(D.TECH[td].Req, rq => s.Has(att, rq)));
-                if (cand.Count > 0) { string t = s.Rng.Pick(cand); Research.StealTech(s, att, t); stolen = $" ve {D.TECH[t].Name} bilgisini zorla öğrendi"; }
-            }
-            s.Log("war", $"{att.Name} akıncıları {Tr.Ek(st.Name, "i")} yağmaladı: {loot}{stolen}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true,
+            s.Log("war", $"{att.Name} akıncıları {Tr.Ek(st.Name, "i")} yağmaladı: {loot}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true,
                 cause: hungry ? "Kıtlık: aç akıncılar komşunun ambarını boşalttı" : $"{D.CLASSES[att.Cls].Feature}: yağma ekonomisi");   // Faz 1 C3
         }
         else

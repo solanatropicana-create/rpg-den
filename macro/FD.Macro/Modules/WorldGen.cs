@@ -397,7 +397,8 @@ public static class WorldGen
         return new Camp { Id = id, Kind = kind, Tile = tile, Name = name, Count = count, Boss = kind == "hobgoblin", HadBoss = kind == "hobgoblin", Loot = 10, GrowthAcc = 0, Alive = true, NextRaid = day + rng.Int(kind == "goblin" ? 360 : 150, 460), Founded = day };
     }
 
-    /// <summary>Sınıf tanımından yeni medeniyet: başlangıç stoku, 1. çağ, align ve eff sınıf değerlerinin kopyası.</summary>
+    /// <summary>Sınıf tanımından yeni medeniyet: başlangıç stoku, align ve eff sınıf değerlerinin kopyası (kademe etkileri
+    /// Sim.RecomputeEff'te eklenir).</summary>
     public static Civ MakeCiv(int id, string cls, double day)
     {
         var c = D.CLASSES[cls];
@@ -405,8 +406,7 @@ public static class WorldGen
         {
             Id = id, Cls = cls, Name = c.CivName, Race = c.Race, Align = new Alignment { Law = c.Align.Law, Good = c.Align.Good }, Color = c.Color,
             Stock = new JsObj<double> { ["grain"] = 25, ["meat"] = 10, ["wood"] = 20, ["gold"] = 5 }, Price = new JsObj<double>(), Want = new JsObj<double>(),
-            Research = new ResearchState { Current = null, Progress = 0, Done = new List<string>(), Reason = "" },
-            Era = 1, EraDay = new List<double> { 0, day }, Subclass = null, Eff = c.Base != null ? c.Base.Clone() : new JsObj<double>(), Alive = true, Founded = day, Threat = 0, LastRaidedDay = -9999, ScoutSent = false,
+            Eff = c.Base != null ? c.Base.Clone() : new JsObj<double>(), Alive = true, Founded = day, Threat = 0, LastRaidedDay = -9999, ScoutSent = false,
             Stats = new CivStats { PeakPop = 6, BattlesWon = 0, BattlesLost = 0, Traded = 0, Mined = new JsObj<double>(), Depleted = 0 }, LastExpand = -9999, Yearly = new JsObj<double>(), History = new List<HistPoint>(),
         };
     }

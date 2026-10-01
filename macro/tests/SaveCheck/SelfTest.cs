@@ -279,8 +279,11 @@ internal static class SelfTest
         var plain = Save(st, compress: false);
         Check(SaveCodec.ReadSave(plain).World.Day == 3, "plain (uncompressed) JSON save loads");
         string txt = Encoding.UTF8.GetString(plain);
-        Check(txt.StartsWith("{\"format\":\"fd-macro-save\",\"version\":1,\"day\":3,", StringComparison.Ordinal), "header: " + txt.Substring(0, Math.Min(60, txt.Length)));
-        Throws<InvalidDataException>(() => SaveCodec.ReadSave(Encoding.UTF8.GetBytes(txt.Replace("\"version\":1", "\"version\":99"))), "newer version is rejected");
+        string ver = $"\"version\":{SaveCodec.Version}";
+        Check(txt.StartsWith("{\"format\":\"fd-macro-save\"," + ver + ",\"day\":3,", StringComparison.Ordinal), "header: " + txt.Substring(0, Math.Min(60, txt.Length)));
+        Throws<InvalidDataException>(() => SaveCodec.ReadSave(Encoding.UTF8.GetBytes(txt.Replace(ver, "\"version\":99"))), "newer version is rejected");
+        // Faz 1b-3: sürüm 1 (araştırma/çağ alanlı) kayıtlar açılmaz
+        Throws<InvalidDataException>(() => SaveCodec.ReadSave(Encoding.UTF8.GetBytes(txt.Replace(ver, "\"version\":1"))), "older version is rejected");
         Throws<InvalidDataException>(() => SaveCodec.ReadSave(Encoding.UTF8.GetBytes(txt.Replace("fd-macro-save", "something-else"))), "foreign format is rejected");
         Throws<InvalidDataException>(() => SaveCodec.ReadSave(Encoding.UTF8.GetBytes("[1,2]")), "non-save JSON is rejected");
         var gz = Save(st);

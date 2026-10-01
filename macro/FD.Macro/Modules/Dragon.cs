@@ -287,8 +287,8 @@ public static class Dragon
     public const int DEFEND_LEVEL = 3;
 
     /// <summary>Ejderhaya karşı savunanlar: askerler (surların ardında), yurtta duran kiralık kahramanlar, yerleşimin tavernasındaki
-    /// serbest kahramanlar (en az Sv <see cref="DEFEND_LEVEL"/>: ejderhanın nefesi acemiyi kül eder, onlar halkla saklanır) ve
-    /// savaş avatarı. Milis savaşmaz: ejderha havadan saldırır, halk kilerlere saklanır.</summary>
+    /// serbest kahramanlar (en az Sv <see cref="DEFEND_LEVEL"/>: ejderhanın nefesi acemiyi kül eder, onlar halkla saklanır).
+    /// Milis savaşmaz: ejderha havadan saldırır, halk kilerlere saklanır.</summary>
     private static List<Combatant> Defenders(Sim s, Settlement st)
     {
         var c = s.W.Civs[st.Civ];
@@ -297,7 +297,6 @@ public static class Dragon
         foreach (var x in cs) x.Ac += ac;
         foreach (var h in s.CivHeroes(c)) if (h.State == "home" && h.Pos == st.Tile && h.Level >= DEFEND_LEVEL) cs.Add(Combat.HeroCombatant(h, "A"));
         foreach (var h in s.W.Heroes) if (h.Civ == -1 && h.State == "tavern" && !h.BaseInn && h.Tavern == st.Id && h.Level >= DEFEND_LEVEL) cs.Add(Will.HeroSide(h, "A"));
-        if (s.E(c, "avatar") > 0) cs.Add(Combat.Unit(new UnitStats { Name = "Savaş Avatarı", Hp = 80, Ac = 19, Atk = 9, Dmg = new List<double> { 2, 12, 5 }, Attacks = 2 }, "A", "unique"));
         return cs;
     }
 

@@ -304,7 +304,6 @@ public static class Heroes
                 }
             if (x.Hp <= 0)
             {
-                if (TryRevive(s, h)) continue;
                 Die(s, h, x.KilledBy, foe, ctx, b);
                 continue;
             }
@@ -593,22 +592,5 @@ public static class Heroes
                 }
             }
         }
-    }
-
-    /// <summary>Ölen bağlı kahraman için Diriliş</summary>
-    public static bool TryRevive(Sim s, Hero h)
-    {
-        if (h.Civ < 0 || J.T(h.Revived)) return false;
-        var c = s.W.Civs[h.Civ];
-        if (!J.T(s.E(c, "revive")) || c.Yearly.Get("revive") == s.Year) return false;
-        c.Yearly.Set("revive", s.Year);
-        h.Revived = true;
-        h.Hp = Math.Ceiling(h.MaxHp / 2);
-        h.State = "home";
-        var cap = s.Capital(c);
-        if (cap != null) h.Pos = cap.Tile;
-        Lore.Deed(s, h, "revived", $"{c.Name} rahiplerinin duasıyla ölümden döndü", h.Pos, c.Name);
-        s.Log("class", $"{h.Name} Yaşam Alanı rahiplerinin duasıyla dirildi!", civ: c.Id, major: true);
-        return true;
     }
 }

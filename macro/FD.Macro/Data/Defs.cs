@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -25,7 +24,8 @@ public sealed class DepositDef
     public List<string> Terrain;
     public List<double> Size;
     public double Count;
-    public string HiddenUntil;
+    /// <summary>Faz 1b-3: medeniyet bu kademeye (en büyük yerleşimi) varmadan yatak görünmez (null: hep görünür)</summary>
+    public int? HiddenTier;
     public string Building;
     public string Color;
 }
@@ -34,16 +34,20 @@ public sealed class ExtractDef
 {
     public string Kind;
     public List<string> Names;   // L1, L2, L3 ("" = none)
-    public List<string> Tech;    // per level; null = none/start
+    /// <summary>Faz 1b-3: seviye başına gereken yerleşim kademesi (yapının bağlı olduğu yerleşimin; null = seviye yok)</summary>
+    public List<int?> Tier;
     public int? StartLevel;
 }
 
 public sealed class WorkshopDef
 {
-    public string Kind, Name, Tech;
+    public string Kind, Name;
+    /// <summary>Faz 1b-3: atölyenin kurulacağı yerleşimin en az kademesi (null: 0)</summary>
+    public int? Tier;
     public JsObj<double> Inputs;
     public JsObj<double> Alt;
-    public string AltTech;
+    /// <summary>Faz 1b-3: alternatif girdinin (demir) kullanılacağı yerleşim kademesi</summary>
+    public int? AltTier;
     public string Output;
     public double Rate;
     public double Slots;
@@ -52,7 +56,9 @@ public sealed class WorkshopDef
 
 public sealed class CivicDef
 {
-    public string Kind, Name, Tech;
+    public string Kind, Name;
+    /// <summary>Faz 1b-3: yapının kurulacağı yerleşimin en az kademesi (null: 0)</summary>
+    public int? Tier;
     public JsObj<double> Cost;
     public double Work;
     public double? Housing;
@@ -71,23 +77,6 @@ public sealed class RaceDef
     public double Growth, Hp, Atk;
 }
 
-/// <summary>Context for a subclass pick weight (TS PickCtx).</summary>
-public sealed class PickCtx
-{
-    public bool War;
-    public double Threat, Forest, Law, Good, Pop;
-}
-
-public sealed class SubclassDef
-{
-    public string Id, Name, Desc;
-    public JsObj<double> Eff;
-    public string CapName, CapDesc;
-    public JsObj<double> CapEff;
-    /// <summary>Hand-ported from classes.ts (see Picks.cs).</summary>
-    [JsonIgnore] public Func<PickCtx, double> Pick;
-}
-
 public sealed class ClassDef
 {
     public string Id, Name, Dnd, Race;
@@ -101,13 +90,20 @@ public sealed class ClassDef
     public JsObj<double> Prefer;
     public JsObj<double> TerrainLike;
     public double Aggression;
-    public List<SubclassDef> Subclasses;
+    /// <summary>Faz 1b-3: sınıfın kademeye bağlı ayrıcalıkları (eski sınıf ağacından kalanlar: özel birlikler ve sınıf
+    /// özelliğini taşıyan birkaç etki). Medeniyetin en büyük yerleşiminin kademesiyle açılır.</summary>
+    public List<ClassPerk> Perks;
     public bool Implemented;
 }
 
-public sealed class WonderDef
+/// <summary>Faz 1b-3: sınıf ayrıcalığı: medeniyet <see cref="Tier"/> kademesine varınca özel birlik ve/veya etki açılır.</summary>
+public sealed class ClassPerk
 {
-    public string Name, Desc;
+    public int Tier;
+    public string Name;
+    /// <summary>açılan özel birlik (UNITS anahtarı; null: yok)</summary>
+    public string Unit;
+    /// <summary>açılan etki (Civ.Eff'e eklenir; null: yok)</summary>
     public JsObj<double> Eff;
 }
 
@@ -132,28 +128,6 @@ public sealed class MonsterDef
     public double? Regen;
     /// <summary>Faz 1 B2: nefes silahı (ejderha): zar sayısı (d6) ve en çok hedef; 1/3 olasılıkla yeniden dolar</summary>
     public double? Breath, BreathN;
-}
-
-public sealed class TechDef
-{
-    public string Id, Name;
-    public int Era;
-    public string Tree;          // 'main' | ClassId
-    public List<string> Req;
-    public List<string> Gate;
-    public List<string> GateAny;
-    public string Unlock;
-    public JsObj<double> Eff;
-    public string Unit;
-    public bool? Subclass;
-    public bool? Capstone;
-    public string Chain;
-    public double? Cost;
-}
-
-public sealed class EraRule
-{
-    public double Nodes, Pop;
 }
 
 public sealed class HeroClassDef

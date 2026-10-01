@@ -13,7 +13,6 @@
   "house": {
    "kind": "house",
    "name": "Ev",
-   "tech": "woodwork",
    "cost": {
     "wood": 9
    },
@@ -23,7 +22,7 @@
   "stonehouse": {
    "kind": "stonehouse",
    "name": "Taş Konak",
-   "tech": "architecture",
+   "tier": 2,
    "cost": {
     "bricks": 4,
     "stone": 4,
@@ -35,7 +34,7 @@
   "tavern": {
    "kind": "tavern",
    "name": "Taverna",
-   "tech": "tavern",
+   "tier": 1,
    "cost": {
     "wood": 18,
     "stone": 8
@@ -46,7 +45,7 @@
   "market": {
    "kind": "market",
    "name": "Pazar Yeri",
-   "tech": "barter",
+   "tier": 1,
    "cost": {
     "wood": 15,
     "stone": 6
@@ -57,7 +56,6 @@
   "temple": {
    "kind": "temple",
    "name": "Sunak",
-   "tech": "faith",
    "cost": {
     "stone": 10,
     "wood": 6
@@ -68,7 +66,6 @@
   "palisade": {
    "kind": "palisade",
    "name": "Ahşap Palisat",
-   "tech": "woodwork",
    "cost": {
     "wood": 35
    },
@@ -78,7 +75,7 @@
   "stonewall": {
    "kind": "stonewall",
    "name": "Taş Sur",
-   "tech": "stonewalls",
+   "tier": 2,
    "cost": {
     "stone": 60,
     "tools": 2
@@ -89,7 +86,7 @@
   "castle": {
    "kind": "castle",
    "name": "Kale",
-   "tech": "castle",
+   "tier": 3,
    "cost": {
     "stone": 120,
     "iron": 12,
@@ -101,7 +98,7 @@
   "library": {
    "kind": "library",
    "name": "Kütüphane",
-   "tech": "writing",
+   "tier": 1,
    "cost": {
     "wood": 16,
     "bricks": 8
@@ -112,7 +109,7 @@
   "mint": {
    "kind": "mint",
    "name": "Darphane",
-   "tech": "currency",
+   "tier": 2,
    "cost": {
     "bricks": 10,
     "stone": 10
@@ -123,7 +120,7 @@
   "guild": {
    "kind": "guild",
    "name": "Lonca Salonu",
-   "tech": "guilds",
+   "tier": 2,
    "cost": {
     "bricks": 12,
     "wood": 14,
@@ -135,6 +132,7 @@
   "unique": {
    "kind": "unique",
    "name": "Sınıf yapısı",
+   "tier": 1,
    "cost": {
     "stone": 20,
     "wood": 18
@@ -142,22 +140,9 @@
    "work": 25,
    "max": 1
   },
-  "wonder": {
-   "kind": "wonder",
-   "name": "Harika",
-   "cost": {
-    "stone": 110,
-    "bricks": 30,
-    "gold": 90,
-    "tools": 8
-   },
-   "work": 200,
-   "max": 1
-  },
   "shipyard": {
    "kind": "shipyard",
    "name": "Tersane",
-   "tech": "boatbuilding",
    "cost": {
     "wood": 30
    },
@@ -167,7 +152,7 @@
   "lighthouse": {
    "kind": "lighthouse",
    "name": "Fener Kulesi",
-   "tech": "seatrade",
+   "tier": 3,
    "cost": {
     "stone": 30,
     "bricks": 8
@@ -368,7 +353,7 @@
     3
    ],
    "count": 3,
-   "hiddenUntil": "arcana1",
+   "hiddenTier": 1,
    "building": "crystal",
    "color": "#9b6bff"
   },
@@ -386,7 +371,7 @@
     3
    ],
    "count": 2,
-   "hiddenUntil": "deepmine",
+   "hiddenTier": 3,
    "building": "mithril",
    "color": "#8fe6f0"
   },
@@ -417,10 +402,10 @@
     "Sulamalı Tarla",
     "Çiftlik"
    ],
-   "tech": [
-    "agriculture",
-    "irrigation",
-    "rotation"
+   "tier": [
+    0,
+    1,
+    2
    ]
   },
   "lumber": {
@@ -430,10 +415,10 @@
     "Bıçkıhane",
     "Ormancılık Evi"
    ],
-   "tech": [
-    null,
-    "woodwork",
-    "forestry"
+   "tier": [
+    0,
+    0,
+    2
    ]
   },
   "hunt": {
@@ -443,9 +428,9 @@
     "Av Köşkü",
     ""
    ],
-   "tech": [
-    null,
-    "husbandry",
+   "tier": [
+    0,
+    0,
     null
    ]
   },
@@ -456,10 +441,10 @@
     "Balıkçı Limanı",
     "Balıkçı Filosu"
    ],
-   "tech": [
-    "fishing",
-    "boatbuilding",
-    "navigation"
+   "tier": [
+    0,
+    1,
+    2
    ]
   },
   "quarry": {
@@ -469,9 +454,9 @@
     "Kesme Taş Ocağı",
     ""
    ],
-   "tech": [
-    "stonework",
-    "architecture",
+   "tier": [
+    0,
+    2,
     null
    ]
   },
@@ -482,8 +467,8 @@
     "",
     ""
    ],
-   "tech": [
-    "pottery",
+   "tier": [
+    0,
     null,
     null
    ]
@@ -495,10 +480,10 @@
     "Galeri Madeni",
     "Derin Maden"
    ],
-   "tech": [
-    "mining",
-    "bronzetools",
-    "deepmine"
+   "tier": [
+    0,
+    1,
+    3
    ]
   },
   "pasture": {
@@ -508,9 +493,9 @@
     "Haras",
     ""
    ],
-   "tech": [
-    "husbandry",
-    "riding",
+   "tier": [
+    0,
+    1,
     null
    ]
   },
@@ -521,9 +506,9 @@
     "Bitki Bahçesi",
     ""
    ],
-   "tech": [
-    "herbalism",
-    "medicine",
+   "tier": [
+    0,
+    2,
     null
    ]
   },
@@ -534,10 +519,10 @@
     "Kristal Kulesi",
     "Ley Odak Taşı"
    ],
-   "tech": [
-    "arcana1",
-    "arcana2",
-    "highmagic"
+   "tier": [
+    1,
+    2,
+    3
    ]
   },
   "mithril": {
@@ -547,10 +532,10 @@
     "Mithril Galerisi",
     "Mithril Dökümhanesi"
    ],
-   "tech": [
+   "tier": [
     null,
-    "deepmine",
-    "mithrilwork"
+    3,
+    3
    ],
    "startLevel": 2
   },
@@ -561,9 +546,9 @@
     "Kutsal Koru",
     ""
    ],
-   "tech": [
-    "druid_grove",
-    "druid_grove",
+   "tier": [
+    1,
+    1,
     null
    ]
   }
@@ -647,7 +632,7 @@
    "tier": "temel",
    "group": "yapı",
    "src": "Taş ocağı (tepe)",
-   "use": "Sur, kale, tapınak, harika, yükseltmeler",
+   "use": "Sur, kale, tapınak, yükseltmeler",
    "lack": "Sur ve büyük yapılar kurulamaz"
   },
   "bricks": {
@@ -657,7 +642,7 @@
    "tier": "işlenmiş",
    "group": "yapı",
    "src": "Tuğla ocağı (kil yatağı, kereste yakar)",
-   "use": "Taş konak, kütüphane, lonca, şifa evi, harika",
+   "use": "Taş konak, kütüphane, lonca, şifa evi",
    "lack": "Kasaba konutları ve bilgi yapıları kurulamaz"
   },
   "copper": {
@@ -668,7 +653,7 @@
    "group": "metal",
    "src": "Bakır damarı (tükenir)",
    "use": "Kalayla birlikte bronz alet ve silah",
-   "lack": "Bronz çağı açılamaz: alet ve silah yok"
+   "lack": "Aletçi ve silahhane bakırsız kalır: alet ve silah yok"
   },
   "tin": {
    "id": "tin",
@@ -687,8 +672,8 @@
    "tier": "stratejik",
    "group": "metal",
    "src": "Demir damarı (tükenir)",
-   "use": "Demircilikle alet ve silah (odun kömürüyle); kale, L3 yükseltme",
-   "lack": "Demir çağına geçilemez"
+   "use": "Kasaba ve şehir demircilerinde alet ve silah (odun kömürüyle); kale, L3 yükseltme",
+   "lack": "Kasaba demircileri bakır ve kalaya muhtaç kalır"
   },
   "tools": {
    "id": "tools",
@@ -727,8 +712,8 @@
    "tier": "temel",
    "group": "hayvan",
    "src": "Avcı kampı (tundrada kürklü, iki kat)",
-   "use": "Kış giysisi; silah ve zırh; kabile savaşçısı",
-   "lack": "Kışın halk üşür: büyüme yavaşlar, salgın riski artar"
+   "use": "Koşum ve ayakkabı; asker teçhizatı; silah ve zırh; kabile savaşçısı",
+   "lack": "Koşum ve asker teçhizatı aksar"
   },
   "herbs": {
    "id": "herbs",
@@ -767,7 +752,7 @@
    "tier": "değerli",
    "group": "değer",
    "src": "Vergi, ticaret, altın ve gümüş damarı",
-   "use": "Ticaret, kahraman, ilan, harika, L3",
+   "use": "Ticaret, kahraman, ilan, bakım, imar, L3",
    "lack": "Ticaret ve kiralama durur"
   },
   "mana": {
@@ -777,7 +762,7 @@
    "tier": "efsanevi",
    "group": "efsane",
    "src": "Kristal kazısı (Arcana I ile görünür)",
-   "use": "Bilginler yakar: araştırma +%25; askerin silahını efsunlar",
+   "use": "Şehir kademesinde askerin silahını efsunlar",
    "lack": "Büyü yavaş, efsun yok"
   },
   "mithril": {
@@ -886,7 +871,6 @@
   "bakery": {
    "kind": "bakery",
    "name": "Fırın",
-   "tech": "pottery",
    "inputs": {
     "grain": 2
    },
@@ -901,7 +885,7 @@
   "brewery": {
    "kind": "brewery",
    "name": "Bira Evi",
-   "tech": "tavern",
+   "tier": 1,
    "inputs": {
     "grain": 2
    },
@@ -916,7 +900,7 @@
   "toolmaker": {
    "kind": "toolmaker",
    "name": "Aletçi",
-   "tech": "bronzetools",
+   "tier": 1,
    "inputs": {
     "copper": 2,
     "tin": 1,
@@ -926,7 +910,7 @@
     "iron": 2,
     "wood": 3
    },
-   "altTech": "smithing",
+   "altTier": 2,
    "output": "tools",
    "rate": 0.1,
    "slots": 3,
@@ -938,7 +922,7 @@
   "armory": {
    "kind": "armory",
    "name": "Silahhane",
-   "tech": "training",
+   "tier": 1,
    "inputs": {
     "copper": 4,
     "tin": 2,
@@ -949,7 +933,7 @@
     "wood": 4,
     "leather": 1
    },
-   "altTech": "smithing",
+   "altTier": 2,
    "output": "arms",
    "rate": 0.08,
    "slots": 3,
@@ -961,7 +945,7 @@
   "apothecary": {
    "kind": "apothecary",
    "name": "Şifa Evi",
-   "tech": "medicine",
+   "tier": 2,
    "inputs": {
     "herbs": 2
    },
@@ -1024,48 +1008,23 @@
     "hill": 0.8
    },
    "aggression": 0.25,
-   "subclasses": [
+   "perks": [
     {
-     "id": "devotion",
-     "name": "Adanma Yemini",
-     "desc": "Antlaşmalar ve moral güçlü",
-     "eff": {
-      "defAc": 1,
-      "growth": 0.05
-     },
-     "capName": "Kutsal Nimbus",
-     "capDesc": "Başkente saldıran kötüler hasar alır",
-     "capEff": {
-      "defAc": 3,
-      "shield": 1
-     }
+     "tier": 1,
+     "unit": "holyguard",
+     "name": "Kutsal Muhafız"
     },
     {
-     "id": "ancients",
-     "name": "Kadim Yemin",
-     "desc": "Doğayla barış; elf ve druidlerle dostluk",
-     "eff": {
-      "prodFood": 0.15
-     },
-     "capName": "Kadim Şampiyon",
-     "capDesc": "Hasat +%50, doğa dostlarıyla ebedi dostluk",
-     "capEff": {
-      "prodFood": 0.5,
-      "harvest": 1
-     }
+     "tier": 3,
+     "unit": "knight",
+     "name": "Şövalye Tarikatı"
     },
     {
-     "id": "vengeance",
-     "name": "İntikam Yemini",
-     "desc": "Düşük savaş eşiği, kin tutar",
+     "tier": 3,
      "eff": {
-      "soldierAtk": 1
+      "crusade": 1
      },
-     "capName": "İntikam Meleği",
-     "capDesc": "İlan edilen düşmana ordu hızı ve hasarı +%50",
-     "capEff": {
-      "soldierDmg": 3
-     }
+     "name": "Kutsal Sefer"
     }
    ],
    "implemented": true
@@ -1111,50 +1070,11 @@
     "grass": 0.6
    },
    "aggression": 0.2,
-   "subclasses": [
+   "perks": [
     {
-     "id": "forge",
-     "name": "Örs Alanı",
-     "desc": "Silah ve zırh üretimi ucuz ve kaliteli",
-     "eff": {
-      "prodMine": 0.2,
-      "soldierAc": 1
-     },
-     "capName": "Tanrının Örsü",
-     "capDesc": "Efsanevi silahlar dövülür",
-     "capEff": {
-      "soldierAtk": 2,
-      "soldierAc": 1
-     }
-    },
-    {
-     "id": "war",
-     "name": "Savaş Alanı",
-     "desc": "Askerlere ek saldırı",
-     "eff": {
-      "soldierDmg": 2
-     },
-     "capName": "Savaş Avatarı",
-     "capDesc": "Savaş alanında avatar belirir",
-     "capEff": {
-      "avatar": 1,
-      "soldierAtk": 2
-     }
-    },
-    {
-     "id": "life",
-     "name": "Yaşam Alanı",
-     "desc": "Nüfus artışı +%25, iyileşme",
-     "eff": {
-      "growth": 0.25,
-      "healBack": 0.2
-     },
-     "capName": "Diriliş",
-     "capDesc": "Ölen kahraman dirilir",
-     "capEff": {
-      "revive": 1,
-      "growth": 0.1
-     }
+     "tier": 1,
+     "unit": "blessed",
+     "name": "Kutsama"
     }
    ],
    "implemented": true
@@ -1201,49 +1121,23 @@
     "grass": 0.8
    },
    "aggression": 0.1,
-   "subclasses": [
+   "perks": [
     {
-     "id": "land",
-     "name": "Toprak Çemberi",
-     "desc": "Şifalı ot ve tarım verimi",
+     "tier": 1,
      "eff": {
-      "prodFood": 0.2,
-      "prodHerbs": 0.3
+      "forestGrow": 1
      },
-     "capName": "Hayat Ağacı",
-     "capDesc": "Başkent kıtlık yaşamaz",
-     "capEff": {
-      "noFamine": 1,
-      "prodFood": 0.3
-     }
+     "name": "Kutsal Koru"
     },
     {
-     "id": "moon",
-     "name": "Ay Çemberi",
-     "desc": "Druidler savaşta ayıya dönüşür",
-     "eff": {
-      "soldierHp": 6,
-      "soldierDmg": 1
-     },
-     "capName": "Sonsuz Şekil",
-     "capDesc": "Druid birlikleri ölümde bir kez dirilir",
-     "capEff": {
-      "healBack": 0.5
-     }
+     "tier": 1,
+     "unit": "wolves",
+     "name": "Hayvan Dostluğu"
     },
     {
-     "id": "stars",
-     "name": "Yıldızlar Çemberi",
-     "desc": "Kehanet, araştırma +",
-     "eff": {
-      "research": 0.15
-     },
-     "capName": "Takımyıldız Kehaneti",
-     "capDesc": "Savaş ve baskınları önceden sezer",
-     "capEff": {
-      "foresee": 1,
-      "research": 0.1
-     }
+     "tier": 3,
+     "unit": "treant",
+     "name": "Treant Uyanışı"
     }
    ],
    "implemented": true
@@ -1258,7 +1152,7 @@
     "good": 0
    },
    "feature": "Sinsi Hamle",
-   "featureDesc": "Casusluk, kaçakçılık, bilgi çalma",
+   "featureDesc": "Kaçakçılık: kervanları baskından sıyrılır, korsanlar gemilerine dokunmaz",
    "base": {
     "raidEvade": 0.2,
     "tradeGold": 0.3
@@ -1290,48 +1184,7 @@
     "water": 1.2
    },
    "aggression": 0.15,
-   "subclasses": [
-    {
-     "id": "thief",
-     "name": "Hırsız",
-     "desc": "Yağma ve kaynak çalma",
-     "eff": {
-      "lootMult": 0.5
-     },
-     "capName": "Usta Hırsız",
-     "capDesc": "Efsanevi eşya çalar",
-     "capEff": {
-      "legendSteal": 1,
-      "lootMult": 0.5
-     }
-    },
-    {
-     "id": "assassin",
-     "name": "Suikastçı",
-     "desc": "Rakip kahramanlara suikast",
-     "eff": {
-      "deathTouch": 0.1
-     },
-     "capName": "Ölüm Vuruşu",
-     "capDesc": "Bir lideri ya da kahramanı tek hamlede düşürür",
-     "capEff": {
-      "deathTouch": 0.3
-     }
-    },
-    {
-     "id": "mastermind",
-     "name": "Entrikacı",
-     "desc": "Komşuları birbirine düşürür",
-     "eff": {
-      "spy": 0.15
-     },
-     "capName": "Gölge Kral",
-     "capDesc": "Bir medeniyeti kukla yapar",
-     "capEff": {
-      "puppet": 1
-     }
-    }
-   ],
+   "perks": [],
    "implemented": true
   },
   "wizard": {
@@ -1344,10 +1197,8 @@
     "good": 0.6
    },
    "feature": "Büyü Kitabı",
-   "featureDesc": "+%25 araştırma, bilgi biriktirir",
-   "base": {
-    "research": 0.25
-   },
+   "featureDesc": "Bilgi biriktirir; kulelerinde büyü kitapları saklar",
+   "base": {},
    "desires": [
     "mana",
     "leather"
@@ -1375,48 +1226,11 @@
     "grass": 1
    },
    "aggression": 0.1,
-   "subclasses": [
+   "perks": [
     {
-     "id": "evocation",
-     "name": "Yıkım Okulu",
-     "desc": "Büyücü birliklerine alan hasarı",
-     "eff": {
-      "soldierDmg": 2
-     },
-     "capName": "Meteor Fırtınası",
-     "capDesc": "Savaş alanına meteor",
-     "capEff": {
-      "meteor": 1
-     }
-    },
-    {
-     "id": "abjuration",
-     "name": "Koruma Okulu",
-     "desc": "Yerleşim kalkanları",
-     "eff": {
-      "defAc": 2
-     },
-     "capName": "Mutlak Kalkan",
-     "capDesc": "Başkent uzun süre fethedilemez",
-     "capEff": {
-      "shield": 1,
-      "defAc": 2
-     }
-    },
-    {
-     "id": "divination",
-     "name": "Kehanet Okulu",
-     "desc": "Olayları önceden görme, ticarette avantaj",
-     "eff": {
-      "research": 0.1,
-      "tradeGold": 0.2
-     },
-     "capName": "Kader Dokuması",
-     "capDesc": "Yılda bir kötü olayı engeller",
-     "capEff": {
-      "luck": 1,
-      "foresee": 1
-     }
+     "tier": 3,
+     "unit": "golem",
+     "name": "Golem Muhafızlar"
     }
    ],
    "implemented": true
@@ -1434,7 +1248,6 @@
    "featureDesc": "Savaşta hasar ve moral; yağma ekonomisi",
    "base": {
     "soldierDmg": 2,
-    "research": -0.25,
     "lootMult": 0.5
    },
    "desires": [
@@ -1466,48 +1279,11 @@
     "hill": 1
    },
    "aggression": 0.8,
-   "subclasses": [
+   "perks": [
     {
-     "id": "berserker",
-     "name": "Çılgın Yolu",
-     "desc": "Hasar çok yüksek, kayıplar da",
-     "eff": {
-      "soldierDmg": 3,
-      "soldierAc": -1
-     },
-     "capName": "Kan Fırtınası",
-     "capDesc": "İlk tur hasar ×2",
-     "capEff": {
-      "firstStrike": 2
-     }
-    },
-    {
-     "id": "totem",
-     "name": "Totem Yolu",
-     "desc": "Ayı dayanıklılığı, kurt sürüsü, kartal gözü",
-     "eff": {
-      "soldierHp": 4
-     },
-     "capName": "Ruh Totemi",
-     "capDesc": "Hayvan gücü tüm ordulara",
-     "capEff": {
-      "soldierHp": 6,
-      "soldierAtk": 1
-     }
-    },
-    {
-     "id": "ancestral",
-     "name": "Ata Muhafızı",
-     "desc": "Ata ruhları savunmada korur",
-     "eff": {
-      "defAc": 2
-     },
-     "capName": "Atalarının Kalkanı",
-     "capDesc": "Savunmada kayıplar yarıya",
-     "capEff": {
-      "healBack": 0.5,
-      "defAc": 1
-     }
+     "tier": 1,
+     "unit": "raider",
+     "name": "Akıncılar"
     }
    ],
    "implemented": true
@@ -1555,51 +1331,11 @@
     "forest": 0.8
    },
    "aggression": 0.1,
-   "subclasses": [
+   "perks": [
     {
-     "id": "lore",
-     "name": "Bilgi Koleji",
-     "desc": "Kayıp ezgilerden bilgi; araştırma +",
-     "eff": {
-      "research": 0.15,
-      "cheapKnown": 0.25
-     },
-     "capName": "Sözün Gücü",
-     "capDesc": "Başkalarının bildiği her şey neredeyse bedava",
-     "capEff": {
-      "research": 0.2,
-      "cheapKnown": 0.25
-     }
-    },
-    {
-     "id": "valor",
-     "name": "Yiğitlik Koleji",
-     "desc": "Savaş marşları; askerlere ve kahramanlara güç",
-     "eff": {
-      "soldierAtk": 1,
-      "heroLevel": 1
-     },
-     "capName": "Destansı Marş",
-     "capDesc": "Ordular bozguna uğramaz, ilk hamle güçlü",
-     "capEff": {
-      "firstStrike": 1.5,
-      "noRout": 1
-     }
-    },
-    {
-     "id": "eloquence",
-     "name": "Belagat Koleji",
-     "desc": "Tatlı dil; ilişkiler ve ticaret",
-     "eff": {
-      "charm": 1,
-      "tradeGold": 0.2
-     },
-     "capName": "Altın Dil",
-     "capDesc": "Kimse bu şehirlere uzun süre düşman kalamaz",
-     "capEff": {
-      "charm": 2,
-      "tax": 0.3
-     }
+     "tier": 2,
+     "unit": "skald",
+     "name": "Savaş Ozanları"
     }
    ],
    "implemented": true
@@ -1648,52 +1384,16 @@
     "mountain": 0.8
    },
    "aggression": 0.55,
-   "subclasses": [
+   "perks": [
     {
-     "id": "champion",
-     "name": "Şampiyon",
-     "desc": "Kaba güç; saldırı ve hasar",
-     "eff": {
-      "soldierAtk": 1,
-      "soldierDmg": 1
-     },
-     "capName": "Yenilmez Şampiyon",
-     "capDesc": "Düşenlerin çoğu yeniden kalkar",
-     "capEff": {
-      "soldierAtk": 2,
-      "healBack": 0.3
-     }
+     "tier": 1,
+     "unit": "legionary",
+     "name": "Lejyon Kışlası"
     },
     {
-     "id": "battlemaster",
-     "name": "Savaş Ustası",
-     "desc": "Taktik; düşman morali kırılır, saflar dağılmaz",
-     "eff": {
-      "enemyMorale": 0.1,
-      "noRout": 1
-     },
-     "capName": "Kusursuz Taktik",
-     "capDesc": "Düşman ilk turda ezilir",
-     "capEff": {
-      "enemyMorale": 0.25,
-      "firstStrike": 1.5
-     }
-    },
-    {
-     "id": "eldritch",
-     "name": "Büyülü Şövalye",
-     "desc": "Kılıç ve büyü; kalkan ve dayanıklılık",
-     "eff": {
-      "defAc": 1,
-      "soldierHp": 2,
-      "research": 0.05
-     },
-     "capName": "Büyü Kalkanı",
-     "capDesc": "Başkent büyülü kalkanla korunur",
-     "capEff": {
-      "shield": 1,
-      "soldierAc": 2
-     }
+     "tier": 3,
+     "unit": "dragonguard",
+     "name": "Ejder Muhafızları"
     }
    ],
    "implemented": true
@@ -1708,10 +1408,9 @@
     "good": 0.3
    },
    "feature": "Disiplin",
-   "featureDesc": "Az yer, çok düşünür; kıtlığa dayanıklı, silahsız savaşçılar",
+   "featureDesc": "Az yer, çok düşünür; kıtlığa dayanıklı, kasabalarında silahsız savaşçılar yetiştirir",
    "base": {
-    "frugal": 0.12,
-    "research": 0.05
+    "frugal": 0.12
    },
    "desires": [
     "herbs",
@@ -1741,49 +1440,14 @@
     "grass": 0.9
    },
    "aggression": 0.1,
-   "subclasses": [
+   "perks": [
     {
-     "id": "openhand",
-     "name": "Açık El Yolu",
-     "desc": "Çıplak elle savaş; saldırı ve savunma",
+     "tier": 2,
+     "unit": "monkwarrior",
      "eff": {
-      "soldierAtk": 1,
-      "defAc": 1
+      "unarmed": 1
      },
-     "capName": "Titreşen Avuç",
-     "capDesc": "Tek dokunuşla düşman önderi düşer",
-     "capEff": {
-      "deathTouch": 0.15,
-      "soldierAtk": 1
-     }
-    },
-    {
-     "id": "shadow",
-     "name": "Gölge Yolu",
-     "desc": "Sessiz adımlar; kervanlar görünmez, sırlar öğrenilir",
-     "eff": {
-      "raidEvade": 0.3,
-      "spy": 0.15
-     },
-     "capName": "Gölge Adımı",
-     "capDesc": "Gölgeler arasında anında yolculuk",
-     "capEff": {
-      "spy": 0.25,
-      "teleport": 1
-     }
-    },
-    {
-     "id": "elements",
-     "name": "Dört Element Yolu",
-     "desc": "Rüzgâr ve alev; askerlere hasar",
-     "eff": {
-      "soldierDmg": 2
-     },
-     "capName": "Element Ustası",
-     "capDesc": "Savaş alanına ateş yağar",
-     "capEff": {
-      "meteor": 1
-     }
+     "name": "Yumruk Keşişleri"
     }
    ],
    "implemented": true
@@ -1830,49 +1494,16 @@
     "grass": 1
    },
    "aggression": 0.2,
-   "subclasses": [
+   "perks": [
     {
-     "id": "hunter",
-     "name": "Avcı",
-     "desc": "Canavarlara karşı ölümcül",
-     "eff": {
-      "smite": 1.5
-     },
-     "capName": "Canavar Katili",
-     "capDesc": "Dev ve canavar fark etmez; hepsi düşer",
-     "capEff": {
-      "smite": 2,
-      "soldierDmg": 2
-     }
+     "tier": 2,
+     "unit": "warden",
+     "name": "Sınır Muhafızları"
     },
     {
-     "id": "beastmaster",
-     "name": "Hayvan Terbiyecisi",
-     "desc": "Kurt yoldaşlar; askerler dayanıklı",
-     "eff": {
-      "soldierHp": 3
-     },
-     "capName": "Sürünün Efendisi",
-     "capDesc": "Hayvan sürüleri orduya katılır",
-     "capEff": {
-      "soldierHp": 4,
-      "soldierAtk": 1
-     }
-    },
-    {
-     "id": "gloom",
-     "name": "Karanlık Avcı",
-     "desc": "Gölgeden vurur; kervanlar gizli",
-     "eff": {
-      "raidEvade": 0.3,
-      "firstStrike": 1.2
-     },
-     "capName": "Görünmez Ok",
-     "capDesc": "İlk ok önderi düşürür",
-     "capEff": {
-      "firstStrike": 1.6,
-      "deathTouch": 0.1
-     }
+     "tier": 2,
+     "unit": "wolves",
+     "name": "Hayvan Yoldaşlar"
     }
    ],
    "implemented": true
@@ -1889,7 +1520,6 @@
    "feature": "Kan Soyu",
    "featureDesc": "Büyü kanlarında; her yıl kontrolsüz bir büyü dalgası",
    "base": {
-    "research": 0.1,
     "wild": 1
    },
    "desires": [
@@ -1919,48 +1549,11 @@
     "grass": 1
    },
    "aggression": 0.35,
-   "subclasses": [
+   "perks": [
     {
-     "id": "draconic",
-     "name": "Ejder Soyu",
-     "desc": "Pullu deri; askerler dayanıklı",
-     "eff": {
-      "soldierHp": 2,
-      "defAc": 1
-     },
-     "capName": "Ejder Kanatları",
-     "capDesc": "Ordular ejder gibi atılır",
-     "capEff": {
-      "soldierHp": 4,
-      "firstStrike": 1.4
-     }
-    },
-    {
-     "id": "wildmagic",
-     "name": "Yabani Büyü",
-     "desc": "Kaos kucaklanır; büyü dalgaları talihli",
-     "eff": {
-      "luck": 1
-     },
-     "capName": "Kaos Dalgası",
-     "capDesc": "Savaş alanına rastgele meteor",
-     "capEff": {
-      "meteor": 1
-     }
-    },
-    {
-     "id": "shadowborn",
-     "name": "Gölge Soyu",
-     "desc": "Karanlıkla anlaşma; suikast",
-     "eff": {
-      "deathTouch": 0.1
-     },
-     "capName": "Karanlığın Gözü",
-     "capDesc": "Düşman önderleri gölgede kaybolur",
-     "capEff": {
-      "deathTouch": 0.25,
-      "enemyMorale": 0.15
-     }
+     "tier": 2,
+     "unit": "flameborn",
+     "name": "Alev Soylular"
     }
    ],
    "implemented": true
@@ -2009,50 +1602,21 @@
     "swamp": 1
    },
    "aggression": 0.6,
-   "subclasses": [
+   "perks": [
     {
-     "id": "fiend",
-     "name": "Cehennem Lordu Paktı",
-     "desc": "Ateş ve öfke; askerlere hasar",
-     "eff": {
-      "soldierDmg": 2
-     },
-     "capName": "Cehennem Kapısı",
-     "capDesc": "Savaş alanına iblisler çıkar",
-     "capEff": {
-      "soldierDmg": 2,
-      "firstStrike": 1.4
-     }
+     "tier": 2,
+     "unit": "shadowguard",
+     "name": "Gölge Muhafızları"
     },
     {
-     "id": "archfey",
-     "name": "Peri Sarayı Paktı",
-     "desc": "Yanılsama; kervanlar görünmez, sırlar çalınır",
-     "eff": {
-      "raidEvade": 0.3,
-      "spy": 0.2
-     },
-     "capName": "Peri Tacı",
-     "capDesc": "Komşular büyülenir, düşmanlar şaşırır",
-     "capEff": {
-      "spy": 0.25,
-      "enemyMorale": 0.15
-     }
+     "tier": 2,
+     "unit": "imp",
+     "name": "Şeytancık Çağırma"
     },
     {
-     "id": "oldone",
-     "name": "Kadim Varlık Paktı",
-     "desc": "Yıldızların ötesinden fısıltılar; bilgi ve dehşet",
-     "eff": {
-      "research": 0.15,
-      "enemyMorale": 0.1
-     },
-     "capName": "Uyanan Rüya",
-     "capDesc": "Düşman orduları dehşetle dağılır",
-     "capEff": {
-      "enemyMorale": 0.3,
-      "research": 0.1
-     }
+     "tier": 3,
+     "unit": "fiend",
+     "name": "Karanlık Kapı"
     }
    ],
    "implemented": true
@@ -2491,1960 +2055,6 @@
    "per": 0.06
   }
  },
- "WONDERS": {
-  "paladin": {
-   "name": "Güneş Katedrali",
-   "desc": "Nüfus artışı ve savunma",
-   "eff": {
-    "growth": 0.15,
-    "defAc": 2
-   }
-  },
-  "cleric": {
-   "name": "Dağın Kalbi",
-   "desc": "Maden verimi, ilahi müdahale",
-   "eff": {
-    "prodMine": 0.3,
-    "divine": 0.1
-   }
-  },
-  "druid": {
-   "name": "Dünya Ağacı",
-   "desc": "Hasat ve orman büyümesi",
-   "eff": {
-    "prodFood": 0.3,
-    "forestGrow": 2
-   }
-  },
-  "rogue": {
-   "name": "Altın Pazar",
-   "desc": "Ticaret ve vergi",
-   "eff": {
-    "tradeGold": 0.5,
-    "tax": 0.3
-   }
-  },
-  "wizard": {
-   "name": "Yıldız Kulesi",
-   "desc": "Araştırma +%30",
-   "eff": {
-    "research": 0.3
-   }
-  },
-  "barbarian": {
-   "name": "Kemik Taht",
-   "desc": "Savaşçı kotası ve hasar",
-   "eff": {
-    "soldierDmg": 2,
-    "warband": 0.04
-   }
-  },
-  "bard": {
-   "name": "Ebedi Sahne",
-   "desc": "Dostluk ve göç",
-   "eff": {
-    "charm": 1.5,
-    "growth": 0.1
-   }
-  },
-  "fighter": {
-   "name": "Ejder Kalesi",
-   "desc": "Zırh ve savunma",
-   "eff": {
-    "soldierAc": 2,
-    "defAc": 2
-   }
-  },
-  "monk": {
-   "name": "Bulut Manastırı",
-   "desc": "Araştırma ve tutumluluk",
-   "eff": {
-    "research": 0.2,
-    "frugal": 0.1
-   }
-  },
-  "ranger": {
-   "name": "Gözcü Ağacı",
-   "desc": "Canavar avı ve sezgi",
-   "eff": {
-    "smite": 1,
-    "foresee": 1,
-    "favoredHunt": 1
-   }
-  },
-  "sorcerer": {
-   "name": "Kızıl Obelisk",
-   "desc": "Mana ve araştırma",
-   "eff": {
-    "prodMana": 0.5,
-    "research": 0.15
-   }
-  },
-  "warlock": {
-   "name": "Kara Mihrap",
-   "desc": "Pakt gücü",
-   "eff": {
-    "soldierDmg": 2
-   }
-  }
- },
- "CLASS_TECHS": [
-  {
-   "id": "paladin_oath",
-   "name": "Yemin Töreni",
-   "era": 2,
-   "tree": "paladin",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Yemin Tapınağı; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "heroLevel": 1
-   }
-  },
-  {
-   "id": "paladin_guard",
-   "name": "Kutsal Muhafız",
-   "era": 2,
-   "tree": "paladin",
-   "req": [
-    "training"
-   ],
-   "unlock": "Benzersiz birim: zırhlı muhafız",
-   "unit": "holyguard"
-  },
-  {
-   "id": "paladin_smite",
-   "name": "İlahi Çarpış",
-   "era": 3,
-   "tree": "paladin",
-   "req": [
-    "paladin_guard",
-    "smithing"
-   ],
-   "unlock": "Kötü ve canavara kritik ×3",
-   "eff": {
-    "smite": 3
-   }
-  },
-  {
-   "id": "paladin_layhands",
-   "name": "Şifa Eli",
-   "era": 3,
-   "tree": "paladin",
-   "req": [
-    "medicine"
-   ],
-   "unlock": "Ölülerin %30'u iyileşip döner",
-   "eff": {
-    "healBack": 0.3
-   }
-  },
-  {
-   "id": "paladin_aura",
-   "name": "Koruma Aurası",
-   "era": 3,
-   "tree": "paladin",
-   "req": [
-    "stonewalls"
-   ],
-   "unlock": "Savunuculara AC +2",
-   "eff": {
-    "defAc": 2
-   }
-  },
-  {
-   "id": "paladin_knights",
-   "name": "Şövalye Tarikatı",
-   "era": 4,
-   "tree": "paladin",
-   "req": [
-    "riding",
-    "castle"
-   ],
-   "unlock": "Benzersiz birim: ağır süvari",
-   "unit": "knight"
-  },
-  {
-   "id": "paladin_crusade",
-   "name": "Kutsal Sefer",
-   "era": 4,
-   "tree": "paladin",
-   "req": [
-    "crown"
-   ],
-   "unlock": "Kötülere karşı ittifak çağrısı",
-   "eff": {
-    "crusade": 1
-   }
-  },
-  {
-   "id": "paladin_cap",
-   "name": "Yemin Doruğu",
-   "era": 4,
-   "tree": "paladin",
-   "req": [
-    "paladin_crusade"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "cleric_temple",
-   "name": "Tapınak Ocağı",
-   "era": 2,
-   "tree": "cleric",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Tapınak ve yıllık bayram; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "festival": 1
-   }
-  },
-  {
-   "id": "cleric_bless",
-   "name": "Kutsama",
-   "era": 2,
-   "tree": "cleric",
-   "req": [
-    "training"
-   ],
-   "unlock": "Askerlere AC +1",
-   "eff": {
-    "soldierAc": 1
-   },
-   "unit": "blessed"
-  },
-  {
-   "id": "cleric_school",
-   "name": "Rahip Okulu",
-   "era": 3,
-   "tree": "cleric",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Rahip kahramanlar +1 seviye",
-   "eff": {
-    "heroLevel": 1
-   }
-  },
-  {
-   "id": "cleric_holyarms",
-   "name": "Kutsal Silahlar",
-   "era": 3,
-   "tree": "cleric",
-   "req": [
-    "smithing"
-   ],
-   "unlock": "Silah kalitesi +1",
-   "eff": {
-    "soldierAtk": 1
-   }
-  },
-  {
-   "id": "cleric_turn",
-   "name": "Ölüleri Kovma",
-   "era": 3,
-   "tree": "cleric",
-   "req": [
-    "cleric_temple"
-   ],
-   "unlock": "Canavarlara karşı üstünlük",
-   "eff": {
-    "smite": 2
-   }
-  },
-  {
-   "id": "cleric_cathedral",
-   "name": "Dağ Katedrali",
-   "era": 4,
-   "tree": "cleric",
-   "req": [
-    "architecture",
-    "deepmine"
-   ],
-   "unlock": "Anıt; dağ içi şehir",
-   "eff": {
-    "defAc": 2,
-    "growth": 0.1
-   }
-  },
-  {
-   "id": "cleric_warden",
-   "name": "Kutsal Koruyucu",
-   "era": 4,
-   "tree": "cleric",
-   "req": [
-    "castle"
-   ],
-   "unlock": "Başkent savunucuları yılmaz",
-   "eff": {
-    "noRout": 1
-   }
-  },
-  {
-   "id": "cleric_cap",
-   "name": "İlahi Müdahale",
-   "era": 4,
-   "tree": "cleric",
-   "req": [
-    "cleric_cathedral"
-   ],
-   "unlock": "Felakette tanrı müdahalesi",
-   "capstone": true,
-   "eff": {
-    "divine": 0.1
-   }
-  },
-  {
-   "id": "druid_grove",
-   "name": "Kutsal Koru",
-   "era": 2,
-   "tree": "druid",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Koru; orman büyür; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "forestGrow": 1
-   }
-  },
-  {
-   "id": "druid_beasts",
-   "name": "Hayvan Dostluğu",
-   "era": 2,
-   "tree": "druid",
-   "req": [
-    "husbandry"
-   ],
-   "unlock": "Benzersiz birim: kurt ve ayı yoldaşlar",
-   "unit": "wolves"
-  },
-  {
-   "id": "druid_growth",
-   "name": "Bitki Büyümesi",
-   "era": 3,
-   "tree": "druid",
-   "req": [
-    "irrigation"
-   ],
-   "unlock": "Tarım ×1,5",
-   "eff": {
-    "prodFood": 0.5
-   }
-  },
-  {
-   "id": "druid_treewalk",
-   "name": "Ağaç Yürüyüşü",
-   "era": 3,
-   "tree": "druid",
-   "req": [
-    "roads"
-   ],
-   "unlock": "Ormanlarda yol hızı",
-   "eff": {
-    "forestMove": 1
-   }
-  },
-  {
-   "id": "druid_seasons",
-   "name": "Mevsim Ritleri",
-   "era": 3,
-   "tree": "druid",
-   "req": [
-    "medicine"
-   ],
-   "unlock": "Kış düşüşü yok",
-   "eff": {
-    "winterImmune": 1
-   }
-  },
-  {
-   "id": "druid_treant",
-   "name": "Treant Uyanışı",
-   "era": 4,
-   "tree": "druid",
-   "req": [
-    "druid_seasons"
-   ],
-   "unlock": "Benzersiz birim: treant",
-   "unit": "treant",
-   "gate": [
-    "heartwood"
-   ]
-  },
-  {
-   "id": "druid_wrath",
-   "name": "Doğanın Öfkesi",
-   "era": 4,
-   "tree": "druid",
-   "req": [
-    "druid_treant"
-   ],
-   "unlock": "Orman düşmana saldırır",
-   "eff": {
-    "defAc": 2
-   }
-  },
-  {
-   "id": "druid_cap",
-   "name": "Arşidruid",
-   "era": 4,
-   "tree": "druid",
-   "req": [
-    "druid_wrath"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "rogue_guild",
-   "name": "Hırsızlar Loncası",
-   "era": 2,
-   "tree": "rogue",
-   "req": [
-    "barter"
-   ],
-   "unlock": "Lonca; altın geliri +; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "tax": 0.3
-   }
-  },
-  {
-   "id": "rogue_smuggle",
-   "name": "Kaçakçı Yolları",
-   "era": 2,
-   "tree": "rogue",
-   "req": [
-    "roads"
-   ],
-   "unlock": "Kervanlar baskına yarı oranda yakalanır",
-   "eff": {
-    "raidEvade": 0.5,
-    "tradeGold": 0.2
-   }
-  },
-  {
-   "id": "rogue_spies",
-   "name": "Casus Ağı",
-   "era": 3,
-   "tree": "rogue",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Komşu bilgisi; bilgi çalma",
-   "eff": {
-    "spy": 0.25
-   }
-  },
-  {
-   "id": "rogue_blackmarket",
-   "name": "Kara Pazar",
-   "era": 3,
-   "tree": "rogue",
-   "req": [
-    "currency"
-   ],
-   "unlock": "Savaşta bile ticaret",
-   "eff": {
-    "blackMarket": 1,
-    "tradeGold": 0.2
-   }
-  },
-  {
-   "id": "rogue_locks",
-   "name": "Kilit Ustalığı",
-   "era": 3,
-   "tree": "rogue",
-   "req": [
-    "rogue_guild"
-   ],
-   "unlock": "Kuşatmada surları aşma",
-   "eff": {
-    "soldierAtk": 1
-   }
-  },
-  {
-   "id": "rogue_council",
-   "name": "Gölge Konseyi",
-   "era": 4,
-   "tree": "rogue",
-   "req": [
-    "crown"
-   ],
-   "unlock": "Başka medeniyetlerde gizli etki",
-   "eff": {
-    "spy": 0.25
-   }
-  },
-  {
-   "id": "rogue_escape",
-   "name": "Kaçış Sanatı",
-   "era": 4,
-   "tree": "rogue",
-   "req": [
-    "rogue_spies"
-   ],
-   "unlock": "Kayıplar yarıya iner",
-   "eff": {
-    "healBack": 0.5
-   }
-  },
-  {
-   "id": "rogue_cap",
-   "name": "Talihin Dokunuşu",
-   "era": 4,
-   "tree": "rogue",
-   "req": [
-    "rogue_council"
-   ],
-   "unlock": "Yılda bir başarısızlık başarıya döner",
-   "capstone": true,
-   "eff": {
-    "luck": 1
-   }
-  },
-  {
-   "id": "wizard_academy",
-   "name": "Akademi",
-   "era": 2,
-   "tree": "wizard",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Araştırma +%15; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "research": 0.15
-   }
-  },
-  {
-   "id": "wizard_scrolls",
-   "name": "Kristal Damıtma",
-   "era": 2,
-   "tree": "wizard",
-   "req": [
-    "arcana1"
-   ],
-   "unlock": "Mana kristali verimi +%50",
-   "eff": {
-    "prodMana": 0.5
-   }
-  },
-  {
-   "id": "wizard_tower",
-   "name": "Büyücü Kulesi",
-   "era": 3,
-   "tree": "wizard",
-   "req": [
-    "arcana2"
-   ],
-   "unlock": "Savunma kulesi ve araştırma",
-   "eff": {
-    "research": 0.15,
-    "defAc": 1
-   }
-  },
-  {
-   "id": "wizard_teleport",
-   "name": "Işınlanma Çemberi",
-   "era": 3,
-   "tree": "wizard",
-   "req": [
-    "caravans"
-   ],
-   "unlock": "Yerleşimler arası anında taşıma",
-   "eff": {
-    "teleport": 1
-   }
-  },
-  {
-   "id": "wizard_tools",
-   "name": "Efsunlu Aletler",
-   "era": 3,
-   "tree": "wizard",
-   "req": [
-    "guilds"
-   ],
-   "unlock": "Tüm çıkarma verimi +%20",
-   "eff": {
-    "prodAll": 0.2
-   }
-  },
-  {
-   "id": "wizard_golems",
-   "name": "Golem Muhafızlar",
-   "era": 4,
-   "tree": "wizard",
-   "req": [
-    "enchanting"
-   ],
-   "unlock": "Benzersiz birim: golem",
-   "unit": "golem"
-  },
-  {
-   "id": "wizard_council",
-   "name": "Başbüyücüler Konseyi",
-   "era": 4,
-   "tree": "wizard",
-   "req": [
-    "highmagic"
-   ],
-   "unlock": "Bilinen düğümler yarı maliyete",
-   "eff": {
-    "cheapKnown": 0.5
-   }
-  },
-  {
-   "id": "wizard_cap",
-   "name": "Büyü Ustalığı",
-   "era": 4,
-   "tree": "wizard",
-   "req": [
-    "wizard_council"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "barbarian_totem",
-   "name": "Totem Direği",
-   "era": 2,
-   "tree": "barbarian",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Savaş çadırı; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "soldierDmg": 1
-   }
-  },
-  {
-   "id": "barbarian_raiders",
-   "name": "Akıncılar",
-   "era": 2,
-   "tree": "barbarian",
-   "req": [
-    "husbandry"
-   ],
-   "unlock": "Benzersiz birim: hızlı baskın birliği",
-   "unit": "raider"
-  },
-  {
-   "id": "barbarian_plunder",
-   "name": "Ganimet Payı",
-   "era": 3,
-   "tree": "barbarian",
-   "req": [
-    "barbarian_raiders"
-   ],
-   "unlock": "Yağmada altın ×2, bilgi çalma",
-   "eff": {
-    "lootMult": 1,
-    "lootTech": 0.25
-   }
-  },
-  {
-   "id": "barbarian_union",
-   "name": "Kabile Birliği",
-   "era": 3,
-   "tree": "barbarian",
-   "req": [
-    "barbarian_totem"
-   ],
-   "unlock": "Fethedilen halk isyansız katılır",
-   "eff": {
-    "growth": 0.1
-   }
-  },
-  {
-   "id": "barbarian_fearless",
-   "name": "Korkusuz",
-   "era": 3,
-   "tree": "barbarian",
-   "req": [
-    "training"
-   ],
-   "unlock": "Birlikler bozguna uğramaz",
-   "eff": {
-    "noRout": 1
-   }
-  },
-  {
-   "id": "barbarian_confed",
-   "name": "Kabile Konfederasyonu",
-   "era": 4,
-   "tree": "barbarian",
-   "req": [
-    "barbarian_union"
-   ],
-   "unlock": "Ek savaşçı kotası",
-   "eff": {
-    "warband": 0.08
-   }
-  },
-  {
-   "id": "barbarian_dread",
-   "name": "Dehşet Varlığı",
-   "era": 4,
-   "tree": "barbarian",
-   "req": [
-    "barbarian_fearless"
-   ],
-   "unlock": "Düşman moral eşiği düşer",
-   "eff": {
-    "enemyMorale": 0.2
-   }
-  },
-  {
-   "id": "barbarian_cap",
-   "name": "İlkel Şampiyon",
-   "era": 4,
-   "tree": "barbarian",
-   "req": [
-    "barbarian_confed"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "bard_hall",
-   "name": "Ozanlar Salonu",
-   "era": 2,
-   "tree": "bard",
-   "req": [
-    "tavern"
-   ],
-   "unlock": "Festivaller; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "charm": 0.5
-   }
-  },
-  {
-   "id": "bard_songs",
-   "name": "Kahramanlık Destanları",
-   "era": 2,
-   "tree": "bard",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Kahramanlar +1 seviye",
-   "eff": {
-    "heroLevel": 1
-   }
-  },
-  {
-   "id": "bard_skalds",
-   "name": "Savaş Ozanları",
-   "era": 3,
-   "tree": "bard",
-   "req": [
-    "training"
-   ],
-   "unlock": "Benzersiz birim: savaş ozanı",
-   "unit": "skald"
-  },
-  {
-   "id": "bard_lore",
-   "name": "Kayıp Ezgiler",
-   "era": 3,
-   "tree": "bard",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Araştırma +%10",
-   "eff": {
-    "research": 0.1
-   }
-  },
-  {
-   "id": "bard_envoys",
-   "name": "Elçi Ozanlar",
-   "era": 3,
-   "tree": "bard",
-   "req": [
-    "caravans"
-   ],
-   "unlock": "Komşular yumuşar, ticaret altını +",
-   "eff": {
-    "charm": 1,
-    "tradeGold": 0.2
-   }
-  },
-  {
-   "id": "bard_theatre",
-   "name": "Büyük Tiyatro",
-   "era": 4,
-   "tree": "bard",
-   "req": [
-    "architecture"
-   ],
-   "unlock": "Göç çeker, nüfus artışı +",
-   "eff": {
-    "growth": 0.15
-   }
-  },
-  {
-   "id": "bard_legend",
-   "name": "Yaşayan Efsane",
-   "era": 4,
-   "tree": "bard",
-   "req": [
-    "bard_envoys"
-   ],
-   "unlock": "Yılda bir başarısızlık başarıya döner",
-   "eff": {
-    "luck": 1
-   }
-  },
-  {
-   "id": "bard_cap",
-   "name": "Kusursuz Ezgi",
-   "era": 4,
-   "tree": "bard",
-   "req": [
-    "bard_legend"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "fighter_legion",
-   "name": "Lejyon Kışlası",
-   "era": 2,
-   "tree": "fighter",
-   "req": [
-    "stonework"
-   ],
-   "unlock": "Benzersiz birim: lejyoner; alt sınıf seçimi",
-   "subclass": true,
-   "unit": "legionary"
-  },
-  {
-   "id": "fighter_drill",
-   "name": "Sert Talim",
-   "era": 2,
-   "tree": "fighter",
-   "req": [
-    "bronze"
-   ],
-   "unlock": "Askerlere saldırı +1",
-   "eff": {
-    "soldierAtk": 1
-   }
-  },
-  {
-   "id": "fighter_breath",
-   "name": "Ejder Nefesi",
-   "era": 3,
-   "tree": "fighter",
-   "req": [
-    "fighter_legion"
-   ],
-   "unlock": "İlk tur hasar ×1,3",
-   "eff": {
-    "firstStrike": 1.3
-   }
-  },
-  {
-   "id": "fighter_formation",
-   "name": "Kalkan Duvarı",
-   "era": 3,
-   "tree": "fighter",
-   "req": [
-    "stonewalls"
-   ],
-   "unlock": "Savunuculara AC +2",
-   "eff": {
-    "defAc": 2
-   }
-  },
-  {
-   "id": "fighter_armory",
-   "name": "Lejyon Cephaneliği",
-   "era": 3,
-   "tree": "fighter",
-   "req": [
-    "smithing"
-   ],
-   "unlock": "Zırh +1, maden verimi +%10",
-   "eff": {
-    "soldierAc": 1,
-    "prodMine": 0.1
-   }
-  },
-  {
-   "id": "fighter_dragonguard",
-   "name": "Ejder Muhafızları",
-   "era": 4,
-   "tree": "fighter",
-   "req": [
-    "fighter_breath",
-    "castle"
-   ],
-   "unlock": "Benzersiz birim: ejder muhafızı",
-   "unit": "dragonguard"
-  },
-  {
-   "id": "fighter_warlord",
-   "name": "Savaş Lordu",
-   "era": 4,
-   "tree": "fighter",
-   "req": [
-    "siege"
-   ],
-   "unlock": "Ek savaşçı kotası, hasar +1",
-   "eff": {
-    "warband": 0.05,
-    "soldierDmg": 1
-   }
-  },
-  {
-   "id": "fighter_cap",
-   "name": "Aksiyon Dalgası",
-   "era": 4,
-   "tree": "fighter",
-   "req": [
-    "fighter_warlord"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "monk_monastery",
-   "name": "Manastır",
-   "era": 2,
-   "tree": "monk",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Araştırma +%10; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "research": 0.1
-   }
-  },
-  {
-   "id": "monk_fasting",
-   "name": "Oruç ve Sabır",
-   "era": 2,
-   "tree": "monk",
-   "req": [
-    "herbalism"
-   ],
-   "unlock": "Tüketim −%15, kış düşüşü yok",
-   "eff": {
-    "frugal": 0.15,
-    "winterImmune": 1
-   }
-  },
-  {
-   "id": "monk_fists",
-   "name": "Yumruk Keşişleri",
-   "era": 3,
-   "tree": "monk",
-   "req": [
-    "monk_monastery"
-   ],
-   "unlock": "Benzersiz birim; silahsız asker yetiştirir",
-   "unit": "monkwarrior",
-   "eff": {
-    "unarmed": 1
-   }
-  },
-  {
-   "id": "monk_calm",
-   "name": "İç Huzur",
-   "era": 3,
-   "tree": "monk",
-   "req": [
-    "medicine"
-   ],
-   "unlock": "Nüfus artışı +, yaralılar döner",
-   "eff": {
-    "growth": 0.1,
-    "healBack": 0.2
-   }
-  },
-  {
-   "id": "monk_scriptorium",
-   "name": "Yazıhane",
-   "era": 3,
-   "tree": "monk",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Araştırma +%15",
-   "eff": {
-    "research": 0.15
-   }
-  },
-  {
-   "id": "monk_wind",
-   "name": "Rüzgâr Adımı",
-   "era": 4,
-   "tree": "monk",
-   "req": [
-    "monk_fists"
-   ],
-   "unlock": "Kervanlar baskından kaçar",
-   "eff": {
-    "raidEvade": 0.3,
-    "forestMove": 1
-   }
-  },
-  {
-   "id": "monk_diamond",
-   "name": "Elmas Ruh",
-   "era": 4,
-   "tree": "monk",
-   "req": [
-    "monk_calm"
-   ],
-   "unlock": "Birlikler bozguna uğramaz, AC +2",
-   "eff": {
-    "noRout": 1,
-    "soldierAc": 2
-   }
-  },
-  {
-   "id": "monk_cap",
-   "name": "Kusursuz Beden",
-   "era": 4,
-   "tree": "monk",
-   "req": [
-    "monk_diamond"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "ranger_lodge",
-   "name": "Korucu Locası",
-   "era": 2,
-   "tree": "ranger",
-   "req": [
-    "husbandry"
-   ],
-   "unlock": "Av verimi +; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "prodFood": 0.1
-   }
-  },
-  {
-   "id": "ranger_tracks",
-   "name": "İz Sürme",
-   "era": 2,
-   "tree": "ranger",
-   "req": [
-    "roads"
-   ],
-   "unlock": "Kervanlar gizli yollardan gider",
-   "eff": {
-    "raidEvade": 0.2,
-    "forestMove": 1
-   }
-  },
-  {
-   "id": "ranger_wardens",
-   "name": "Sınır Muhafızları",
-   "era": 3,
-   "tree": "ranger",
-   "req": [
-    "ranger_lodge",
-    "training"
-   ],
-   "unlock": "Benzersiz birim: sınır muhafızı",
-   "unit": "warden"
-  },
-  {
-   "id": "ranger_bounty",
-   "name": "Canavar Avı",
-   "era": 3,
-   "tree": "ranger",
-   "req": [
-    "ranger_lodge"
-   ],
-   "unlock": "Kamplara erken sefer; yıllık av",
-   "eff": {
-    "favoredHunt": 1
-   }
-  },
-  {
-   "id": "ranger_companions",
-   "name": "Hayvan Yoldaşlar",
-   "era": 3,
-   "tree": "ranger",
-   "req": [
-    "husbandry",
-    "ranger_lodge"
-   ],
-   "unlock": "Benzersiz birim: kurt sürüsü",
-   "unit": "wolves"
-  },
-  {
-   "id": "ranger_outposts",
-   "name": "Gözcü Kuleleri",
-   "era": 4,
-   "tree": "ranger",
-   "req": [
-    "stonewalls"
-   ],
-   "unlock": "Savunma AC +2",
-   "eff": {
-    "defAc": 2
-   }
-  },
-  {
-   "id": "ranger_slayer",
-   "name": "Dev Avcısı",
-   "era": 4,
-   "tree": "ranger",
-   "req": [
-    "ranger_bounty",
-    "smithing"
-   ],
-   "unlock": "Canavara kritik ×3",
-   "eff": {
-    "smite": 2
-   }
-  },
-  {
-   "id": "ranger_cap",
-   "name": "Diyarın Bekçisi",
-   "era": 4,
-   "tree": "ranger",
-   "req": [
-    "ranger_slayer"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "sorcerer_bloodline",
-   "name": "Kan Soyu Ayini",
-   "era": 2,
-   "tree": "sorcerer",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Soy uyanır; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "research": 0.05
-   }
-  },
-  {
-   "id": "sorcerer_embers",
-   "name": "Kor Tılsımı",
-   "era": 2,
-   "tree": "sorcerer",
-   "req": [
-    "pottery"
-   ],
-   "unlock": "Askerlere hasar +1",
-   "eff": {
-    "soldierDmg": 1
-   }
-  },
-  {
-   "id": "sorcerer_flameborn",
-   "name": "Alev Soylular",
-   "era": 3,
-   "tree": "sorcerer",
-   "req": [
-    "sorcerer_bloodline",
-    "training"
-   ],
-   "unlock": "Benzersiz birim: alev soylu",
-   "unit": "flameborn"
-  },
-  {
-   "id": "sorcerer_metamagic",
-   "name": "Metabüyü",
-   "era": 3,
-   "tree": "sorcerer",
-   "req": [
-    "arcana1"
-   ],
-   "unlock": "Araştırma +%15",
-   "eff": {
-    "research": 0.15
-   }
-  },
-  {
-   "id": "sorcerer_font",
-   "name": "Büyü Pınarı",
-   "era": 3,
-   "tree": "sorcerer",
-   "req": [
-    "sorcerer_bloodline"
-   ],
-   "unlock": "Mana verimi +%50",
-   "eff": {
-    "prodMana": 0.5,
-    "research": 0.05
-   }
-  },
-  {
-   "id": "sorcerer_hellfire",
-   "name": "Cehennem Ateşi",
-   "era": 4,
-   "tree": "sorcerer",
-   "req": [
-    "sorcerer_flameborn"
-   ],
-   "unlock": "Hasar +2, düşman morali düşer",
-   "eff": {
-    "soldierDmg": 2,
-    "enemyMorale": 0.1
-   }
-  },
-  {
-   "id": "sorcerer_crown",
-   "name": "Kızıl Taç",
-   "era": 4,
-   "tree": "sorcerer",
-   "req": [
-    "crown"
-   ],
-   "unlock": "Vergi ve verim +",
-   "eff": {
-    "tax": 0.3,
-    "prodAll": 0.1
-   }
-  },
-  {
-   "id": "sorcerer_cap",
-   "name": "Kanın Doruğu",
-   "era": 4,
-   "tree": "sorcerer",
-   "req": [
-    "sorcerer_hellfire"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  },
-  {
-   "id": "warlock_pact",
-   "name": "Pakt Ayini",
-   "era": 2,
-   "tree": "warlock",
-   "req": [
-    "faith"
-   ],
-   "unlock": "Patron seçilir; alt sınıf seçimi",
-   "subclass": true,
-   "eff": {
-    "research": 0.05
-   }
-  },
-  {
-   "id": "warlock_blast",
-   "name": "Kadim Patlama",
-   "era": 2,
-   "tree": "warlock",
-   "req": [
-    "stonework"
-   ],
-   "unlock": "Askerlere hasar +1",
-   "eff": {
-    "soldierDmg": 1
-   }
-  },
-  {
-   "id": "warlock_shadows",
-   "name": "Gölge Muhafızları",
-   "era": 3,
-   "tree": "warlock",
-   "req": [
-    "warlock_pact",
-    "training"
-   ],
-   "unlock": "Benzersiz birim: gölge muhafız",
-   "unit": "shadowguard"
-  },
-  {
-   "id": "warlock_tome",
-   "name": "Gölgeler Kitabı",
-   "era": 3,
-   "tree": "warlock",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Araştırma +%15",
-   "eff": {
-    "research": 0.15
-   }
-  },
-  {
-   "id": "warlock_imps",
-   "name": "Şeytancık Çağırma",
-   "era": 3,
-   "tree": "warlock",
-   "req": [
-    "warlock_pact"
-   ],
-   "unlock": "Benzersiz birim: şeytancık",
-   "unit": "imp"
-  },
-  {
-   "id": "warlock_curse",
-   "name": "Lanet",
-   "era": 4,
-   "tree": "warlock",
-   "req": [
-    "warlock_tome"
-   ],
-   "unlock": "Düşman morali düşer",
-   "eff": {
-    "enemyMorale": 0.15
-   }
-  },
-  {
-   "id": "warlock_gate",
-   "name": "Karanlık Kapı",
-   "era": 4,
-   "tree": "warlock",
-   "req": [
-    "warlock_imps",
-    "arcana2"
-   ],
-   "unlock": "Benzersiz birim: kapı iblisi",
-   "unit": "fiend"
-  },
-  {
-   "id": "warlock_cap",
-   "name": "Patronun Seçilmişi",
-   "era": 4,
-   "tree": "warlock",
-   "req": [
-    "warlock_gate"
-   ],
-   "unlock": "Alt sınıfa göre uç güç",
-   "capstone": true
-  }
- ],
- "ERA_COST": {
-  "1": [
-   30,
-   50
-  ],
-  "2": [
-   80,
-   120
-  ],
-  "3": [
-   180,
-   250
-  ],
-  "4": [
-   350,
-   500
-  ]
- },
- "ERA_ROMAN": [
-  "",
-  "I",
-  "II",
-  "III",
-  "IV"
- ],
- "ERA_RULE": {
-  "2": {
-   "nodes": 5,
-   "pop": 12
-  },
-  "3": {
-   "nodes": 6,
-   "pop": 32
-  },
-  "4": {
-   "nodes": 6,
-   "pop": 75
-  }
- },
- "ERA_TR": [
-  "",
-  "Kamp",
-  "Köy",
-  "Kasaba",
-  "Krallık"
- ],
- "MAIN_TECHS": [
-  {
-   "id": "agriculture",
-   "name": "Tarım",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Tarla (L1)",
-   "chain": "gida",
-   "gate": [
-    "fertile"
-   ]
-  },
-  {
-   "id": "husbandry",
-   "name": "Hayvancılık",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Ağıl, deri, av köşkü",
-   "chain": "gida"
-  },
-  {
-   "id": "fishing",
-   "name": "Balıkçılık",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "İskele",
-   "chain": "gida",
-   "gate": [
-    "water"
-   ]
-  },
-  {
-   "id": "woodwork",
-   "name": "Ahşap İşçiliği",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Ev, bıçkıhane, palisat",
-   "chain": "yapi"
-  },
-  {
-   "id": "stonework",
-   "name": "Taş İşçiliği",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Taş ocağı",
-   "chain": "metal"
-  },
-  {
-   "id": "herbalism",
-   "name": "Otacılık",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Toplayıcı kulübesi",
-   "chain": "bilgi"
-  },
-  {
-   "id": "faith",
-   "name": "İnanç",
-   "era": 1,
-   "tree": "main",
-   "req": [],
-   "unlock": "Sunak, küçük mutluluk",
-   "chain": "bilgi",
-   "eff": {
-    "growth": 0.05
-   }
-  },
-  {
-   "id": "pottery",
-   "name": "Çömlekçilik",
-   "era": 1,
-   "tree": "main",
-   "req": [
-    "agriculture"
-   ],
-   "unlock": "Tuğla ocağı, fırın",
-   "chain": "ticaret",
-   "gate": [
-    "clay"
-   ]
-  },
-  {
-   "id": "mining",
-   "name": "Madencilik",
-   "era": 1,
-   "tree": "main",
-   "req": [
-    "stonework"
-   ],
-   "unlock": "Açık ocak (L1)",
-   "chain": "metal"
-  },
-  {
-   "id": "bronze",
-   "name": "Bronz Döküm",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "mining"
-   ],
-   "unlock": "Bakır + kalaydan bronz alet ve silah",
-   "chain": "metal",
-   "gate": [
-    "copper",
-    "tin"
-   ]
-  },
-  {
-   "id": "bronzetools",
-   "name": "Bronz Aletler",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "bronze",
-    "woodwork"
-   ],
-   "unlock": "Aletçi; maden L2",
-   "chain": "metal",
-   "eff": {
-    "prodAll": 0.1
-   }
-  },
-  {
-   "id": "irrigation",
-   "name": "Sulama",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "agriculture",
-    "pottery"
-   ],
-   "unlock": "Tarla L2",
-   "chain": "gida",
-   "gate": [
-    "water"
-   ]
-  },
-  {
-   "id": "roads",
-   "name": "Yol Yapımı",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "woodwork",
-    "stonework"
-   ],
-   "unlock": "Yol, yeni yerleşim",
-   "chain": "yapi"
-  },
-  {
-   "id": "barter",
-   "name": "Takas",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "pottery"
-   ],
-   "unlock": "Pazar yeri, basit ticaret",
-   "chain": "ticaret"
-  },
-  {
-   "id": "tavern",
-   "name": "Tavernacılık",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "agriculture",
-    "barter"
-   ],
-   "unlock": "Taverna, bira; kahramanlar",
-   "chain": "ticaret"
-  },
-  {
-   "id": "training",
-   "name": "Talim",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "bronze"
-   ],
-   "unlock": "Asker birliği, silahhane",
-   "chain": "yapi"
-  },
-  {
-   "id": "writing",
-   "name": "Yazı",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "faith",
-    "pottery"
-   ],
-   "unlock": "Kütüphane (+araştırma)",
-   "chain": "bilgi",
-   "eff": {
-    "research": 0.15
-   }
-  },
-  {
-   "id": "riding",
-   "name": "Binicilik",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "husbandry"
-   ],
-   "unlock": "Haras, hızlı kervan",
-   "chain": "gida",
-   "gate": [
-    "horses"
-   ]
-  },
-  {
-   "id": "boatbuilding",
-   "name": "Tekne Yapımı",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "fishing",
-    "woodwork"
-   ],
-   "unlock": "Tersane, kıyı teknesi, balıkçı limanı",
-   "chain": "deniz",
-   "gate": [
-    "coast"
-   ]
-  },
-  {
-   "id": "arcana1",
-   "name": "Arcana I",
-   "era": 2,
-   "tree": "main",
-   "req": [
-    "writing"
-   ],
-   "unlock": "Mana kristali görünür; kristal kazısı; bilginler mana yakar (+%25 araştırma)",
-   "chain": "bilgi"
-  },
-  {
-   "id": "smithing",
-   "name": "Demircilik",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "bronzetools"
-   ],
-   "unlock": "Demirden alet ve silah (odun kömürüyle); aletler geç aşınır",
-   "chain": "metal",
-   "gate": [
-    "iron"
-   ]
-  },
-  {
-   "id": "architecture",
-   "name": "Mimarlık",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "stonework",
-    "writing"
-   ],
-   "unlock": "Kesme taş, taş konak",
-   "chain": "yapi"
-  },
-  {
-   "id": "currency",
-   "name": "Para",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "barter",
-    "writing"
-   ],
-   "unlock": "Darphane, sikke",
-   "chain": "ticaret",
-   "gate": [
-    "gold"
-   ],
-   "eff": {
-    "tax": 0.5
-   }
-  },
-  {
-   "id": "caravans",
-   "name": "Kervancılık",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "roads",
-    "barter"
-   ],
-   "unlock": "Uzun mesafe ticaret yolu",
-   "chain": "ticaret",
-   "eff": {
-    "tradeGold": 0.3
-   }
-  },
-  {
-   "id": "medicine",
-   "name": "Hekimlik",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "herbalism",
-    "writing"
-   ],
-   "unlock": "Şifa evi, iksir",
-   "chain": "bilgi",
-   "gate": [
-    "herbs"
-   ],
-   "eff": {
-    "growth": 0.1
-   }
-  },
-  {
-   "id": "guilds",
-   "name": "Lonca Sistemi",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "currency",
-    "bronzetools"
-   ],
-   "unlock": "Loncalar (+verim)",
-   "chain": "ticaret",
-   "eff": {
-    "prodAll": 0.1
-   }
-  },
-  {
-   "id": "rotation",
-   "name": "Nöbetleşe Ekim",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "irrigation",
-    "husbandry"
-   ],
-   "unlock": "Çiftlik (L3)",
-   "chain": "gida"
-  },
-  {
-   "id": "forestry",
-   "name": "Ormancılık",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "woodwork",
-    "rotation"
-   ],
-   "unlock": "Orman L3, hızlı yenilenme, kereste verimi +%25",
-   "chain": "gida",
-   "eff": {
-    "prodWood": 0.25
-   }
-  },
-  {
-   "id": "stonewalls",
-   "name": "Taş Surlar",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "architecture",
-    "training"
-   ],
-   "unlock": "Taş sur, gözcü kulesi",
-   "chain": "yapi"
-  },
-  {
-   "id": "shipbuilding",
-   "name": "Gemicilik",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "boatbuilding"
-   ],
-   "unlock": "Koga; denizaşırı koloni ve deniz ticareti",
-   "chain": "deniz",
-   "gate": [
-    "coast"
-   ]
-  },
-  {
-   "id": "navigation",
-   "name": "Seyir",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "shipbuilding",
-    "writing"
-   ],
-   "unlock": "Açık denizde yön bulma; uzak adalar, keşif gemisi, balıkçı filosu",
-   "chain": "deniz",
-   "gate": [
-    "coast"
-   ]
-  },
-  {
-   "id": "arcana2",
-   "name": "Arcana II",
-   "era": 3,
-   "tree": "main",
-   "req": [
-    "arcana1",
-    "architecture"
-   ],
-   "unlock": "Kristal kulesi (L2)",
-   "chain": "bilgi",
-   "gate": [
-    "mana"
-   ]
-  },
-  {
-   "id": "deepmine",
-   "name": "Derin Kazı",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "smithing",
-    "architecture"
-   ],
-   "unlock": "Maden L3; mithril görünür",
-   "chain": "metal"
-  },
-  {
-   "id": "enchanting",
-   "name": "Efsunlama",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "arcana2",
-    "smithing"
-   ],
-   "unlock": "Askerin kılıcı efsunlanır (silah + mana; saldırı +2)",
-   "chain": "bilgi",
-   "gate": [
-    "mana"
-   ]
-  },
-  {
-   "id": "castle",
-   "name": "Kale Yapımı",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "stonewalls"
-   ],
-   "unlock": "Kale",
-   "chain": "yapi",
-   "eff": {
-    "defAc": 2
-   }
-  },
-  {
-   "id": "siege",
-   "name": "Kuşatma Makineleri",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "smithing",
-    "architecture"
-   ],
-   "unlock": "Mancınık, koçbaşı",
-   "chain": "yapi"
-  },
-  {
-   "id": "crown",
-   "name": "Taç ve Kanun",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "currency",
-    "guilds"
-   ],
-   "unlock": "Saray, yönetim bonusu",
-   "chain": "ticaret",
-   "eff": {
-    "prodAll": 0.1,
-    "tax": 0.3
-   }
-  },
-  {
-   "id": "tradenet",
-   "name": "Ticaret Ağları",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "caravans",
-    "guilds"
-   ],
-   "unlock": "Banka, yabancı şube",
-   "chain": "ticaret",
-   "eff": {
-    "tradeGold": 0.5
-   }
-  },
-  {
-   "id": "mithrilwork",
-   "name": "Mithril İşçiliği",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "deepmine",
-    "enchanting"
-   ],
-   "unlock": "Askerlere mithril zırh (AC +2)",
-   "chain": "metal",
-   "gate": [
-    "mithril"
-   ]
-  },
-  {
-   "id": "highmagic",
-   "name": "Yüksek Büyü",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "enchanting"
-   ],
-   "unlock": "Ley odak taşı, anıt büyüler",
-   "chain": "bilgi",
-   "eff": {
-    "research": 0.2
-   }
-  },
-  {
-   "id": "seatrade",
-   "name": "Deniz Ticareti",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "navigation",
-    "caravans"
-   ],
-   "unlock": "Fener kulesi, geniş ambarlı gemiler; deniz yolu kazancı",
-   "chain": "deniz",
-   "gate": [
-    "coast"
-   ],
-   "eff": {
-    "tradeGold": 0.2
-   }
-  },
-  {
-   "id": "navy",
-   "name": "Donanma",
-   "era": 4,
-   "tree": "main",
-   "req": [
-    "shipbuilding",
-    "smithing"
-   ],
-   "unlock": "Kadırga; denizaşırı sefer ve akın, deniz savaşı",
-   "chain": "deniz",
-   "gate": [
-    "coast"
-   ]
-  }
- ],
  "ALIGN_TR": {
   "good": "İyi",
   "neutral": "Tarafsız",
@@ -5619,20 +3229,24 @@
  },
  "TOWN_NEEDS": [
   {
-   "beer": 0.002
+   "beer": 0.002,
+   "leather": 0.001
   },
   {
-   "beer": 0.004
+   "beer": 0.004,
+   "leather": 0.0015
   },
   {
    "beer": 0.008,
    "tools": 0.0001,
-   "bread": 0.3
+   "bread": 0.3,
+   "leather": 0.002
   },
   {
    "beer": 0.012,
    "tools": 0.0002,
-   "bread": 0.5
+   "bread": 0.5,
+   "leather": 0.0025
   }
  ]
 }

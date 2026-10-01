@@ -67,13 +67,12 @@ public sealed class CollapseInfo
 /// <summary>Koşu sonunda medeniyet özeti.</summary>
 public sealed class CivSummary
 {
-    public int Id, MaxSettlements, FinalSettlements, FinalEra, Techs, TreeSize;
+    public int Id, MaxSettlements, FinalSettlements, FinalTier;
     public string Name, Cls, Race;
     public double Founded, FinalPop, Gold, BattlesWon, BattlesLost, Traded;
     public double? ExtinctDay;
-    /// <summary>Araştıracak düğüm kalmadığı ve son çağa ulaşıldığı ilk gün (-1: hiç).</summary>
-    public double TreeDoneDay = -1;
-    public List<double> EraDay = new();
+    /// <summary>Faz 1b-3: medeniyetin ilk kez Köy, Kasaba ve Şehir kademesine vardığı gün (sırasıyla; -1: hiç).</summary>
+    public List<double> TierDays = new();
     public bool Alive;
 }
 
@@ -86,6 +85,7 @@ public sealed class WorldStats
 
     private const string G_CIV = "Medeniyet", G_EV = "Olaylar", G_WAR = "Savaş", G_MON = "Canavarlar", G_HERO = "Kahramanlar", G_INN = "Han ve ticaret";
     private const string G_ECO = "Altın ve ambar";   // Faz 1 C3
+    private const string G_TIER = "Yerleşim kademesi", G_SEA = "Deniz";   // Faz 1b-3
 
     /// <summary>Skaler ölçüler (sıra JSON ve rapor sırasıdır).</summary>
     public static readonly StatDef[] Defs =
@@ -102,10 +102,6 @@ public sealed class WorldStats
         new("captured", "Fethedilen yerleşim", G_CIV, StatKind.Flow),
         new("abandoned", "Terk edilen yerleşim", G_CIV, StatKind.Flow),
         new("population", "Toplam nüfus", G_CIV, StatKind.Stock),
-        new("eraMean", "Ortalama çağ", G_CIV, StatKind.Stock),
-        new("researchDone", "Araştırma ağacının biten payı (ort.)", G_CIV, StatKind.Stock, true),
-        new("treeDone", "Ağacı bitmiş medeniyet payı", G_CIV, StatKind.Stock, true),
-        new("researchIdle", "Araştırması duran medeniyet payı", G_CIV, StatKind.Stock, true),
         new("goldMedian", "Altın medyanı (medeniyetler)", G_CIV, StatKind.Stock),
         new("idleShare", "Boştaki iş gücü payı", G_CIV, StatKind.Mean, true),
         // Faz 1 B1: bölünme ve büyüklük farkı
@@ -168,6 +164,20 @@ public sealed class WorldStats
         new("famineAid", "Kıtlık yardımı (sevkiyat)", G_ECO, StatKind.Flow),
         new("famineRefused", "Kıtlıkta yüz çeviren", G_ECO, StatKind.Flow),
         new("famineRaids", "Kıtlık akını", G_ECO, StatKind.Flow),
+        new("foodDays", "Ambarın yettiği gün (medeniyet medyanı)", G_ECO, StatKind.Stock),
+        // Faz 1b-3: yerleşim kademesi (0 Kamp, 1 Köy, 2 Kasaba, 3 Şehir) ve deniz
+        new("tierMean", "Ortalama yerleşim kademesi", G_TIER, StatKind.Stock),
+        new("tier1Plus", "Köy+ yerleşim", G_TIER, StatKind.Stock),
+        new("tier2Plus", "Kasaba+ yerleşim", G_TIER, StatKind.Stock),
+        new("tier3", "Şehir", G_TIER, StatKind.Stock),
+        new("capTierMean", "Ortalama başkent kademesi", G_TIER, StatKind.Stock),
+        new("tierChanges", "Kademe değişimi (yerleşim, yıl içinde)", G_TIER, StatKind.Flow),
+        new("ports", "Liman (tersane)", G_SEA, StatKind.Stock),
+        new("ships", "Gemi (koga/tekne)", G_SEA, StatKind.Stock),
+        new("galleys", "Kadırga", G_SEA, StatKind.Stock),
+        new("overseas", "Denizaşırı yerleşim", G_SEA, StatKind.Stock),
+        new("seaRoutes", "Deniz ticaret yolu (yıl sonu)", G_SEA, StatKind.Stock),
+        new("seaTrips", "Deniz seferi (ticaret)", G_SEA, StatKind.Flow),
     };
 
     /// <summary>Anahtarlı yıllık sayımlar: (ad, Türkçe etiket, tür). Flow = yıl içi toplam, Stock = yıl sonu.</summary>
@@ -180,10 +190,11 @@ public sealed class WorldStats
         ("levelBirth", "Doğuş seviyesi dağılımı", StatKind.Flow),
         ("levelDeath", "Ölüm seviyesi dağılımı", StatKind.Flow),
         ("levelAlive", "Yaşayan kahraman seviye dağılımı (yıl sonu)", StatKind.Stock),
-        ("eraDist", "Çağ dağılımı (yıl sonu)", StatKind.Stock),
         ("civSettlements", "Medeniyet başına yerleşim dağılımı (yıl sonu)", StatKind.Stock),
         ("civLandSettlements", "Medeniyet başına kara yerleşimi dağılımı (yıl sonu; denizaşırı koloniler hariç)", StatKind.Stock),
         ("campsByKind", "Kamp türleri (yıl sonu)", StatKind.Stock),
+        ("tierDist", "Yerleşim kademe dağılımı (yıl sonu)", StatKind.Stock),
+        ("capTierDist", "Başkent kademe dağılımı (yıl sonu)", StatKind.Stock),
         ("metricDeltas", "Sim sayaçları (W.Metrics yıllık farkı)", StatKind.Flow),
     };
 
@@ -203,8 +214,8 @@ public sealed class WorldStats
     {
         ["sea"] = "Deniz", ["hero"] = "Kahraman", ["class"] = "Sınıf", ["war"] = "Savaş", ["lair"] = "Kamp", ["raid"] = "Baskın", ["inn"] = "Han", ["migration"] = "Göç",
         ["world"] = "Dünya", ["build"] = "İnşaat", ["economy"] = "Ekonomi", ["discover"] = "Keşif", ["settle"] = "Yerleşim", ["quest"] = "Sefer/ilan",
-        ["death"] = "Ölüm/terk", ["trade"] = "Ticaret", ["diplomacy"] = "Diplomasi", ["wonder"] = "Harika", ["tension"] = "Gerginlik",
-        ["research"] = "Araştırma", ["growth"] = "Büyüme", ["era"] = "Çağ", ["contact"] = "Temas",
+        ["death"] = "Ölüm/terk", ["trade"] = "Ticaret", ["diplomacy"] = "Diplomasi", ["tension"] = "Gerginlik",
+        ["growth"] = "Büyüme", ["contact"] = "Temas",
         // Faz 1 B2
         ["dragon"] = "Ejderha", ["crisis"] = "Kriz (anlatıcı)", ["relief"] = "Rahatlama (anlatıcı)",
     };
@@ -250,8 +261,8 @@ public sealed class WorldStats
 
     private static readonly int I_CIVS = IndexOf("civsAlive"), I_CIVSNEW = IndexOf("civsNew"), I_EXTINCT = IndexOf("civsExtinct"), I_CAPLOST = IndexOf("capitalLost"),
         I_COLLAPSE = IndexOf("collapses"), I_SETL = IndexOf("settlements"), I_SPC = IndexOf("settlementsPerCiv"), I_C5 = IndexOf("civsLand5"), I_FOUNDED = IndexOf("founded"),
-        I_CAPTURED = IndexOf("captured"), I_ABANDONED = IndexOf("abandoned"), I_POP = IndexOf("population"), I_ERA = IndexOf("eraMean"), I_RES = IndexOf("researchDone"),
-        I_TREE = IndexOf("treeDone"), I_RESIDLE = IndexOf("researchIdle"), I_GOLD = IndexOf("goldMedian"), I_IDLE = IndexOf("idleShare"), I_EVENTS = IndexOf("events"),
+        I_CAPTURED = IndexOf("captured"), I_ABANDONED = IndexOf("abandoned"), I_POP = IndexOf("population"),
+        I_GOLD = IndexOf("goldMedian"), I_IDLE = IndexOf("idleShare"), I_EVENTS = IndexOf("events"),
         I_MAJOR = IndexOf("majorEvents"), I_BATTLES = IndexOf("battles"), I_WARSTART = IndexOf("warsStarted"), I_WARACT = IndexOf("warsActive"), I_WARDUR = IndexOf("warsDuring"),
         I_PLUNDER = IndexOf("plunders"), I_CAMPS = IndexOf("campsAlive"), I_CAMPSAVG = IndexOf("campsAliveAvg"), I_CAMPSPAWN = IndexOf("campsSpawned"),
         I_CAMPCLEAR = IndexOf("campsCleared"), I_RAIDS = IndexOf("raids"), I_BORN = IndexOf("heroesBorn"), I_DIED = IndexOf("heroesDied"), I_RETIRED = IndexOf("heroesRetired"),
@@ -264,7 +275,10 @@ public sealed class WorldStats
         I_GOLD90 = IndexOf("goldP90"), I_UPKEEP = IndexOf("upkeepGold"), I_RAIDGOLD = IndexOf("raidGold"), I_DRAGONGOLD = IndexOf("dragonGold"), I_BROKE = IndexOf("brokeShare"),
         I_LACK = IndexOf("lackShare"), I_FAMINES = IndexOf("famines"), I_STARVED = IndexOf("starved"), I_AID = IndexOf("famineAid"), I_REFUSED = IndexOf("famineRefused"),
         I_FRAIDS = IndexOf("famineRaids"),
-        I_PWGOLD = IndexOf("publicWorksGold"), I_PWFOOD = IndexOf("publicWorksFood"), I_AMELE = IndexOf("ameleShare"), I_IMAR = IndexOf("imarMean"), I_LACKFOOD = IndexOf("lackFoodShare");   // C3
+        I_PWGOLD = IndexOf("publicWorksGold"), I_PWFOOD = IndexOf("publicWorksFood"), I_AMELE = IndexOf("ameleShare"), I_IMAR = IndexOf("imarMean"), I_LACKFOOD = IndexOf("lackFoodShare"),   // C3
+        I_FOODDAYS = IndexOf("foodDays"), I_TIERMEAN = IndexOf("tierMean"), I_TIER1 = IndexOf("tier1Plus"), I_TIER2 = IndexOf("tier2Plus"), I_TIER3 = IndexOf("tier3"),
+        I_CAPTIER = IndexOf("capTierMean"), I_TIERCHG = IndexOf("tierChanges"), I_PORTS = IndexOf("ports"), I_SHIPS = IndexOf("ships"), I_GALLEYS = IndexOf("galleys"),
+        I_OVERSEAS = IndexOf("overseas"), I_SEAROUTES = IndexOf("seaRoutes"), I_SEATRIPS = IndexOf("seaTrips");   // Faz 1b-3
 
     // ------------------------------------------------------------ çıktı
     public Sim Sim { get; private set; }
@@ -284,8 +298,8 @@ public sealed class WorldStats
 
     // ------------------------------------------------------------ izleyiciler
     private sealed class HeroT { public string State; public bool Legend, Initial; public int Level; }
-    private sealed class CivT { public bool Alive; public int Cap = -1, MaxSettlements; public double TreeDoneDay = -1; }
-    private sealed class SetlT { public bool Alive; public int Civ; }
+    private sealed class CivT { public bool Alive; public int Cap = -1, MaxSettlements; }
+    private sealed class SetlT { public bool Alive; public int Civ, Tier; }
 
     private readonly Dictionary<int, HeroT> _heroes = new();
     private readonly Dictionary<int, CivT> _civs = new();
@@ -295,11 +309,8 @@ public sealed class WorldStats
     private readonly HashSet<War> _warsSeen = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<War> _warsYear = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<War> _warsNow = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<string, HashSet<string>> _tree = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _scratch = new(StringComparer.Ordinal);
     private Dictionary<string, double> _metrics0;
     private int _lastBattleId = int.MinValue, _heroCount, _campsNow;
-    private readonly int _maxEra;
     private Action<GameEvent> _prevHandler, _handler;
     private bool _detached;
 
@@ -312,7 +323,6 @@ public sealed class WorldStats
     {
         Sim = sim ?? throw new ArgumentNullException(nameof(sim));
         Seed = sim.W.Seed;
-        _maxEra = D.ERA_TR.Count - 1;
         var w = sim.W;
         // başlangıçta var olan her şey "yeni" sayılmaz
         foreach (var h in w.Heroes) _heroes[h.Id] = new HeroT { State = h.State, Legend = h.Legend == true, Initial = true, Level = h.Level };
@@ -476,7 +486,7 @@ public sealed class WorldStats
         {
             if (!_setls.TryGetValue(st.Id, out var t))
             {
-                _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ };
+                _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier };
                 _setlById[st.Id] = st;
                 if (st.Alive) y.V[I_FOUNDED]++;
                 continue;
@@ -484,7 +494,8 @@ public sealed class WorldStats
             if (t.Alive && !st.Alive) y.V[I_ABANDONED]++;
             else if (!t.Alive && st.Alive) y.V[I_FOUNDED]++;
             else if (t.Alive && st.Alive && t.Civ != st.Civ) y.V[I_CAPTURED]++;
-            t.Alive = st.Alive; t.Civ = st.Civ;
+            if (t.Alive && st.Alive && t.Tier != st.Tier) y.V[I_TIERCHG]++;   // Faz 1b-3: kademe titremesi
+            t.Alive = st.Alive; t.Civ = st.Civ; t.Tier = st.Tier;
         }
     }
 
@@ -519,7 +530,6 @@ public sealed class WorldStats
                 t.Cap = s.Capital(c)?.Id ?? -1;
                 if (ss.Count > t.MaxSettlements) t.MaxSettlements = ss.Count;
             }
-            if (t.TreeDoneDay < 0 && c.Research != null && c.Research.Current == null && c.Era >= _maxEra) t.TreeDoneDay = day;
         }
     }
 
@@ -600,26 +610,7 @@ public sealed class WorldStats
         if (u <= 0 || u == k.Length - 1) return false;
         for (int i = u + 1; i < k.Length; i++) if (k[i] < '0' || k[i] > '9') return false;
         string p = k.Substring(0, u);
-        return p == "research" || p == "settle" || p == "innHire";
-    }
-
-    private HashSet<string> TreeOf(string cls)
-    {
-        if (_tree.TryGetValue(cls, out var t)) return t;
-        t = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var x in D.ALL_TECHS) if (x.Tree == "main" || x.Tree == cls) t.Add(x.Id);
-        _tree[cls] = t;
-        return t;
-    }
-
-    /// <summary>Medeniyetin ağacından (ana ağaç + kendi sınıf ağacı) biten düğüm payı (çift kayıtlar bir sayılır).</summary>
-    private double TreeFraction(Civ c, out int done, out int size)
-    {
-        var tree = TreeOf(c.Cls);
-        _scratch.Clear();
-        if (c.Research?.Done != null) foreach (var id in c.Research.Done) if (tree.Contains(id)) _scratch.Add(id);
-        done = _scratch.Count; size = tree.Count;
-        return size > 0 ? done / (double)size : double.NaN;
+        return p == "settle" || p == "innHire";
     }
 
     private static double Median(List<double> xs)
@@ -646,7 +637,7 @@ public sealed class WorldStats
         var s = Sim; var w = s.W; var y = _cur;
         y.LastDay = day; y.Partial = partial || day - y.FirstDay + 1 < YearDays;
         // medeniyetler
-        int civs = 0, civs5 = 0, maxSetl = 0; double eraSum = 0, resSum = 0, tree = 0, resIdle = 0;
+        int civs = 0, civs5 = 0, maxSetl = 0;
         var golds = new List<double>();
         foreach (var c in w.Civs)
         {
@@ -659,10 +650,6 @@ public sealed class WorldStats
             if (land >= 5) civs5++;   // diplomacy.ts:223: anakarada en çok 5 yerleşim (denizaşırı koloniler ayrı)
             y.Inc("civSettlements", n.ToString(CultureInfo.InvariantCulture));
             y.Inc("civLandSettlements", land.ToString(CultureInfo.InvariantCulture));
-            eraSum += c.Era;
-            y.Inc("eraDist", c.Era.ToString(CultureInfo.InvariantCulture));
-            resSum += TreeFraction(c, out _, out _);
-            if (c.Research != null && c.Research.Current == null) { resIdle++; if (c.Era >= _maxEra) tree++; }
             golds.Add(s.St(c, "gold"));
         }
         int setl = 0; double pop = 0;
@@ -672,10 +659,6 @@ public sealed class WorldStats
         y.V[I_SPC] = civs > 0 ? setl / (double)civs : double.NaN;
         y.V[I_C5] = civs > 0 ? civs5 / (double)civs : double.NaN;
         y.V[I_POP] = pop;
-        y.V[I_ERA] = civs > 0 ? eraSum / civs : double.NaN;
-        y.V[I_RES] = civs > 0 ? resSum / civs : double.NaN;
-        y.V[I_TREE] = civs > 0 ? tree / civs : double.NaN;
-        y.V[I_RESIDLE] = civs > 0 ? resIdle / civs : double.NaN;
         y.V[I_GOLD] = Median(golds);
         y.V[I_IDLE] = _work > 0 ? _idle / _work : double.NaN;
         // savaş
@@ -745,6 +728,42 @@ public sealed class WorldStats
         double imSum = 0; int imN = 0;
         foreach (var st in w.Settlements) if (st.Alive && st.Tier >= 1) { imSum += st.Imar ?? 0; imN++; }
         y.V[I_IMAR] = imN > 0 ? imSum / imN : double.NaN;
+        // Faz 1b-3: ambar (gün), yerleşim ve başkent kademeleri, deniz
+        var foodDays = new List<double>();
+        double capTierSum = 0; int capN = 0;
+        foreach (var c in w.Civs)
+        {
+            if (!c.Alive) continue;
+            double cp = 0;
+            foreach (var st in s.CivSettlements(c)) cp += s.Pop(st);
+            foodDays.Add(s.FoodTotal(c) / Math.Max(0.1, cp * Sim.FOOD_PER_POP));
+            var cap = s.Capital(c);
+            if (cap == null) continue;
+            capTierSum += cap.Tier; capN++;
+            y.Inc("capTierDist", cap.Tier.ToString(CultureInfo.InvariantCulture));
+        }
+        y.V[I_FOODDAYS] = Median(foodDays);
+        y.V[I_CAPTIER] = capN > 0 ? capTierSum / capN : double.NaN;
+        double tierSum = 0; int t1 = 0, t2 = 0, t3 = 0, ports = 0, overseas = 0; double ships = 0, galleys = 0;
+        foreach (var st in w.Settlements)
+        {
+            if (!st.Alive) continue;
+            tierSum += st.Tier;
+            if (st.Tier >= 1) t1++;
+            if (st.Tier >= 2) t2++;
+            if (st.Tier >= 3) t3++;
+            y.Inc("tierDist", st.Tier.ToString(CultureInfo.InvariantCulture));
+            if ((st.Civics.Get("shipyard") ?? 0) > 0 && st.Port != null) ports++;
+            ships += st.Ships ?? 0; galleys += st.Galleys ?? 0;
+            if (st.Overseas == true) overseas++;
+        }
+        y.V[I_TIERMEAN] = setl > 0 ? tierSum / setl : double.NaN;
+        y.V[I_TIER1] = t1; y.V[I_TIER2] = t2; y.V[I_TIER3] = t3;
+        y.V[I_PORTS] = ports; y.V[I_SHIPS] = ships; y.V[I_GALLEYS] = galleys; y.V[I_OVERSEAS] = overseas;
+        int seaRoutes = 0;
+        foreach (var r in w.Routes) if (r.Alive && r.Sea == true) seaRoutes++;
+        y.V[I_SEAROUTES] = seaRoutes;
+        y.V[I_SEATRIPS] = Delta("seaTrips");
         foreach (var kv in w.Metrics)
         {
             if (PerCivMetric(kv.Key)) continue;
@@ -785,12 +804,12 @@ public sealed class WorldStats
             var ss = s.CivSettlements(c);
             double pop = 0;
             foreach (var st in ss) pop += s.Pop(st);
-            TreeFraction(c, out int done, out int size);
+            var tierDays = new List<double>();
+            for (int k = 1; k <= 3; k++) tierDays.Add(c.Yearly?.Get("tier" + k.ToString(CultureInfo.InvariantCulture)) ?? -1);
             Civs.Add(new CivSummary
             {
                 Id = c.Id, Name = c.Name, Cls = c.Cls, Race = c.Race, Founded = c.Founded, ExtinctDay = c.ExtinctDay, Alive = c.Alive,
-                MaxSettlements = t?.MaxSettlements ?? ss.Count, FinalSettlements = ss.Count, FinalEra = c.Era, FinalPop = pop,
-                Techs = done, TreeSize = size, TreeDoneDay = t?.TreeDoneDay ?? -1, EraDay = new List<double>(c.EraDay ?? new List<double>()),
+                MaxSettlements = t?.MaxSettlements ?? ss.Count, FinalSettlements = ss.Count, FinalTier = s.CivTier(c), FinalPop = pop, TierDays = tierDays,
                 Gold = s.St(c, "gold"), BattlesWon = c.Stats?.BattlesWon ?? 0, BattlesLost = c.Stats?.BattlesLost ?? 0, Traded = c.Stats?.Traded ?? 0,
             });
         }
@@ -855,8 +874,8 @@ public sealed class WorldStats
             civs.Add(new JObj
             {
                 { "id", c.Id }, { "name", c.Name }, { "cls", c.Cls }, { "race", c.Race }, { "alive", c.Alive }, { "founded", c.Founded }, { "extinctDay", c.ExtinctDay },
-                { "maxSettlements", c.MaxSettlements }, { "settlements", c.FinalSettlements }, { "pop", c.FinalPop }, { "era", c.FinalEra }, { "eraDay", c.EraDay },
-                { "techs", c.Techs }, { "treeSize", c.TreeSize }, { "treeDoneDay", c.TreeDoneDay < 0 ? (object)null : c.TreeDoneDay }, { "gold", c.Gold },
+                { "maxSettlements", c.MaxSettlements }, { "settlements", c.FinalSettlements }, { "pop", c.FinalPop }, { "tier", c.FinalTier }, { "tierDays", c.TierDays },
+                { "gold", c.Gold },
                 { "battlesWon", c.BattlesWon }, { "battlesLost", c.BattlesLost }, { "traded", c.Traded },
             });
         o.Add("civs", civs);

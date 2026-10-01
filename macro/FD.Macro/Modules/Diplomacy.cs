@@ -54,9 +54,6 @@ public static class Diplomacy
             if (s.Day - a.LastRaidedDay < 240 && s.Day - b.LastRaidedDay < 240) s.SetMod(a.Id, b.Id, "enemy", "Ortak düşman: canavarlar", 10); else s.RemoveMod(a.Id, b.Id, "enemy");
             // sınıf yakınlıkları
             var pair = new List<Civ> { a, b };
-            var pal = J.Find(pair, c => c.Cls == "paladin" && c.Subclass == "ancients");
-            var dru = J.Find(pair, c => c.Cls == "druid");
-            if (pal != null && dru != null) s.SetMod(a.Id, b.Id, "ancients", "Kadim Yemin dostluğu", 18);
             var paladin = J.Find(pair, c => c.Cls == "paladin");
             var other = J.Find(pair, c => c != paladin);
             if (paladin != null && other != null && other.Align.Good < -0.3) s.SetMod(a.Id, b.Id, "evil", "Paladin kötülüğe tahammül etmez", -20);
@@ -90,13 +87,8 @@ public static class Diplomacy
         var r = s.Rel(o.Id, h.Id);
         var want = new JsMap<string, double>();
         foreach (var g in D.CLASSES[o.Cls].Desires) want.Set(g, 1.2);
-        foreach (var t in Research.BlockedByGate(s, o))
-        {
-            var ks = new List<string>();
-            if (t.Gate != null) ks.AddRange(t.Gate);
-            if (t.GateAny != null) ks.AddRange(t.GateAny);
-            foreach (var k in ks) foreach (var g in GateGood(k) ?? NONE) if (!s.Access(o, k)) want.Set(g, JsMath.Max(want.TryGet(g, out var wv) ? wv : 0, 1));
-        }
+        // Faz 1b-3: kademesinin işlediği ama erişemediği kaynaklar (eskiden kaynak kapısına takılan araştırma)
+        foreach (var k in TierNeeds(s, o)) foreach (var g in GateGood(k) ?? NONE) want.Set(g, JsMath.Max(want.TryGet(g, out var wv) ? wv : 0, 1));
         string worstG = null; double worstV = 0;
         foreach (var kv in want)
         {
@@ -113,7 +105,7 @@ public static class Diplomacy
                 s.Metric("tension");
                 string gName = J.TrLower(D.GOODS[g].Name);
                 s.Log("tension", $"{o.Name}, {Tr.Ek(h.Name, "in")} elindeki {gName} kaynağına göz dikti.", civ: o.Id,
-                    cause: $"{(D.CLASSES[o.Cls].Desires.Contains(g) ? $"{D.CLASSES[o.Cls].Name} medeniyeti {gName} ister" : "Araştırması bu kaynağa takıldı")}; kendi yatağı yok", major: true);
+                    cause: $"{(D.CLASSES[o.Cls].Desires.Contains(g) ? $"{D.CLASSES[o.Cls].Name} medeniyeti {gName} ister" : "Kentlerinin zanaatı bu kaynağı istiyor")}; kendi yatağı yok", major: true);
             }
             if (worstG == null || nv > worstV) { worstG = g; worstV = nv; }
         }
@@ -150,6 +142,35 @@ public static class Diplomacy
         }
     }
 
+    /// <summary>Faz 1b-3: kademenin işlediği kaynaklar (eski ana ağacın kaynak kapıları, E. çağ → kademe E−1): Kamp kil (tuğla);
+    /// Köy bakır, kalay (bronz), at; Kasaba demir, altın, şifalı ot, mana; Şehir mithril. Medeniyet bir kademeye ilk vardığında
+    /// (ya da kurulduğunda) TIER_NEED_YEARS yıl boyunca o kademenin kaynaklarını arar: eskiden kaynak kapısına takılan araştırma
+    /// da geçiciydi (uzun yoldan öğrenilince biterdi).</summary>
+    private static readonly string[][] TIER_NEEDS =
+    {
+        new[] { "clay" },
+        new[] { "copper", "tin", "horses" },
+        new[] { "iron", "gold", "herbs", "mana" },
+        new[] { "mithril" },
+    };
+
+    public const double TIER_NEED_YEARS = 5;
+
+    /// <summary>Medeniyetin yeni vardığı kademelerin (son TIER_NEED_YEARS yıl) işlediği ama erişemediği (yatağı ya da stoğu
+    /// olmayan) kaynak anahtarları (Sim.Access).</summary>
+    public static List<string> TierNeeds(Sim s, Civ c)
+    {
+        var o = new List<string>();
+        int ct = s.CivTier(c);
+        for (int t = 0; t <= ct && t < TIER_NEEDS.Length; t++)
+        {
+            double since = t == 0 ? c.Founded : c.Yearly.Get("tier" + t) ?? c.Founded;   // kademeye ilk varış (Sim.TierRise); yoksa doğuşu
+            if (s.Day - since > TIER_NEED_YEARS * Sim.YEAR) continue;
+            foreach (var k in TIER_NEEDS[t]) if (!s.Access(c, k)) o.Add(k);
+        }
+        return o;
+    }
+
     /// <summary>Medeniyetin askerî gücü: askerler + kahramanlar + milis (powerOf).</summary>
     public static double MilitaryPower(Sim s, Civ c)
     {
@@ -163,9 +184,7 @@ public static class Diplomacy
 
     private static double WarThreshold(Sim s, Civ c)
     {
-        double t = -32 - c.Align.Good * 22 - c.Align.Law * 10 + D.CLASSES[c.Cls].Aggression * 28;
-        if (c.Subclass == "vengeance") t += 15;
-        return t;
+        return -32 - c.Align.Good * 22 - c.Align.Law * 10 + D.CLASSES[c.Cls].Aggression * 28;
     }
 
     private static void WarPeace(Sim s, Civ o, Civ t)
@@ -315,11 +334,11 @@ public static class Diplomacy
             cause: $"{t.Name} ile ilişki {J.S(pick.Hate)}, {o.Name} ile {J.S(pick.Love)}", major: true);
     }
 
-    /// <summary>ordu yolu: karadan; Donanma varsa (ve daha kısaysa) denizden</summary>
+    /// <summary>ordu yolu: karadan; Donanma (Şehir kademesi) varsa (ve daha kısaysa) denizden</summary>
     private static CivPathResult ArmyRoute(Sim s, Civ c, int from, int to)
     {
         var land = s.Path(from, to);
-        if (!s.Has(c, "navy")) return land != null ? new CivPathResult { Path = land } : null;
+        if (!s.CivAt(c, Gate.NAVY)) return land != null ? new CivPathResult { Path = land } : null;
         var r = Sea.CivPath(s, c, from, to);
         if (r != null && r.Hull != null && Sea.HasSea(s, r.Path) && (land == null || r.Path.Count < land.Count * 0.8)) return r;
         return land != null ? new CivPathResult { Path = land } : null;
@@ -334,7 +353,7 @@ public static class Diplomacy
         double sol = J.Sum(s.CivSettlements(c), x => x.Soldiers);
         if (sol < 5 || J.Some(s.W.Agents, a => a.Civ == c.Id && a.Purpose == "plunder")) return;
         var cap = s.Capital(c);
-        int reach = s.Has(c, "navy") ? 34 : 20;
+        int reach = s.CivAt(c, Gate.NAVY) ? 34 : 20;
         var targets = J.Filter(s.W.Settlements, x => x.Alive && x.Civ != c.Id && s.Rel(c.Id, x.Civ).Contact && s.RelValue(c.Id, x.Civ) < (fam != null ? 15 : 0)
             && s.Day - s.Rel(c.Id, x.Civ).LastRaid > 180 && s.G.Dist(x.Tile, cap.Tile) <= reach && !J.T(s.Rel(c.Id, x.Civ).Treaty)
             && (fam == null || (!fam.Helped.Contains(x.Civ) && s.FoodTotal(s.W.Civs[x.Civ]) > s.CivPop(s.W.Civs[x.Civ]) * Sim.FOOD_PER_POP * 40)));
@@ -365,24 +384,25 @@ public static class Diplomacy
     }
 
     /// <summary>
-    /// B1: anakara yerleşim tavanı <c>2 + çağ + ⌊nüfus/200⌋</c> (eskiden sabit 5): Kamp çağında 3, Krallık çağında 6 ve
-    /// her 200 nüfusa bir fazlası. Yalnız öncü göndermeyi sınırlar; fetihle tavan aşılabilir. Denizaşırı koloniler ayrı
-    /// haktır (Gemicilik 1, Seyir 2) ve bu tavana sayılmaz.
+    /// B1: anakara yerleşim tavanı <c>3 + başkentin kademesi + ⌊nüfus/200⌋</c> (Faz 1b-3; eskiden 2 + çağ, aynı değerler):
+    /// Kamp başkentle 3, Şehir başkentle 6 ve her 200 nüfusa bir fazlası. Yalnız öncü göndermeyi sınırlar; fetihle tavan
+    /// aşılabilir. Denizaşırı koloniler ayrı haktır (Kasaba kademesiyle 2) ve bu tavana sayılmaz.
     /// </summary>
-    public static int LandCap(Sim s, Civ c) => 2 + c.Era + (int)Math.Floor(s.CivPop(c) / 200);
+    public static int LandCap(Sim s, Civ c) => 3 + (s.Capital(c)?.Tier ?? 0) + (int)Math.Floor(s.CivPop(c) / 200);
 
-    /// <summary>Öncü (settlers) gönderme: anakarada yerleşim tavanına (<see cref="LandCap"/>) dek, Gemicilik/Seyir ile denizaşırı koloni.</summary>
+    /// <summary>Öncü (settlers) gönderme: anakarada yerleşim tavanına (<see cref="LandCap"/>) dek, Kasaba kademesiyle denizaşırı koloni.</summary>
     public static void ConsiderExpansion(Sim s, Civ c)
     {
         var ss = s.CivSettlements(c);
         var cap = s.Capital(c);
-        if (cap == null || !s.Has(c, "roads")) return;
+        if (cap == null || !s.CivAt(c, Gate.ROADS)) return;
         // B1: savaşta ya da başkentini yeni kaybetmişken kimse öncü yollamaz (yıkılan medeniyet köy kurarak ayakta kalmaz)
         if (s.InWar(c) || s.Day - (c.CapitalLostDay ?? -99999) < 3 * Sim.YEAR) return;
-        // anakarada LandCap kadar yerleşim; Gemicilik ve Seyir birer denizaşırı koloni hakkı daha açar
+        // anakarada LandCap kadar yerleşim; Gemicilik ve Seyir (Faz 1b-3: ikisi de Kasaba kademesi) birer denizaşırı koloni hakkı açar
         int over = J.Filter(ss, x => J.T(x.Overseas)).Count;
         bool landOk = ss.Count - over < LandCap(s, c);
-        bool seaOk = s.Has(c, "shipbuilding") && over < (s.Has(c, "navigation") ? 2 : 1) && J.Some(Sea.Ports(s, c), x => Sea.FreeHulls(s, x) > 0);
+        int ct = s.CivTier(c);
+        bool seaOk = ct >= Gate.SHIPBUILDING && over < (ct >= Gate.NAVIGATION ? 2 : 1) && J.Some(Sea.Ports(s, c), x => Sea.FreeHulls(s, x) > 0);
         if (!landOk && !seaOk) return;
         if (s.Pop(cap) < 12 + ss.Count * 5 || s.FoodTotal(c) < 30 || s.Day - c.LastExpand < 160) return;
         if (J.Some(s.W.Agents, a => a.Kind == "settlers" && a.Civ == c.Id)) return;
@@ -425,9 +445,8 @@ public static class Diplomacy
         var all = J.Filter(w.Settlements, x => x.Alive);
         var like = D.CLASSES[c.Cls].TerrainLike;
         var desires = D.CLASSES[c.Cls].Desires;
-        var needGoods = new HashSet<string>();
-        foreach (var tech in Research.BlockedByGate(s, c)) foreach (var k in tech.Gate ?? NONE) needGoods.Add(k);
-        int seaMax = s.Has(c, "navigation") ? 45 : 26;
+        var needGoods = new HashSet<string>(TierNeeds(s, c));   // Faz 1b-3: kademenin işlediği, erişilemeyen kaynaklar
+        int seaMax = s.CivAt(c, Gate.NAVIGATION) ? 45 : 26;
         var cands = new List<SettleCand>();
         int best = -1; double bs = double.NegativeInfinity; string bwhy = "";
         for (int i = 0; i < w.Tiles.Count; i++)
@@ -447,7 +466,7 @@ public static class Diplomacy
             double sc = -dOwn * (sea ? 0.3 : 0.7) + s.Rng.Next() * 2 + (sea ? 3 : 0);
             string why = sea ? "Bakir bir ada" : "Verimli topraklar"; double whyV = 0;
             // liman kurulabilecek kıyı yeri, denizci medeniyetler için değerli
-            if (coastal && s.Has(c, "fishing")) sc += 1.5 * (D.CLASSES[c.Cls].Prefer.Get("deniz") ?? 1);
+            if (coastal) sc += 1.5 * (D.CLASSES[c.Cls].Prefer.Get("deniz") ?? 1);
             var seenDep = new HashSet<int>();
             foreach (int n in s.G.Within(i, 2))
             {
@@ -482,10 +501,10 @@ public static class Diplomacy
     /// <summary>Pazarı olan medeniyet komşularıyla kara ticaret yolu (ve ardından deniz ticareti / ikmal) açar.</summary>
     public static void ConsiderTrade(Sim s, Civ c)
     {
-        if (!s.Has(c, "barter")) return;
+        if (!s.CivAt(c, Gate.BARTER)) return;
         var src = J.Find(s.CivSettlements(c), x => J.T(x.Civics.Get("market")));
         if (src == null) return;
-        int maxD = s.Has(c, "caravans") ? 40 : 22;
+        int maxD = s.CivAt(c, Gate.CARAVANS) ? 40 : 22;
         for (int oi = 0; oi < s.W.Civs.Count; oi++)
         {
             var o = s.W.Civs[oi];
@@ -504,13 +523,15 @@ public static class Diplomacy
         ConsiderSeaTrade(s, c);
     }
 
-    /// <summary>deniz ticaret yolu: kara yoluyla ulaşılamayan (ya da çok uzak) limanlar arasında</summary>
+    /// <summary>deniz ticaret yolu: kara yoluyla ulaşılamayan (ya da çok uzak) limanlar arasında (Faz 1b-3: gemisi olan her
+    /// liman; menzil medeniyetin kademesiyle)</summary>
     private static void ConsiderSeaTrade(Sim s, Civ c)
     {
-        if (!s.Has(c, "boatbuilding")) return;
         var mine = J.Filter(Sea.Ports(s, c), x => (x.Ships ?? 0) > 0);
         if (mine.Count == 0) return;
-        int maxD = s.Has(c, "seatrade") ? 80 : s.Has(c, "navigation") ? 60 : s.Has(c, "shipbuilding") ? 42 : 24;
+        int ct = s.CivTier(c);
+        int maxD = ct >= Gate.SEATRADE ? 80 : ct >= Gate.NAVIGATION ? 60 : ct >= Gate.SHIPBUILDING ? 42 : 24;
+        bool open = ct >= Gate.NAVIGATION;
         var alive = J.Filter(s.W.Routes, rt => rt.Alive && rt.Kind == "trade");
         for (int oi = 0; oi < s.W.Civs.Count; oi++)
         {
@@ -519,7 +540,7 @@ public static class Diplomacy
             var r = s.Rel(c.Id, o.Id);
             if (!r.Contact || r.War != null || s.RelValue(c.Id, o.Id) < -5 || s.Day - (r.SeaTry ?? -9999) < 90) continue;
             var between = J.Filter(alive, rt => (s.Settlement(rt.A)?.Civ == c.Id || s.Settlement(rt.B)?.Civ == c.Id) && (s.Settlement(rt.A)?.Civ == o.Id || s.Settlement(rt.B)?.Civ == o.Id));
-            if (J.Some(between, rt => J.T(rt.Sea)) || between.Count >= 1 && !s.Has(c, "shipbuilding")) continue;
+            if (J.Some(between, rt => J.T(rt.Sea)) || between.Count >= 1 && ct < Gate.SHIPBUILDING) continue;
             r.SeaTry = s.Day; s.Rel(o.Id, c.Id).SeaTry = s.Day;
             var theirs = Sea.Ports(s, o);
             Settlement pa = null, pb = null;
@@ -529,14 +550,14 @@ public static class Diplomacy
             // kara yolu kısaysa deniz yoluna gerek yok
             var land = s.Path(pa.Tile, pb.Tile);
             if (land != null && land.Count <= bd * 1.25 && between.Count != 0) continue;
-            var path = Sea.NavPath(s, pa.Tile, pb.Tile, new NavOpts { Embark = new List<int> { pa.Port.Value }, Open = s.Has(c, "navigation"), LandOnly = new List<int> { pb.Port.Value } });
+            var path = Sea.NavPath(s, pa.Tile, pb.Tile, new NavOpts { Embark = new List<int> { pa.Port.Value }, Open = open, LandOnly = new List<int> { pb.Port.Value } });
             if (path == null || !Sea.HasSea(s, path)) continue;
             s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = pa.Id, B = pb.Id, Kind = "trade", Path = path, NextDepart = s.Day + 5, Trips = 0, Alive = true, Since = s.Day, Sea = true });
             s.Metric("seaRoute");
             s.Log("sea", $"{pa.Name} ile {pb.Name} arasında deniz ticaret yolu açıldı.", civ: c.Id, tile: pa.Port, cause: $"{J.S(bd)} karo deniz; {o.Name} ile ilişki {J.S(s.RelValue(c.Id, o.Id))}", major: true);
         }
         // denizaşırı kolonilere ikmal gemileri
-        if (!s.Has(c, "shipbuilding")) return;
+        if (ct < Gate.SHIPBUILDING) return;
         foreach (var col in s.CivSettlements(c))
         {
             if (!J.T(col.Overseas) || J.Some(alive, rt => J.T(rt.Sea) && (rt.A == col.Id || rt.B == col.Id))) continue;
@@ -545,7 +566,7 @@ public static class Diplomacy
             var home = J.At(J.Sort(J.Filter(mine, x => x.Id != col.Id && !J.T(x.Overseas)), (a, b) => s.G.Dist(a.Port.Value, col.Tile) - s.G.Dist(b.Port.Value, col.Tile)), 0);
             if (home == null) continue;
             var land = J.T(col.Civics.Get("shipyard")) && col.Port != null ? new List<int> { col.Port.Value } : null;
-            var path = Sea.NavPath(s, home.Tile, col.Tile, new NavOpts { Embark = new List<int> { home.Port.Value }, Open = s.Has(c, "navigation"), LandOnly = land });
+            var path = Sea.NavPath(s, home.Tile, col.Tile, new NavOpts { Embark = new List<int> { home.Port.Value }, Open = open, LandOnly = land });
             if (path == null || !Sea.HasSea(s, path)) continue;
             s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = home.Id, B = col.Id, Kind = "trade", Path = path, NextDepart = s.Day + 5, Trips = 0, Alive = true, Since = s.Day, Sea = true });
             s.Metric("seaRoute");
@@ -688,9 +709,7 @@ public static class Diplomacy
         w.Settlements.Add(WorldGen.MakeSettlement(s.Id(), id, D.CLASSES[cls].Capital, best, new JsObj<double> { [D.CLASSES[cls].Race] = 6 }, s.Day));
         s.UpdateTerritory();
         s.RecomputeEff(c);
-        Research.ChooseResearch(s, c);
         s.Log("world", $"Ufukta yeni bir topluluk belirdi: {c.Name} ({D.RACES[c.Race].Plural}, {D.CLASSES[cls].Name}).", civ: id, tile: best, cause: "Boşalan topraklar yeni yerleşimcileri çekti", major: true);
-        // void TECH;
     }
 
     // ================================================================ B1: yükseliş ve çöküş
@@ -1070,7 +1089,7 @@ public static class Diplomacy
         Settlement best = null; double bu = 0; List<string> bwhy = null;
         foreach (var st in ss)
         {
-            if (st.Id == cap.Id || J.T(st.Civics.Get("wonder")) || s.Pop(st) < SECEDE_POP || s.Pop(st) >= s.Pop(cap) - 2 || IsWarTarget(s, st)) continue;
+            if (st.Id == cap.Id || s.Pop(st) < SECEDE_POP || s.Pop(st) >= s.Pop(cap) - 2 || IsWarTarget(s, st)) continue;
             var why = new List<string>();
             double u = Unrest(s, c, st, cap, ss.Count, why);
             if (u > bu) { bu = u; best = st; bwhy = why; }
@@ -1115,8 +1134,8 @@ public static class Diplomacy
         return STATE_COLORS[s.W.Civs.Count % STATE_COLORS.Length];
     }
 
-    /// <summary>Yerleşim ayrılır: yeni medeniyet (id = dizin) sınıfını, adını ve rengini alır; ana medeniyetin bilgisini
-    /// (sınıf aynıysa sınıf ağacını ve yolunu da), çağını, tanıdıklarını ve bildiği yatakları devralır; ambardan nüfus payı
+    /// <summary>Yerleşim ayrılır: yeni medeniyet (id = dizin) sınıfını, adını ve rengini alır; ana medeniyetin fiyatlarını,
+    /// tanıdıklarını ve bildiği yatakları devralır (Faz 1b-3: kademe şehrin kendisinde); ambardan nüfus payı
     /// kadar mal götürür. Ana medeniyet şehir üzerinde tarihî hak tutar (savaş türü "reclaim").</summary>
     private static void Secede(Sim s, Civ c, Settlement st, Settlement cap, List<string> why)
     {
@@ -1137,10 +1156,6 @@ public static class Diplomacy
         nc.LastWarEnd = s.Day;
         nc.Threat = c.Threat;
         nc.LastRaidedDay = c.LastRaidedDay;
-        nc.Research.Done = cls == c.Cls ? new List<string>(c.Research.Done) : J.Filter(c.Research.Done, t => D.TECH[t].Tree == "main");
-        nc.Subclass = cls == c.Cls ? c.Subclass : null;
-        nc.Era = c.Era;
-        nc.EraDay = new List<double>(c.EraDay);
         nc.Price = c.Price.Clone();
         double share = s.Pop(st) / JsMath.Max(1, s.CivPop(c));
         var stock = new JsObj<double>();
@@ -1188,7 +1203,6 @@ public static class Diplomacy
         s.UpdateTerritory();
         s.RecomputeEff(nc);
         s.RecomputeEff(c);
-        Research.ChooseResearch(s, nc);
         s.Metric("secession");
         s.Log("world", $"{st.Name}, {Tr.Ek(c.Name, "dan")} ayrılıp bağımsızlığını ilan etti: {nc.Name} ({D.RACES[maj].Plural}, {D.CLASSES[cls].Name}).", civ: id, tile: st.Tile,
             cause: J.TrCap(string.Join(", ", why)), major: true);

@@ -1,6 +1,6 @@
-# macro — durum (1 Ekim 2026)
+# macro — durum (1 Ekim 2026, Faz 1b-3)
 
-`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1 ve C3 değişiklikleri vardır. Godot projesine henüz bağlı değil.
+`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1, C3 ve Faz 1b-3 (4X budaması, yol haritası v3) değişiklikleri vardır. Godot projesine henüz bağlı değil.
 
 ## Altın test (TS ↔ C#)
 
@@ -16,7 +16,7 @@
 - İlk fark yok. 60. yılın sonuna kadar her gün eşleşiyor.
 
 **Modüller:** 14 modülün hepsi ve Sim çekirdeği (`Step`/`CivAI`) eşleşiyor.
-- Modüller: WorldGen, Economy, Research, Gear, Events, Diplomacy, Monsters, Combat, Agents, Heroes, Will, Inns, InnLife, Sea.
+- Modüller: WorldGen, Economy, Research, Gear, Events, Diplomacy, Monsters, Combat, Agents, Heroes, Will, Inns, InnLife, Sea (Research ana hatta Faz 1b-3'te silindi).
 - Gün içi kontrol noktaları yoğun günlerde de eşleşti: `econ:N`, `repair`, `ai:N:*`, `territory`, `relations`, `discover`, `world`, `disasters`, `yearly`, `camps`, `taverns`, `inns`, `heroes`, `agents`, `sea`, `routes`, `roads`, `end`.
 
 **RNG izi ve döküm**
@@ -52,7 +52,7 @@
 - **A3b · Temizlik ve kalıcı kronik:**
   - `World.Chronicle`'a eklenenler: çalınan teknoloji düzeltmesi, prodWood/harvest/teleport, darphane geliri.
 - **B1 · Yükseliş ve çöküş:**
-  - Yerleşim tavanı `2 + çağ + nüfus/200`.
+  - Yerleşim tavanı `3 + başkentin kademesi + nüfus/200` (Faz 1b-3; eskiden `2 + çağ`, aynı değerler).
   - Başkent düşebilir.
   - Bölünme ile yeni medeniyet doğar.
   - Kutsal sefer, savunma paktı, ihanet ve tarihî hak var.
@@ -65,24 +65,68 @@
 - **C1 · Kahraman ince ayarı:** efsaneler kamp temizlemekten değil, kişisel işlerden gelir.
 - **C3 · #8 Altın ve ambar** (Faz 1b; dünya harikası yarışı atıldı). Kod: `Modules/Economy.cs` (C3 bölümleri).
   - Boştaki işçi 0,004 altın/gün getirir (eskiden 0,02).
-  - Bakım: asker 0,01/gün, L2/L3 yapı 0,004/0,01 altın + alet aşınması, kahraman maaşı (mevsimde bir, seviyeyle). Hazine bakımı ödeyemezse "hazine boş": firar, yeni asker yok, L2+ verim ×0,8. Maaşı iki mevsim ödenmeyen kahraman ayrılır.
+  - Bakım: asker 0,01/gün, L2/L3 yapı 0,004/0,01 altın + alet aşınması, kahraman maaşı (30 günde bir, seviyeyle). Hazine bakımı ödeyemezse "hazine boş": firar, yeni asker yok, L2+ verim ×0,8. Maaşı iki kez ödenmeyen kahraman ayrılır.
   - Kamu işleri (imar): hazinenin yedeği aşan kısmı (yılda %80) ve ambarın 120 günü aşan fazlası boştakilerden amele tutar (kademe başına nüfusun %5/15/30/45'i). İmar büyüme, huzur ve onarım hızı verir. Altın birikimini asıl bu tutar.
   - Kent tüketimi (`TOWN_NEEDS`): kademeye göre bira, alet, ekmek payı. 10 gün yokluk büyümeyi yavaşlatır, 30 gün kroniğe düşer; ekmek/bira yokluğu huzursuzluk getirir.
   - Kıtlık tek büyük olay: 10 gün ve ort. %25 açıkla ilan edilir, bir yıl tok geçince biter. Komşular yardım eder (+ilişki) ya da yüz çevirir (−ilişki); aç medeniyet saldırgan olmasa da akına çıkabilir, akıncıları erzak da taşır.
   - Canavar baskını kentin nüfus payı kadar hazine alır (eskiden bütün hazinenin %30'u). Ejderha haracı `100 + 0,6 × nüfus` ile tavanlı; akın, ilan ve büyüme buna göre ölçeklendi.
 
-**Son ölçüm** (`reports/f1b-2`, 16 dünya × 60 yıl, C3 dâhil): bitiş ölçütlerinin hepsi geçiyor. Seed 1, gün 7200 hash'i `6922b0fc1f0de1c2`. Önceki ölçüm `reports/c1-4` (C3'süz; hash `20c9085ff9cd062a`).
+- **Faz 1b-3 · 4X budaması ve kademe** (yol haritası v3: dünya büyüyerek değil, durum değiştirerek yaşar). Kod: `Core/Tiers.cs` (kapılar, `Sim.TierOf`, `CivTier`, `RecomputeEff`), `Modules/Classes.cs` (yıllık sınıf yetenekleri).
+  - **Silinenler:**
+    - Araştırma: teknoloji ağacı (`MAIN_TECHS`, `CLASS_TECHS`, `TECH`, `D.TechCost`), `Civ.Research`, `Research.cs` (seçim, düğüm bitişi, kaynak kapısı, bilgi çalma), araştırmacı işi, `research`/`cheapKnown`/`lootTech`/`spy` etkileri, araştırma olay ve ölçüleri.
+    - Çağlar: `Civ.Era`/`EraDay`, `ERA_*`, çağ olayları ve bütün çağ koşulları.
+    - Alt sınıflar ve uç güçler (`Civ.Subclass`, seçim ağırlıkları, olayları; avatar, kalkan, meteor, talih, diriliş, ilahi müdahale, usta hırsız, kukla, suikast, kayıpsız hasat, kıtlıksızlık).
+    - Harikalar (`WONDERS`, `wonder` yapısı, etkileri, olayları).
+    - Mevsimler: üretim çarpanları yıllık ortalamayla (tarla 0,9125, yaban 0,95, fırtına 1,45, yangın 1,25, han yolcu akışı 0,9625), kış/soğuk (deri kış giysisi, soğuk yıl, `winterImmune`), atların yaşlanması, sert kış krizi. Tarih geçici olarak "Yıl N, Gün D" ("N. yılın D. gününde").
+  - **Kademe** yalnız nüfusla (12 / 40 / 100), histerezisle: nüfus eşiğin %85'ine inmeden kademe düşmez (titreme 9 → 5 değişim/dünya-yıl). Kademenin ilk yükselişi kroniğe yazılır; medeniyetin ilk kasabası ve şehri büyük olay (eski çağ atlamanın yerine), mana ve mithril yatakları o kademede görünür olur.
+  - **Kural:** E. çağın düğümü → kademe ≥ E−1. Yere bağlı olanlar yerleşimin, medeniyet çapındakiler medeniyetin kademesine (en büyük yerleşimi) bakar:
 
-| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) |
+    | Kapı | Kademe | Bakılan | Eski düğüm |
+    |---|---|---|---|
+    | Ev, palisat, sunak, fırın, tarla/iskele/ocak/tuğla/maden/ağıl/ot L1, bıçkıhane, av köşkü, tuz | 0 Kamp | — | I. çağ (baştan açık) |
+    | Tersane (liman) | yok: kıyısı olan her yerleşim | yerleşim | Tekne Yapımı |
+    | Taverna, pazar, kütüphane, sınıf yapısı (başkent), bira evi, aletçi, silahhane, tarla L2, iskele L2, maden L2, haras, kristal kazısı, Kutsal Koru | 1 Köy | yerleşim | II. çağ |
+    | Taş konak, taş sur, darphane, lonca salonu, şifa evi, demir girdisi, tarla L3, orman L3, iskele L3, kesme taş, bitki bahçesi, kristal kulesi; demir aletler yarı aşınır, orman 2 kat hızlı yenilenir (+%25 kereste) | 2 Kasaba | yerleşim | III. çağ |
+    | Kale (başkent), fener kulesi, derin maden, ley taşı, mithril | 3 Şehir | yerleşim | IV. çağ |
+    | Asker yazımı, kervan muhafızı, yol, öncü, kara ticareti, alet talebi, mana görünür | 1 Köy | medeniyet | Talim, Yol, Takas, Bronz Aletler, Arcana I |
+    | Uzak kervan (40), demir silah/zırh, hekimlik, koga, denizaşırı koloni (2), açık deniz, keşif gemisi, ikmal, korsan avı | 2 Kasaba | medeniyet | Kervancılık, Demircilik, Hekimlik, Gemicilik, Seyir |
+    | Kadırga ve donanma, deniz ticareti (80, geniş ambar), kuşatma makineleri, efsun, mithril zırh ve görünürlük | 3 Şehir | medeniyet | Donanma, Deniz Ticareti, Kuşatma, Efsunlama, Mithril, Derin Kazı |
+    | Özel birlikler (paladin muhafız/şövalye, lejyoner, kurtlar, treant, golem…), Kutsal Sefer (paladin, Şehir), Druid ormanı (Köy), Keşiş silahsız askeri (Kasaba) | sınıfa göre | medeniyet | sınıf ağacı (`ClassDef.Perks`) |
+
+  - **Yerine konan denge etkileri** (ölçülerek): kademe verimi +0,1/0,2/0,3 (yerleşimin; Bronz Aletler, Lonca, Taç), kademe vergisi +0,5/+0,8 (medeniyetin Kasaba/Şehir kademesi; Para, Taç), büyüme +0,05 (+0,1 Kasaba'dan; İnanç, Hekimlik), ticaret altını +0,3 (Kasaba) / +1,0 (Şehir), savunma AC +2 (Şehir; Kale Yapımı). Sınıf ağacının savaş etkileri (saldırı/zırh/hasar artıları, bozgunsuzluk, ilk vuruş…) yerine bir şey konmadı.
+  - **Deri:** kış giysisi yerine kent tüketimi (kademeyle 0,001–0,0025/kişi/gün, tundrada ×1,5) ve askerin teçhizat bakımı (0,003/gün); yokluğu cezasız.
+  - **Kuraklık** (sert kışın yerine, mevsimsiz kriz): 60–90 gün tarla ve toplayıcı verimi yarıya iner, kasaba yangını iki katı, ambardaki tahılın %20–40'ı çürür.
+  - **Komşu kaynak hırsı:** kaynak kapısına takılan araştırma yerine, medeniyet bir kademeye yeni vardığında (5 yıl) o kademenin işlediği ama erişemediği kaynağı (kil; bakır, kalay, at; demir, altın, ot, mana; mithril) arar.
+  - **Kent tüketiminde yokluk** ancak medeniyetin bir yerleşiminde o atölye (fırın, bira evi, aletçi) varsa sayılır.
+  - Kayıt biçimi sürüm 2 (sürüm 1 açılmaz). Ölçüme kademe dağılımı (yerleşim ve başkent), kademe değişimi, liman/gemi/kadırga, ambar günü eklendi; çağ ve araştırma ölçüleri çıktı.
+
+**Son ölçüm** (`reports/f1b-3`, 16 dünya × 60 yıl, Faz 1b-3 dâhil): bitiş ölçütlerinin hepsi geçiyor. Seed 1, gün 7200 hash'i `bc3a0162ce7eebdc`. Önceki ölçüm `reports/f1b-2` (hash `6922b0fc1f0de1c2`).
+
+| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) | f1b-3 (kademe) |
+|---|---|---|---|---|---|
+| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ | 1,2 ✓ |
+| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) | 15/16 ✓ (130 çöküş) |
+| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ | 10,2 / 8,16 ✓ |
+| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ | 1,28–1,43 ✓ |
+| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ | 15/16 ✓ |
+| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ | 5,5 ✓ |
+| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ | %39 ✓ |
+| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ |
+
+Faz 1b-3, f1b-2'ye karşı (on yıllık dünya medyanı; aynı f1b-2 kodu kademe ölçümüyle yeniden koşuldu, hash'ler aynı):
+
+| Ölçü | 1–10 | 11–20 | 21–30 | 51–60 |
 |---|---|---|---|---|
-| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ |
-| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) |
-| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ |
-| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ |
-| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ |
-| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ |
-| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ |
-| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ |
+| Nüfus | 272 → 391 | 1390 → 1629 | 2510 → 2578 | 3810 → 3661 |
+| Yerleşim | 15 → 22 | 49 → 51 | 65 → 66 | 85 → 78 |
+| Köy+ / Kasaba+ / Şehir | 8 / 1 / 0 → 13 / 2 / 0 | 33 / 10 / 0,7 → 35 / 15 / 1,3 | 47 / 21 / 3 → 48 / 24 / 5 | 63 / 33 / 8 → 63 / 33 / 10 |
+| Başkent kademesi (ort.) | 0,76 → 0,96 | 1,87 → 2,03 | 2,38 → 2,55 | 2,77 → 2,87 |
+| Altın medyanı | 53 → 44 | 209 → 201 | 360 → 398 | 769 → 731 |
+| Ambar (gün) | 81 → 80 | 156 → 221 | 253 → 257 | 183 → 177 |
+| Liman / gemi / kadırga | 0,5 / 0,6 / 0 → 2 / 2,7 / 0 | 6 / 13 / 2,5 → 8,5 / 18 / 1,2 | 11 / 28 / 12 → 13 / 29 / 9 | 18 / 52 / 20 → 17 / 47 / 16 |
+| Savaş başlangıcı / çöküş (yıl) | 0,1 / 0 → 0,2 / 0 | 0,95 / 0,05 → 0,8 / 0,15 | 1,15 / 0,05 → 1,2 / 0,1 | 1,4 / 0,1 → 1,6 / 0,1 |
+
+Toplamlar (16 dünya × 60 yıl, f1b-2 → f1b-3): kıtlık ilanı 17 → 10, açlık ölümü 6 → 29 (soğuktan ölen 217 → 0), gerginlik 399 → 616, antlaşma 175 → 258, kasaba yangını 202 → 458, maaşsız ayrılan kahraman 236 → 411, ejderha ittifakı 8 → 3 ve ejderha ölümü 8 → 2, kuraklık 46 (sert kış 31).
 
 C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 60. yılda 781 (2,4 kat; önce 2223 → 5585, p90 37 bin → 1,6 bin). Boştaki iş gücü 20. yıldan sonra %15–20 (önce %47–50). Kıtlık: 16 dünyada 17 ilan, 6 açlık ölümü (önce 244). Canavar baskınında giden altın dünya başına ~0,5 bin (önce ~43 bin); ejderha haracı ~17 bin (önce ~160 bin).
 
@@ -96,12 +140,12 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 
 ### Ekonomi ve kurallar (ana hatta açık)
 1. **Yatak yenilenmesi çok hızlı.** Yenilenme döngüsü her yaşayan medeniyetin ekonomi tikinde ayrı çalışıyor. Şifalı ot ve kadim ağaç 7–9 kat hızlı yenileniyor (`Economy`).
-2. **Altın kapısı hep açık.** `Sim.Access(c, "gold")` stokta 2 altın olunca geçiyor. Bu yüzden para teknolojisi kapısı, darphane koşulu ve altın anlaşmazlıkları hiçbir şeyi engellemiyor.
-3. **`cheapKnown` etkisinin büyüklüğü yok sayılıyor.** Ozanın Bilgi uç gücündeki ek +0,25 etkisiz.
+2. **Altın kapısı hep açık.** `Sim.Access(c, "gold")` stokta 2 altın olunca geçiyor. Bu yüzden darphane koşulu ve altın anlaşmazlıkları hiçbir şeyi engellemiyor.
+3. ~~`cheapKnown` etkisinin büyüklüğü yok sayılıyor.~~ Kalktı (Faz 1b-3: araştırma yok).
 4. ~~Canavar baskını fazla götürüyor.~~ Düzeldi (C3): kentin nüfus payı kadar alıyor.
 5. ~~Ejderha haracı geç yıllarda çok büyük.~~ Düzeldi (C3): haraç nüfusla tavanlı; dünya başına ~17 bin.
 6. ~~Altın birikiyor, gider yok.~~ Düzeldi (C3): bakım ve kamu işleri; 60. yıl medyanı ~0,8 bin.
-7. **Araştırma ağacı ~20. yılda bitiyor;** sınıflar aynı sonla bitiyor. C4 (#6) atıldı; araştırma ve çağlar yol haritası v3'te kalkıyor.
+7. ~~Araştırma ağacı ~20. yılda bitiyor.~~ Kalktı (Faz 1b-3): araştırma ve çağlar yok, ilerleme yerleşim kademesinde.
 
 ### Denge ve tasarım
 8. **Bazı dünyalar hep barışçıl kalıyor.** Savaş olmayınca çöküş de olmuyor.
@@ -113,12 +157,12 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
     - başkente yürüyüş 1,5× güç istiyor.
 12. **Ejderhaların çoğunu adsız bir asker deviriyor.** Ün en yüksek seviyeli sağ kahramana yazılıyor; bu geçici bir çözüm.
 13. **Efsane sayısı gürültülü:** benzer ayarlarla medyan 2–4 arasında oynuyor.
-14. **`harvest` ve `teleport` etkileri pratikte nadiren devreye giriyor.**
+14. ~~`harvest` ve `teleport` etkileri pratikte nadiren devreye giriyor.~~ `harvest` kalktı (uç güç); `teleport` artık hiçbir yerden gelmiyor (bkz. #31).
 
 ### Kod ve araçlar
 15. **`Sim.Extinct` sözleşmesiz kiralık kahramanları "gone" yapıyor.**
 16. **`Tr.Ek` sayıyla biten adlara yanlış ek veriyor.** `Lore.Ek` bunu sarıyor.
-17. **Suikast destanı dolaylı yazılıyor:** doğrudan çağrıyla değil, günlük taramayla (`Lore.LateDeath`).
+17. **Suikast destanı dolaylı yazılıyor:** doğrudan çağrıyla değil, günlük taramayla (`Lore.LateDeath`). Faz 1b-3'ten beri suikast yok (alt sınıf etkisiydi); tarama başka geç ölümler için duruyor.
 18. **İstatistikte ölüm nedeni savaş başlığından çıkarılıyor;** bir kısmı "Bilinmiyor" kalıyor.
 19. **`World.Chronicle` hiç kırpılmıyor.** Kayıt dosyası zamanla büyür; gün 7200'de gzip ile ~0,3 MB.
 20. **Kayıt biçimi katı.** Alan adı değişince eski kayıt açılmaz. Birebir devam yalnız aynı kodla garanti.
@@ -131,14 +175,28 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 ### Altın ve ambar (C3'ten kalanlar)
 23. **Geç yıllarda alet yokluğu yaygın.** 51–60. yıllarda köy+ yerleşimlerin ~%48'inde kent tüketiminde yokluk var, çoğu alet: bakır, kalay ve demir tükeniyor. Büyüme %5 yavaşlar; dünya başına ~57 "alet yok" kaydı (büyük olay değil).
 24. **"Hazine boş" hiç tetiklenmedi** (16 × 60 yıl): altın günlük bakımın altına inmiyor. Firar ve L2+ verim cezası pratikte denenmedi. Bakım gelirin yanında küçük; asıl gider kamu işleri.
-25. **Maaşsız kahramanlar ayrılıyor:** dünya başına ~14 (toplam 236). Yoksul medeniyetlerin kahraman maaşı ödenemiyor. Ölçüt 4b/4d biraz düştü (15→14/16, %44→%40).
-26. **Kıtlık seyrek:** 16 dünyada 17 ilan (7 dünyada), 6 açlık ölümü. Çoğu ilk yardım turuyla hemen kapanıyor; aynı medeniyet 2–3 yılda bir yeniden aç kalabiliyor.
+25. **Maaşsız kahramanlar ayrılıyor:** dünya başına ~26 (toplam 411; f1b-2'de 236). Yoksul medeniyetlerin kahraman maaşı ödenemiyor; Faz 1b-3'te taverna Köy'le erken açıldığından erken yıllarda daha çok.
+26. **Kıtlık seyrek:** 16 dünyada 10 ilan (f1b-2'de 17), 29 açlık ölümü (6). Mevsimsiz ambarda açık küçük ve sürekli olabiliyor: fethedilip köylerini yitiren büyük şehir (tarlası yok, toplayıcı 10 kişiyle sınırlı) ilan eşiğine (ortalama %25 açık) varmadan yavaş açlık çekiyor.
 27. **Medeniyet yağması (`Agents.LootFrom`) hâlâ bütün hazinenin %20'sini alıyor**, kentin payını değil. C3'ün kapsamı dışında kaldı.
 28. **Amele iş gücünün ~%22'si** (geç yıllar). Boştaki payı (%15–20) buna bağlı; amele altın ve gıda yakar, mal üretmez.
-29. **Çöküş azaldı:** 146 → 98 (başkent kaybı 134 → 86), büyük olay oranı 0,97 → 0,90. Neden incelenmedi: küçük hazineler ya da imarın huzursuzluğu azaltması olabilir.
+29. **Çöküş:** c1-4 146 → f1b-2 98 → f1b-3 130 (başkent kaybı 113). Faz 1b-3'teki artış için bkz. #35.
 30. **Rapordaki "Altın birikiyor" satırı hâlâ "evet" diyor.** Kaba eşik: 30. yıl ≥ 10 × 1. yıl. Gerçek artış 20 → 60. yıl 2,4 kat.
+
+### Faz 1b-3'ten kalanlar
+31. **Sınıf kimliği zayıfladı.** Sınıf ağacının savaş etkileri (saldırı/zırh/hasar artıları, bozgunsuzluk, ilk vuruş, şifa) gitti; yerine bir şey konmadı. Sihirbaz'ın mekanik özelliği kalmadı (araştırmaydı), Haydut casusluğu, Keşiş inzivası ve Rahip/Paktçı'nın alt sınıfa göre hediyeleri yok. Artık hiçbir kaynaktan gelmeyen genel etki anahtarları: `soldierAtk`, `soldierHp`, `noRout`, `firstStrike`, `enemyMorale`, `healBack`, `teleport`, `forestMove`, `blackMarket`, `warband`, `heroLevel`, `prodFood`, `prodMana`, `prodAll`, `favoredHunt` (`defAc` yalnız Şehir kademesinden). Sınıfların devlet/kurum spec'ine.
+32. **Ejderha seyrek ölüyor:** ittifak 8 → 3, ölüm 8 → 2 (16 dünya); haraç +%22. Uyanış canı en güçlü iki ordunun o günkü gücüne göre ölçülüyor; eskiden ağaç uyanıştan sonra orduları büyütüyordu, şimdi yalnız kademe (Şehir: efsun, mithril, AC +2). v3'e uygun olabilir (oyuncuya yer kalır), ama ejderha ünü 4b/4c'yi besliyordu; izlenmeli.
+33. **Kasaba yangını 2,3 kat** (202 → 458; büyük olay): taş konak ve taş sur Kasaba kademesine bağlandı, köyler ve kamplar ahşap kalıyor.
+34. **Erken yıllar hızlandı:** araştırmacı işi yok (iş gücünün ~%17'si), I. çağ yapıları baştan açık, kademe yalnız nüfusla. İlk on yılda nüfus +%44, yerleşim +%43, yaşayan kahraman 2,6 kat; 30. yıldan sonra f1b-2 düzeyinde (60. yıl nüfus −%4, yerleşim −%8).
+35. **Gerginlik +%54** (399 → 616), antlaşma +%47: kademe ihtiyaçlarından (yeni kademede 5 yıl). Başlayan savaş benzer; çöküş 98 → 130, bölünme 13 → 18, Kutsal Sefer 23 → 32: savunma zayıfladı (sınıf etkileri yok, kale yalnız Şehir başkentte, taş sur Kasaba'da).
+36. **Kütüphane ve lonca salonunun ekonomik etkisi kalmadı** (araştırma ve verim düğümleriydi). Kütüphaneyi yalnız kahramanlar kullanıyor (`Will` "library" hedefi); lonca salonu boş bir yapı.
+37. **Göç %64 azaldı** (3103 → 1128): mevsimsiz ambarlar medeniyetler arasında refah farkı yaratmıyor.
+38. **Fener kulesi yalnız Şehir kademesindeki limanlarda** (eskiden Deniz Ticareti bilen her liman); kadırga Şehir başkentiyle (60. yılda filo −%18).
+39. **Takvim geçici:** yıl hâlâ 120 gün, tarih "Yıl N, Gün D"; 40 günlük takvim sonraki adım. Han defteri 30 günlük dönem (`InnBook.Period`); kahraman maaşı ve hedef seçimi 30 günde bir.
+40. **Kademe eşikleri sabit** (12 / 40 / 100; histerezis %85). Başkentlerin %33'ü 20. yılda, %87'si 60. yılda Şehir; Şehir kapıları (kadırga, efsun, kale) geç yıllarda neredeyse herkeste.
 
 ## Devam için
 
-1. #4 kronik zinciri.
-2. Faz 2: Godot gözlemci harita. `FD.Macro`'yu Godot projesine bağla.
+1. 40 günlük takvim (sonraki adım; yıl uzunluğu ve "Gün D" biçimi).
+2. Sınıfların devlet/kurum spec'i (#31).
+3. #4 kronik zinciri.
+4. Faz 2: Godot gözlemci harita. `FD.Macro`'yu Godot projesine bağla.

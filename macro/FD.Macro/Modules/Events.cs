@@ -9,9 +9,13 @@ namespace FD.Macro;
 
 public static class Events
 {
-    // hekimlik bilgisi, sunak ve sınıf şifası kalıcı korur; iksirli şifa evi salgını önler, salgın sırasında iksir harcanır (plaguePotions)
+    // hekimlik bilgisi (Faz 1b-3: Kasaba kademesindeki medeniyet), sunak ve sınıf şifası kalıcı korur; iksirli şifa evi salgını
+    // önler, salgın sırasında iksir harcanır (plaguePotions)
     private static double Medicine(Sim s, Civ c, Settlement st) =>
-        (s.Has(c, "medicine") ? 0.45 : 0) + ((st.Workshops.Get("apothecary") ?? 0) > 0 && s.St(c, "potion") >= 2 ? 0.2 : 0) + (J.T(st.Civics.Get("temple")) ? 0.1 : 0) + JsMath.Min(0.3, s.E(c, "healBack") * 0.3);
+        (s.CivAt(c, Gate.MEDICINE) ? 0.45 : 0) + ((st.Workshops.Get("apothecary") ?? 0) > 0 && s.St(c, "potion") >= 2 ? 0.2 : 0) + (J.T(st.Civics.Get("temple")) ? 0.1 : 0) + JsMath.Min(0.3, s.E(c, "healBack") * 0.3);
+
+    /// <summary>Faz 1b-3: yangın olasılığı çarpanı: eski kuru yaz ×2'nin yıllık ortalaması ((2 + 1 + 1 + 1) / 4)</summary>
+    public const double FIRE_AVG = 1.25;
 
     /// <summary>TS literal <c>[24, 55, 120, 230]</c> (crowding thresholds by tier).</summary>
     private static readonly double[] CROWD = { 24, 55, 120, 230 };
@@ -46,7 +50,7 @@ public static class Events
             if ((P < 28 && hl < 8) || P < 14 || (st.PlagueImmune ?? 0) > s.Day) continue;
             double crowded = P > CROWD[st.Tier] * 0.85 ? 1.6 : 1;
             double shanty = 1 + JsMath.Min(2.5, (hl / P) * 4);
-            double chance = 0.0035 * (P / 40) * crowded * shanty * (1 - JsMath.Min(0.85, Medicine(s, c, st))) * (st.Starving > 0 ? 2 : 1) * (Gear.IsCold(s, c) ? 1.3 : 1);
+            double chance = 0.0035 * (P / 40) * crowded * shanty * (1 - JsMath.Min(0.85, Medicine(s, c, st))) * (st.Starving > 0 ? 2 : 1);
             if (s.Rng.Chance(chance)) StartPlague(s, st, hl >= 6 ? $"Sur dışındaki barakalarda {J.S(hl)} kişi üst üste yaşıyordu" : "Kalabalık sokaklar ve kirli kuyular");
         }
         // yayılma: ticaret yolları ve yakın komşular
@@ -65,20 +69,19 @@ public static class Events
                 if (s.Rng.Chance(0.12 * (1 - prot))) StartPlague(s, o, $"{Tr.Ek(st.Name, "dan")} gelen yolcular hastalığı taşıdı");
             }
         }
-        // --- kasaba yangını: ahşap evler, kuru yaz
+        // --- kasaba yangını: ahşap evler (Faz 1b-3: mevsim yok; eski kuru yaz ×2'nin yıllık ortalaması ×1,25)
         foreach (var st in alive)
         {
             double wood = (st.Civics.Get("hut") ?? 0) + (st.Civics.Get("house") ?? 0), stone = st.Civics.Get("stonehouse") ?? 0;
             if (wood < 5) continue;
-            double summer = s.Season == 1 ? 2 : 1;
-            double chance = 0.0028 * summer * (wood / (wood + stone * 2)) * (J.T(st.Civics.Get("stonewall")) ? 0.8 : 1);
+            double chance = 0.0028 * FIRE_AVG * (Economy.Drought(s) ? 2 : 1) * (wood / (wood + stone * 2)) * (J.T(st.Civics.Get("stonewall")) ? 0.8 : 1);
             if (!s.Rng.Chance(chance)) continue;
             double burnt = JsMath.Min(JsMath.Max(2, JsMath.Round(wood / 4)), 2 + s.Rng.Int(0, 4));
             st.BurnedHouses = (st.BurnedHouses ?? 0) + burnt; st.BurnedAt = s.Day;
             double dead = s.Rng.Chance(0.5) ? s.Rng.Int(1, 2) : 0;
             if (J.T(dead)) s.RemovePop(st, dead);
             s.Metric("townFire");
-            s.Log("world", $"{Tr.Ek(st.Name, "da")} yangın çıktı: {J.S(burnt)} ev kül oldu{(J.T(dead) ? $", {J.S(dead)} kişi öldü" : "")}.", civ: st.Civ, tile: st.Tile, major: true, cause: s.Season == 1 ? "Kurak yaz, ahşap çatılar" : "Devrilen bir kandil, sık ahşap evler");
+            s.Log("world", $"{Tr.Ek(st.Name, "da")} yangın çıktı: {J.S(burnt)} ev kül oldu{(J.T(dead) ? $", {J.S(dead)} kişi öldü" : "")}.", civ: st.Civ, tile: st.Tile, major: true, cause: Economy.Drought(s) ? "Kuraklık, kupkuru ahşap çatılar" : "Devrilen bir kandil, sık ahşap evler");
         }
         // --- barakalar: konutu yetmeyen halk sur dışında yaşar; yangın riski, iç göç
         foreach (var st in alive)
@@ -96,7 +99,7 @@ public static class Events
             }
             if (hl < 4) continue;
             // baraka yangını
-            if (s.Rng.Chance(0.004 * JsMath.Min(3, hl / 8) * (s.Season == 1 ? 2 : 1)))
+            if (s.Rng.Chance(0.004 * JsMath.Min(3, hl / 8) * FIRE_AVG))
             {
                 double dead = s.Rng.Chance(0.4) ? 1 : 0;
                 if (J.T(dead)) s.RemovePop(st, dead);
