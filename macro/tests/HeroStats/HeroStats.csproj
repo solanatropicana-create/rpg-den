@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Kahraman ölçüm konsolu (Faz 1 A3a): birkaç seed × N yıl koşar; doğuş seviyesi (on yıllık), yaşayanların ve
+    ölenlerin seviye dağılımı, efsane, ölüm/emeklilik, dünya başına en yüksek seviye, ad çakışması ve örnek destanlar.
+    FD.Macro kaynaklarını doğrudan derler (ProjectReference değil), başka derlemelerle FD.Macro/obj için yarışmaz.
+    Run from macro/:
+      dotnet build tests/HeroStats -c Release 2>&1 | grep -E "error|Build succeeded"
+      dotnet tests/HeroStats/bin/Release/net8.0/HeroStats.dll OPTIONS
+    OPTIONS (each written with two leading dashes): seeds 1-16 | years 60 | jobs 2 | epitaphs 3 | names 24 | det | tr
+      seeds/years/jobs: which worlds, how long, how many in parallel; epitaphs/names: print samples;
+      det: run every seed twice and compare world hashes every 10 years; tr: Turkish suffix eyeball check.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>HeroStats</RootNamespace>
+    <AssemblyName>HeroStats</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219;CS8321</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../FD.Macro/**/*.cs" Exclude="../../FD.Macro/bin/**;../../FD.Macro/obj/**" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

@@ -15,6 +15,8 @@ public sealed class UnitStats
     public double Atk;
     public List<double> Dmg;     // [n, sides, bonus]
     public double? Attacks;
+    /// <summary>Faz 1 B2: tur başı yenilenme (trol), nefes silahı zarı ve hedef sayısı (ejderha)</summary>
+    public double? Regen, Breath, BreathN;
 
     /// <summary>TS passes <c>UNITS.x</c> (UnitDef) where a UnitStats is expected (structural typing): same fields, Dmg list shared.</summary>
     public static implicit operator UnitStats(UnitDef d) =>
@@ -22,7 +24,7 @@ public sealed class UnitStats
 
     /// <summary>TS passes <c>MONSTERS.x</c> (MonsterDef) where a UnitStats is expected: same fields, Dmg list shared.</summary>
     public static implicit operator UnitStats(MonsterDef d) =>
-        d == null ? null : new UnitStats { Name = d.Name, Hp = d.Hp, Ac = d.Ac, Atk = d.Atk, Dmg = d.Dmg, Attacks = d.Attacks };
+        d == null ? null : new UnitStats { Name = d.Name, Hp = d.Hp, Ac = d.Ac, Atk = d.Atk, Dmg = d.Dmg, Attacks = d.Attacks, Regen = d.Regen, Breath = d.Breath, BreathN = d.BreathN };
 }
 
 /// <summary>TS <c>Combatant</c>: one fighter inside a battle (transient; not part of World).</summary>
@@ -47,6 +49,14 @@ public sealed class Combatant
     public bool? Rage;
     public double? Temp;
     public int? Grp;             // ortak saldırıda hangi gruba ait (Replay.groups dizini)
+    /// <summary>bu savaşanı yere seren (Faz 1 A3a: katil ve önder öldürme kaydı); meteorla düşende null</summary>
+    public Combatant KilledBy;
+    /// <summary>Faz 1 B2: tur başında kapanan yara (trol); ateş yarası (Burned) bir sonraki tur başında yenilenmeyi durdurur</summary>
+    public double? Regen;
+    public bool? Burned;
+    /// <summary>Faz 1 B2: nefes silahı (ejderha): zar sayısı (d6), en çok hedef, hazır mı (her tur 1/3 olasılıkla dolar)</summary>
+    public double? Breath, BreathN;
+    public bool? BreathReady;
 
     /// <summary>TS <c>{ ...c }</c> (shallow copy: Dmg, Uses and Hero are shared like in JS).</summary>
     public Combatant Clone() => (Combatant)MemberwiseClone();
@@ -89,18 +99,24 @@ public static class Combat
     public static Combatant Unit(UnitStats u, string side, string kind, double bonusHp = 0, double bonusAtk = 0)
     {
         double hp = JsMath.Max(1, u.Hp + bonusHp);
-        return new Combatant { Name = u.Name, Side = side, Hp = hp, MaxHp = hp, Ac = u.Ac, Atk = u.Atk + bonusAtk, Dmg = new List<double>(u.Dmg), Attacks = u.Attacks ?? 1, Kind = kind, Uses = new JsObj<double>(), Kills = 0, Boss = kind == "boss" };
+        var c = new Combatant { Name = u.Name, Side = side, Hp = hp, MaxHp = hp, Ac = u.Ac, Atk = u.Atk + bonusAtk, Dmg = new List<double>(u.Dmg), Attacks = u.Attacks ?? 1, Kind = kind, Uses = new JsObj<double>(), Kills = 0, Boss = kind == "boss" };
+        // Faz 1 B2: trol yenilenmesi, ejderha nefesi (savaşa nefesi dolu girer)
+        if ((u.Regen ?? 0) > 0) c.Regen = u.Regen;
+        if ((u.Breath ?? 0) > 0) { c.Breath = u.Breath; c.BreathN = u.BreathN ?? 6; c.BreathReady = true; }
+        return c;
     }
 
-    /// <summary>D&amp;D yeterlilik bonusu: seviye 5'ten itibaren 3, yoksa 2.</summary>
-    public static double ProfBonus(int level) => level >= 5 ? 3 : 2;
+    /// <summary>D&amp;D yeterlilik bonusu: Sv1–4 2, Sv5–8 3, Sv9–10 4.</summary>
+    public static double ProfBonus(int level) => level >= 9 ? 4 : level >= 5 ? 3 : 2;
 
-    /// <summary>Kahramanın savaş hâli: sınıf zarı, birincil stat modu, ek saldırı, özel yetenek hakları (uses).</summary>
+    /// <summary>Kahramanın savaş hâli: sınıf zarı, birincil stat modu, ek saldırı, özel yetenek hakları (uses).
+    /// Sv5: ateş topu / iki saldırı. Sv9: sınıfa göre ölçülü bir güç (<see cref="Sv9Power"/>).</summary>
     public static Combatant HeroCombatant(Hero h, string side)
     {
         var def = D.HERO_CLASSES[h.Cls];
         double pm = Rng.Mod(J.N(h.Stats.Get(def.Primary)));
-        double atk = ProfBonus(h.Level) + pm + (h.Bonus?.Atk ?? 0);
+        bool sv9 = h.Level >= 9;
+        double atk = ProfBonus(h.Level) + pm + (h.Bonus?.Atk ?? 0) + (sv9 && (h.Cls == "rogue" || h.Cls == "ranger" || h.Cls == "barbarian") ? 1 : 0);
         var dmg = new List<double> { def.Dmg[0], def.Dmg[1], pm };
         if (h.Cls == "wizard") dmg = new List<double> { h.Level >= 5 ? 2 : 1, 10, 0 };
         return new Combatant
@@ -108,24 +124,39 @@ public static class Combat
             Name = h.Name, Side = side, Hp = h.Hp, MaxHp = h.MaxHp, Ac = h.Ac, Atk = atk, Dmg = dmg,
             Attacks = (h.Cls == "fighter" || h.Cls == "paladin" || h.Cls == "barbarian" || h.Cls == "ranger") && h.Level >= 5 ? 2 : 1,
             Hero = h, Kind = "hero",
-            Uses = new JsObj<double> { ["secondWind"] = 1, ["burning"] = 1, ["fireball"] = h.Level >= 5 ? 1 : 0, ["cure"] = 2, ["smite"] = 2, ["wild"] = 1, ["rage"] = 1 },
+            Uses = new JsObj<double>
+            {
+                ["secondWind"] = sv9 && h.Cls == "fighter" ? 2 : 1, ["burning"] = 1, ["fireball"] = h.Level >= 5 ? (sv9 ? 2 : 1) : 0,
+                ["cure"] = sv9 && (h.Cls == "cleric" || h.Cls == "druid") ? 3 : 2, ["smite"] = sv9 && h.Cls == "paladin" ? 3 : 2, ["wild"] = 1, ["rage"] = 1,
+            },
             Kills = 0,
         };
     }
+
+    /// <summary>Sv9'da kazanılan sınıf gücünün adı (seviye atlama satırı için).</summary>
+    public static string Sv9Power(string cls) => cls switch
+    {
+        "fighter" => "Artık savaşta iki kez derin nefes alabiliyor (Second Wind ×2).",
+        "wizard" => "Artık bir savaşta iki ateş topu patlatabiliyor.",
+        "cleric" => "Artık bir savaşta üç kez yara sarabiliyor.",
+        "druid" => "Artık bir savaşta üç kez yara sarabiliyor.",
+        "paladin" => "Artık bir savaşta üç kez İlahi Çarpış indirebiliyor.",
+        _ => "Artık rakiplerini daha kolay vuruyor (+1 saldırı).",
+    };
 
     /// <summary>Kahraman zırh sınıfı (sınıf, dex modu, seviye).</summary>
     public static double HeroAc(string cls, double dex, int level)
     {
         switch (cls)
         {
-            case "fighter": return 17 + (level >= 3 ? 1 : 0);
-            case "paladin": return 18;
-            case "cleric": return 16;
-            case "rogue": return 11 + dex;
-            case "ranger": return 13 + JsMath.Min(2, dex);
-            case "druid": return 13 + JsMath.Min(2, dex);
-            case "barbarian": return 12 + dex;
-            default: return 13 + dex; // wizard: mage armor
+            case "fighter": return 17 + (level >= 3 ? 1 : 0) + (level >= 7 ? 1 : 0);
+            case "paladin": return 18 + (level >= 7 ? 1 : 0);
+            case "cleric": return 16 + (level >= 7 ? 1 : 0);
+            case "rogue": return 11 + dex + (level >= 7 ? 1 : 0);
+            case "ranger": return 13 + JsMath.Min(2, dex) + (level >= 7 ? 1 : 0);
+            case "druid": return 13 + JsMath.Min(2, dex) + (level >= 7 ? 1 : 0);
+            case "barbarian": return 12 + dex + (level >= 7 ? 1 : 0);
+            default: return 13 + dex + (level >= 7 ? 1 : 0); // wizard: mage armor
         }
     }
 
@@ -153,6 +184,10 @@ public static class Combat
             if (hc == "rogue" || hc == "paladin" || hc == "barbarian") extra = 1.4;
             dpr += avg * hit * c.Attacks * extra;
             ehp += c.Hp * (1 + (c.Ac - 12) * 0.08) * (hc == "barbarian" ? 1.5 : 1);
+            // Faz 1 B2: nefes silahı (ortalama üç turda bir, en çok 6 hedef; kurtarma zarı ve boşa giden hasar payı)
+            // ve yenilenme (savaş boyunca kapanan yaraların karşılığı etkin can)
+            if ((c.Breath ?? 0) > 0) dpr += c.Breath.Value * 3.5 * 0.82 * JsMath.Min(c.BreathN ?? 6, 6) / 3 * 0.5;
+            if ((c.Regen ?? 0) > 0) ehp += c.Regen.Value * 4 * (1 + (c.Ac - 12) * 0.08);
         }
         return Math.Sqrt(dpr * ehp);
     }
@@ -191,6 +226,15 @@ public static class Combat
     /// <summary>JS <c>`${HERO_CLASS_TR[cls]}`</c> ("undefined" when missing).</summary>
     private static string ClassTr(string cls) => D.HERO_CLASS_TR.TryGet(cls, out var t) ? t : "undefined";
 
+    /// <summary>Faz 1 B2: nefes silahına karşı kurtarma zarı (Dex) olasılığı: askerler %30; kahramanlar %35 + Dex modu × %5,
+    /// hırsız ve korucu (kaçınma) +%15; en çok %75.</summary>
+    public static double BreathSave(Combatant t)
+    {
+        if (t.Hero == null) return 0.3;
+        double p = 0.35 + Rng.Mod(J.N(t.Hero.Stats.Get("dex"))) * 0.05 + (t.Hero.Cls == "rogue" || t.Hero.Cls == "ranger" ? 0.15 : 0);
+        return JsMath.Max(0.1, JsMath.Min(0.75, p));
+    }
+
     /// <summary>Savaşı tur tur çözer (meteor, kahraman yetenekleri, moral/bozgun, süre dolması) ve tekrarı içeren Battle kaydını döndürür.</summary>
     public static Battle ResolveBattle(Rng rng, List<Combatant> A, List<Combatant> B, BattleOpts o)
     {
@@ -217,15 +261,35 @@ public static class Combat
             var foes = Alive(side == "A" ? "B" : "A");
             int killed = 0;
             var ts = new List<int>(); var vs = new List<double>(); var dds = new List<List<double>>();
-            foreach (var f in foes) { var r = rng.Roll(4, 6); double d = SumOf(r); f.Hp -= d; ts.Add(idx[f]); vs.Add(d); dds.Add(r); if (f.Hp <= 0) killed++; }
+            foreach (var f in foes) { var r = rng.Roll(4, 6); double d = SumOf(r); f.Hp -= d; if (f.Regen != null) f.Burned = true; ts.Add(idx[f]); vs.Add(d); dds.Add(r); if (f.Hp <= 0) killed++; }
             ev.Add(new ReplayEv { R = 0, Sp = "meteor", A = -1, Ts = ts, Vs = vs, Dds = dds, Ds = 6, D = side == "A" ? 0 : 1 });
             lines.Add(new BattleLine { T = $"Gökten meteorlar yağdı! {killed} düşman ilk anda düştü.", Crit = true });
         }
 
+        bool regenLogged = false;
         for (int round = 1; round <= maxRounds && routed == null; round++)
         {
             rounds = round;
             ev.Add(new ReplayEv { R = round, Sp = "round", AA = Alive("A").Count, AB = Alive("B").Count });
+            // Faz 1 B2: tur başında troller yaralarını kapatır (bir önceki turda ateşle yananlar kapatamaz),
+            // ejderhanın nefesi 1/3 olasılıkla yeniden dolar (D&D'deki 5–6 yenilenmesi)
+            for (int ri = 0; ri < all.Count; ri++)
+            {
+                var u = all[ri];
+                if (u.Hp <= 0 || J.T(u.Fled)) continue;
+                if ((u.Regen ?? 0) > 0)
+                {
+                    if (J.T(u.Burned)) u.Burned = null;
+                    else if (u.Hp < u.MaxHp)
+                    {
+                        double v = JsMath.Min(u.Regen.Value, u.MaxHp - u.Hp);
+                        u.Hp += v;
+                        ev.Add(new ReplayEv { R = round, Sp = "regen", A = ri, T = ri, V = v, Hp = u.Hp });
+                        if (!regenLogged) { regenLogged = true; lines.Add(new BattleLine { T = $"{u.Name} yaralarını kapatıyor; ateş değmeyen yara iz bırakmıyor." }); }
+                    }
+                }
+                if ((u.Breath ?? 0) > 0 && !J.T(u.BreathReady) && round > 1 && rng.Chance(1.0 / 3)) u.BreathReady = true;
+            }
             var order = rng.Shuffle(J.Filter(all, c => c.Hp > 0 && !J.T(c.Fled)));
             for (int oi = 0; oi < order.Count; oi++)
             {
@@ -236,6 +300,31 @@ public static class Combat
                 var foes = Alive(foeSide);
                 if (foes.Count == 0) break;
                 var friends = Alive(c.Side);
+
+                // Faz 1 B2: ejderha nefesi: hazırsa saldırı yerine rastgele en çok BreathN düşmana alev
+                // (kurtarma zarını tutan yarı hasar alır; ateş trolün yenilenmesini durdurur)
+                if (J.T(c.BreathReady) && c.Hero == null)
+                {
+                    c.BreathReady = false;
+                    var targets = J.Slice(rng.Shuffle(J.Slice(foes)), 0, (int)(c.BreathN ?? 6));
+                    int killed = 0;
+                    var ts = new List<int>(); var vs = new List<double>(); var sv = new List<bool>(); var dds = new List<List<double>>();
+                    foreach (var t in targets)
+                    {
+                        var r = rng.Roll(c.Breath ?? 0, 6);
+                        dds.Add(r);
+                        double d = SumOf(r);
+                        bool save = rng.Chance(BreathSave(t));
+                        if (save) d = Math.Floor(d / 2);
+                        t.Hp -= d;
+                        if (t.Regen != null) t.Burned = true;
+                        ts.Add(idx[t]); vs.Add(d); sv.Add(save);
+                        if (t.Hp <= 0) { killed++; c.Kills++; t.KilledBy = c; }
+                    }
+                    ev.Add(new ReplayEv { R = round, Sp = "breath", A = ci, Ts = ts, Vs = vs, Sv = sv, Dds = dds, Ds = 6 });
+                    lines.Add(new BattleLine { T = $"{c.Name} ateş soludu! {targets.Count} hedef alevlere boğuldu, {killed} ölü.", Crit = true });
+                    continue;
+                }
 
                 if (c.Hero != null)
                 {
@@ -290,8 +379,9 @@ public static class Combat
                             bool save = rng.Chance(0.35);
                             if (save) d = Math.Floor(d / 2);
                             t.Hp -= d;
+                            if (t.Regen != null) t.Burned = true;   // Faz 1 B2: ateş trolün yenilenmesini durdurur
                             ts.Add(idx[t]); vs.Add(d); sv.Add(save);
-                            if (t.Hp <= 0) { killed++; c.Kills++; }
+                            if (t.Hp <= 0) { killed++; c.Kills++; t.KilledBy = c; }
                         }
                         if (fire) c.Uses.Set("fireball", J.N(c.Uses.Get("fireball")) - 1); else c.Uses.Set("burning", J.N(c.Uses.Get("burning")) - 1);
                         ev.Add(new ReplayEv { R = round, Sp = fire ? "fireball" : "burning", A = ci, Ts = ts, Vs = vs, Sv = sv, Dds = dds, Ds = 6 });
@@ -349,6 +439,7 @@ public static class Combat
                     if (target.Hp <= 0)
                     {
                         c.Kills++;
+                        target.KilledBy = c;
                         if (target.Hero != null) lines.Add(new BattleLine { T = $"{target.Name} ({ClassTr(target.Hero.Cls)}) {c.Name} tarafından yere serildi!", Crit = true });
                         else if (J.T(target.Boss)) lines.Add(new BattleLine { T = $"{c.Name}, {Tr.Ek(target.Name, "i")} devirdi!", Crit = true });
                         else if (c.Hero != null && !heroLogged.Contains(c.Name)) { heroLogged.Add(c.Name); lines.Add(new BattleLine { T = $"{c.Name} ilk {J.TrLower(target.Name)} kurbanını aldı." }); }

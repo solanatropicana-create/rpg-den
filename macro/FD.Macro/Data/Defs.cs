@@ -128,6 +128,10 @@ public sealed class MonsterDef
     public double Hp, Ac, Atk;
     public List<double> Dmg;
     public double? Attacks;
+    /// <summary>Faz 1 B2: her tur başında kapanan yara (trol yenilenmesi; ateş yarası bir tur durdurur)</summary>
+    public double? Regen;
+    /// <summary>Faz 1 B2: nefes silahı (ejderha): zar sayısı (d6) ve en çok hedef; 1/3 olasılıkla yeniden dolar</summary>
+    public double? Breath, BreathN;
 }
 
 public sealed class TechDef

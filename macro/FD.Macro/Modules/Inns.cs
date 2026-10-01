@@ -9,7 +9,7 @@ namespace FD.Macro;
 
 public static class Inns
 {
-    public const double INN_POOL = 6;
+    public const double INN_POOL = 4;
     public const double CONTRACT_YEARS = 5;
     public const double MAX_INN_HEROES = 2;
 
@@ -37,8 +37,7 @@ public static class Inns
         string race = s.Rng.Chance(0.15) ? s.Rng.Pick(MIXED_RACES) : s.Rng.Pick(races.Count > 0 ? races : HUMAN_ONLY);
         string cls = s.Rng.Pick(D.HERO_CLASS_IDS);
         bool teacher = inn.Teacher != null && J.Find(s.W.Heroes, h0 => h0.Id == inn.Teacher)?.State == "retired";
-        int level = s.Rng.Chance(0.45) ? 1 : s.Rng.Chance(0.6) ? 2 : 3;
-        level = J.I(JsMath.Min(5, level + Math.Floor(s.Year / 8.0) + (teacher ? 1 : 0)));
+        int level = Heroes.BirthLevel(s, teacher);
         var h = Heroes.MakeHero(s, (race, cls, level, inn.Tile, inn.Id, true));
         s.Metric("innHeroSpawn");
         s.Log("inn", $"{InnName(inn)} kapısından bir yabancı girdi: {s.HeroTitle(h)}.", tile: inn.Tile, cause: $"{Heroes.UpperFirst(h.Bio)}{(teacher ? " Emekli bir kahramanın yanında yetişti." : "")}");
@@ -57,8 +56,8 @@ public static class Inns
             var inn = inns[ii];
             if (!inn.Alive) continue;
             var pool = InnPool(s, inn);
-            // yılda ~1–2; ünlü hana kahraman daha çok uğrar
-            double p = (pool.Count == 0 ? 0.1 : pool.Count < INN_POOL ? 0.045 : 0) * (0.8 + (inn.Fame / 100) * 0.35);
+            // yılda ~0.5–1; ünlü hana kahraman daha çok uğrar (Faz 1: eskisinin yarısı)
+            double p = (pool.Count == 0 ? 0.03 : pool.Count < INN_POOL ? 0.012 : 0) * (0.8 + (inn.Fame / 100) * 0.35) * Heroes.Demand(s, inn.Tile, null);
             if (s.Rng.Chance(p)) SpawnInnHero(s, inn);
             foreach (var h in pool)
             {
@@ -139,6 +138,7 @@ public static class Inns
         h.Contract = new HeroContract { Civ = c.Id, Since = s.Day, Until = s.Day + CONTRACT_YEARS * Sim.YEAR, Paid = b.Gold };
         h.Hired = (h.Hired ?? 0) + 1;
         Will.Note(s, h, $"{c.Name} ile {J.S(CONTRACT_YEARS)} yıllık sözleşme ({J.S(b.Gold)} altın)");
+        Lore.Deed(s, h, "contract", $"{c.Name} ile {Lore.Num(CONTRACT_YEARS)} yıllık sözleşme imzaladı", h.Pos, c.Name);
         s.Metric("innHire"); s.Metric($"innHire_{J.S(c.Id)}");
         int rivals = a.Bids.Count - 1;
         s.Log("inn", $"{InnName(inn)}'nda açık artırma: {c.Name}, {s.HeroTitle(h)} için {J.S(b.Gold)} altınla {J.S(CONTRACT_YEARS)} yıllık sözleşme imzaladı.", civ: c.Id, tile: inn.Tile, major: true, cause: rivals > 0 ? $"{J.S(rivals)} rakip teklif geride kaldı" : "Tek teklif");
@@ -200,10 +200,11 @@ public static class Inns
         if (inn.Gold < 40) return;
         var mine = J.Filter(w.Quests, q => q.Open && q.Civ == -1 && q.Inn == inn.Id);
         if (mine.Count >= Math.Max(1, inn.Level)) return;
-        var cp = J.At(J.Sort(J.Filter(w.Camps, c => c.Alive && !J.T(w.Tiles[c.Tile].Isle) && s.G.Dist(c.Tile, inn.Tile) <= 12 && !J.Some(w.Quests, q => q.Open && q.Camp == c.Id && q.Civ == -1)),
+        // ejderhanın ilanı ayrı (Dragon.Bounties: büyük ödül)
+        var cp = J.At(J.Sort(J.Filter(w.Camps, c => c.Alive && c.Kind != "dragon" && !J.T(c.Hidden) && !J.T(w.Tiles[c.Tile].Isle) && s.G.Dist(c.Tile, inn.Tile) <= 12 && !J.Some(w.Quests, q => q.Open && q.Camp == c.Id && q.Civ == -1)),
             (a, b) => s.G.Dist(a.Tile, inn.Tile) - s.G.Dist(b.Tile, inn.Tile)), 0);
         if (cp == null) return;
-        double @base = 30 + (cp.Kind == "hobgoblin" ? 25 : cp.Kind == "bugbear" || cp.Kind == "pirate" ? 35 : 0);
+        double @base = 30 + (cp.Kind == "hobgoblin" ? 25 : cp.Kind == "bugbear" || cp.Kind == "pirate" ? 35 : cp.Kind == "troll" ? 50 : 0);
         double bounty = JsMath.Round(JsMath.Min(inn.Gold * 0.35, @base * (1 + (Math.Max(1, inn.Level) - 1) * 0.4)));
         inn.Gold -= bounty;
         w.Quests.Add(new Quest { Id = s.Id(), Civ = -1, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn.Id, Expires = s.Day + 3 * Sim.YEAR });
@@ -221,12 +222,12 @@ public static class Inns
         foreach (var o in s.W.Civs)
         {
             if (!o.Alive || o.Id == c.Id) continue;
-            s.SetMod(o.Id, c.Id, "innbreak", $"{c.Name} {Tr.Ek(InnName(inn), "i")} bastı: misafir hakkı çiğnendi", pen, 0.05);
+            s.SetMod(o.Id, c.Id, "innbreak", $"{c.Name} {Lore.Ek(InnName(inn), "i")} bastı: misafir hakkı çiğnendi", pen, 0.05);
             if (s.E(o, "crusade") > 0) s.SetMod(o.Id, c.Id, "innbreak_holy", "Han baskını paladinlerin öfkesini alevlendirdi", -15, 0.03, false);
         }
         c.InnBanUntil = s.Day + 5 * Sim.YEAR;
         s.Metric("innBreak");
-        s.Log("inn", $"{c.Name} {Tr.Ek(InnName(inn), "i")} bastı; bütün medeniyetler onlara sırt çevirdi. Artık \"Han Bozan\" olarak anılıyorlar.", civ: c.Id, tile: inn.Tile, major: true, cause: $"Misafir hakkı çiğnendi: ilişkiler {J.S(pen)}, 5 yıl hanlardan kahraman kiralayamazlar");
+        s.Log("inn", $"{c.Name} {Lore.Ek(InnName(inn), "i")} bastı; bütün medeniyetler onlara sırt çevirdi. Artık \"Han Bozan\" olarak anılıyorlar.", civ: c.Id, tile: inn.Tile, major: true, cause: $"Misafir hakkı çiğnendi: ilişkiler {J.S(pen)}, 5 yıl hanlardan kahraman kiralayamazlar");
     }
 
     private static List<Combatant> InnDefenders(Sim s, Inn inn, string side)
@@ -254,7 +255,7 @@ public static class Inns
         if (path == null) return;
         var pop = Agents.DrawSoldiers(s, c, n);
         s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 0.7, Troops = n, Pop = pop, From = cap.Id, To = inn.Id, Purpose = "innraid" });
-        s.Log("war", $"{c.Name} karanlık bir sefer düzenledi: {J.S(n)} asker {Tr.Ek(InnName(inn), "a")} yürüyor.", civ: c.Id, tile: cap.Tile, major: true, cause: "Patronları altın ve kurban istiyor");
+        s.Log("war", $"{c.Name} karanlık bir sefer düzenledi: {J.S(n)} asker {Lore.Ek(InnName(inn), "a")} yürüyor.", civ: c.Id, tile: cap.Tile, major: true, cause: "Patronları altın ve kurban istiyor");
     }
 
     /// <summary>Paktçı ordusu hana vardı: misafirlerle savaş, yağma ya da püskürtülme, misafir hakkı çiğnenir.</summary>
@@ -267,7 +268,7 @@ public static class Inns
         var def = InnDefenders(s, inn, "B");
         var b = Combat.ResolveBattle(s.Rng, side, def, new BattleOpts { Id = s.Id(), Day = s.Day, Tile = inn.Tile, Title = $"{InnName(inn)} baskını", SideA = $"{c.Name} askerleri", SideB = $"{InnName(inn)} misafirleri", MoraleA = 0.55, MoraleB = 0.6, TimeoutWinner = "B", CivA = c.Id });
         Agents.RecordBattle(s, b);
-        Agents.SyncHeroes(s, def, b.Winner == "B" ? 90 : 10);
+        Agents.SyncHeroes(s, def, b.Winner == "B" ? 90 : 10, side, c.Name, "inn");
         double dead = J.Filter(side, x => x.Hp <= 0).Count;
         a.Troops = JsMath.Max(0, (a.Troops ?? 0) - dead);
         inn.Raids++;
@@ -278,7 +279,7 @@ public static class Inns
             s.Add(c, "gold", gold);
             InnLife.InnScatter(s, inn, $"{c.Name} askerleri hanı bastı", false);
             InnLife.InnEvent(s, inn, $"{c.Name} askerleri hanı yağmaladı: {J.S(gold)} altın gitti");
-            s.Log("war", $"{c.Name} askerleri {Tr.Ek(InnName(inn), "i")} yağmaladı: {J.S(gold)} altın ve misafirlerin kanı.", civ: c.Id, tile: inn.Tile, battle: b.Id, major: true);
+            s.Log("war", $"{c.Name} askerleri {Lore.Ek(InnName(inn), "i")} yağmaladı: {J.S(gold)} altın ve misafirlerin kanı.", civ: c.Id, tile: inn.Tile, battle: b.Id, major: true);
             var heroes = s.W.Heroes;
             for (int i = 0; i < heroes.Count; i++) { var h = heroes[i]; if (h.Civ == -1 && h.State == "tavern" && h.Tavern == inn.Id) { Will.Note(s, h, $"{c.Name} hanı bastı"); h.Grudge = c.Id; } }
         }
@@ -303,7 +304,7 @@ public static class Inns
         var mons = Monsters.MonsterSide(kind, a.Troops ?? 0, J.T(a.Boss), "B");
         var b = Combat.ResolveBattle(s.Rng, def, mons, new BattleOpts { Id = s.Id(), Day = s.Day, Tile = inn.Tile, Title = $"{InnName(inn)} baskını", SideA = $"{InnName(inn)} misafirleri", SideB = Monsters.MonsterName(kind), MoraleA = 0.6, MoraleB = 0.5, TimeoutWinner = "A" });
         Agents.RecordBattle(s, b);
-        Agents.SyncHeroes(s, def, b.Winner == "A" ? 80 : 10);
+        Agents.SyncHeroes(s, def, b.Winner == "A" ? 80 : 10, mons, cp?.Name, "inn");
         a.Troops = J.Filter(mons, x => x.Kind == "monster" && x.Hp > 0).Count;
         a.Boss = J.Some(mons, x => J.T(x.Boss) && x.Hp > 0);
         inn.Raids++;
@@ -316,7 +317,7 @@ public static class Inns
         }
         else
         {
-            foreach (var h in heroes) if (h.State != "dead") Will.Note(s, h, $"{Tr.Ek(InnName(inn), "i")} {J.TrLower(Monsters.MonsterName(kind))} baskınına karşı savundu");
+            foreach (var h in heroes) if (h.State != "dead") Will.Note(s, h, $"{Lore.Ek(InnName(inn), "i")} {J.TrLower(Monsters.MonsterName(kind))} baskınına karşı savundu");
             inn.Fame = JsMath.Min(100, inn.Fame + 3);
             InnLife.InnEvent(s, inn, $"{Monsters.MonsterName(kind)} baskını püskürtüldü{(heroes.Count > 0 ? $" ({string.Join(", ", J.Map(heroes, h => h.Name))})" : "")}");
             s.Log("raid", $"{InnName(inn)} misafirleri {J.TrLower(Monsters.MonsterName(kind))} baskınını püskürttü{(heroes.Count > 0 ? $": {string.Join(", ", J.Map(heroes, h => h.Name))}" : "")}.", tile: inn.Tile, battle: b.Id, major: heroes.Count > 0, cause: $"{cp?.Name ?? "Kamp"} hana yakın");

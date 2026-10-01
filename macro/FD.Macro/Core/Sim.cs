@@ -9,7 +9,7 @@ namespace FD.Macro;
 /// <c>src/sim/sim.ts</c>. Module logic lives in static classes named after the TS files
 /// (Economy, Research, Diplomacy, ...), all taking the Sim as first argument like in TS.
 /// </summary>
-public sealed class Sim
+public sealed partial class Sim
 {
     public const double FOOD_PER_POP = 0.1;
     public const int YEAR = 120;
@@ -70,6 +70,8 @@ public sealed class Sim
         var e = new GameEvent { Id = Id(), Day = W.Day, Kind = kind, Text = text, Cause = cause, Civ = civ, Tile = tile, Battle = battle, Major = major };
         W.Events.Add(e);
         if (W.Events.Count > 2500) W.Events.RemoveRange(0, W.Events.Count - 2500);
+        // kalıcı kronik: büyük olaylar kırpılmadan saklanır (aynı nesne; Events'ten düşse de burada kalır)
+        if (major == true) W.Chronicle.Add(e);
         Metric("ev_" + kind);
         OnEvent?.Invoke(e);
         return e;
@@ -421,8 +423,9 @@ public sealed class Sim
             if (h.Contract != null) { h.Civ = -1; h.Contract = null; Will.ReturnToBase(this, h); }
             else { h.Civ = -1; h.State = "gone"; }
         }
-        foreach (var o in W.Civs) if (o.Id != c.Id) { Rel(o.Id, c.Id).War = null; Rel(c.Id, o.Id).War = null; }
-        Log("death", $"{c.Name} tarihten silindi.", civ: c.Id, major: true);
+        foreach (var o in W.Civs) if (o.Id != c.Id) { Rel(o.Id, c.Id).War = null; Rel(c.Id, o.Id).War = null; Rel(o.Id, c.Id).Pact = null; Rel(c.Id, o.Id).Pact = null; }
+        // B1: son kalesi fethedilen medeniyetin yok oluşu nedeniyle kroniğe düşer (Diplomacy.CapitalFell)
+        Log("death", $"{c.Name} tarihten silindi.", civ: c.Id, cause: c.FallCause, major: true);
     }
 
     public string HeroTitle(Hero h) => $"{Will.HeroLabel(h)} ({D.RACES[h.Race].Name} {HeroClassTr(h.Cls)}, Sv {h.Level})";
@@ -439,6 +442,7 @@ public sealed class Sim
         if (w.Day % 30 == 0) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); }
         if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Research.ClassYearly(this, c); Cp?.Invoke("yearly"); }
         Monsters.CampsTick(this); Cp?.Invoke("camps");
+        Storyteller.Tick(this); Cp?.Invoke("story");   // Faz 1 B2: anlatıcı (gerilim, kriz, rahatlama) ve ejderha
         Heroes.TavernsTick(this); Cp?.Invoke("taverns");
         Inns.InnsTick(this); Cp?.Invoke("inns");
         if (w.Day % 5 == 0) { Heroes.HeroesTick(this); Cp?.Invoke("heroes"); }

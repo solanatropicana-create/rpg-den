@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Save/load equivalence check (DESIGN-FAZ1.md A2): kaydet, yükle, devam et == kesintisiz koşu, gün gün.
+    Compiles the FD.Macro sources directly (not a ProjectReference) so it never races other builds for FD.Macro/obj.
+    From macro/:
+      dotnet build tests/SaveCheck -c Release
+      dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll selftest
+      dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll matrix
+      dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll negative
+      dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll bench
+    Modes and options: see the header of Program.cs and the "Kayıt/yükleme" section of macro/README.md.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>SaveCheck</RootNamespace>
+    <AssemblyName>SaveCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="../../FD.Macro/**/*.cs" Exclude="../../FD.Macro/bin/**;../../FD.Macro/obj/**" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

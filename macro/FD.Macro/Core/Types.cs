@@ -112,6 +112,11 @@ public sealed class Settlement
     public double? Ships;
     public double? Galleys;
     public bool? Overseas;
+    // ---- yükseliş ve çöküş (Faz 1, B1)
+    public int? Founder;          // kuran medeniyet (yerleşim ilk kez el değiştirdiğinde yazılır; null: hiç el değiştirmedi)
+    public double? LostDay;       // son el değiştirdiği gün (fetih ya da bölünme)
+    public int? ClaimBy;          // üzerinde tarihî hakkı olan medeniyet (kurucusu olarak kaybeden ya da elinden ayrılan)
+    public double? ClaimUntil;    // hakkın düştüğü gün
 }
 
 public sealed class RelMod
@@ -131,6 +136,7 @@ public sealed class War
     public double LastArmy;
     public string Goal;
     public int? Ally;
+    public string Kind;          // B1: null (sıradan) | 'reclaim' (tarihî hak) | 'pact' (savunma paktı) | 'crusade' (Kutsal Sefer)
 }
 
 public sealed class Relation
@@ -145,6 +151,7 @@ public sealed class Relation
     public double? Land;
     public double? PeaceDay;
     public double? SeaTry;
+    public double? Pact;         // B1: savunma paktı (imza günü; iki yönde de yazılır)
 }
 
 public sealed class ResearchState
@@ -212,6 +219,12 @@ public sealed class Civ
     public double? InnBanUntil;
     public bool? SeaScout;
     public GearState Gear;
+    // ---- yükseliş ve çöküş (Faz 1, B1)
+    public int? Parent;                  // ayrılarak doğduğu medeniyet
+    public double? LastSecession;        // son bölünme günü (bir yerleşimi ayrıldı ya da kendisi bölünmeyle doğdu)
+    public double? CapitalLostDay;       // başkentini son kaybettiği gün
+    public string FallCause;             // son yerleşimini neden kaybetti (yok oluşun kroniğe düşen nedeni)
+    public double? CrusadeDay;           // kendisine karşı son Kutsal Sefer çağrısının günü
 }
 
 public sealed class HeroGoal
@@ -300,6 +313,27 @@ public sealed class Hero
     public double? Hired;
     public bool? Legend;
     public double? LastGoal;
+    // ---- kimlik ve ilerleme (Faz 1, A3a): Name = "Given Surname"
+    public string Given;                 // ön ad
+    public string Surname;               // soyad ya da lakap (ırka göre havuzdan ya da atadan)
+    public int? Lineage;                 // soyundan geldiği kahramanın id'si
+    public int BirthLevel;               // doğuş seviyesi
+    public double BirthAge;              // yola çıktığı yaş (yıl); yaş = BirthAge + (gün − Born) / 120
+    public double Renown;                // ün: efsanelik seviyeden bağımsız, ünle gelir
+    public List<HeroDeed> Deeds = new(); // kilometre taşları (destanın malzemesi)
+    public string Epitaph;               // ölünce yazılan destan (kronikteki metnin aynısı)
+    public int? DeathTile;               // öldüğü karo
+    public string Killer;                // katili (yalın hâl: "Kırıkdiş Kampı'ndan bir goblin")
+}
+
+/// <summary>Kahramanın kilometre taşı (destanda kullanılır).</summary>
+public sealed class HeroDeed
+{
+    public double Day;
+    public string Kind;          // birth | lineage | firstblood | nat20 | contract | camp | boss | quest | duel | defend | heal | relic | rob | epithet | level | legend | revived | retired | death
+    public string Text;          // yüklemli yan cümle, öznesiz, geçmiş zaman: "Kırıkdiş Kampı'nı yerle bir etti"
+    public int? Tile;
+    public string Of;            // ilgili ad (medeniyet, kamp, yerleşim, rakip): destanda toplamak için
 }
 
 public sealed class Guest
@@ -451,7 +485,10 @@ public sealed class Camp
     public double NextRaid;
     public double Founded;
     public double? ClearedDay;
-    public string Captain;
+    public string Captain;       // korsan kaptanı; ejderha kampında ejderhanın adı (Faz 1 B2)
+    /// <summary>Faz 1 B2: gizli in: yeni kurulan in ilk akınına, bir kâşifin onu görmesine ya da söylentiler yayılana (1 yıl) dek
+    /// bilinmez; kahramanlar, hanlar ve medeniyetler onu hedef alamaz.</summary>
+    public bool? Hidden;
 }
 
 public sealed class IsleInfo
@@ -694,10 +731,89 @@ public sealed class World
     public List<TradeRoute> Routes = new();
     public List<List<Relation>> Relations = new();
     public List<GameEvent> Events = new();
+    /// <summary>Kalıcı kronik: her büyük olay (Major == true) kaydedildiği anda buraya da eklenir ve hiç kırpılmaz
+    /// (<see cref="Events"/> 2500 kayıtta kesilir). Aynı GameEvent nesneleri iki listede paylaşılır.</summary>
+    public List<GameEvent> Chronicle = new();
     public List<Battle> Battles = new();
     public int NextId;
     public double RngState;
     public JsObj<double> Metrics = new();
     public List<IsleInfo> Isles;
     public string SeaProfile;    // 'kita' | 'takimada' | 'buyuk'
+    // ---- anlatıcı ve geç tehdit (Faz 1, B2): ilk günde kurulur (Storyteller.Tick)
+    public StoryState Story;
+    public DragonState Dragon;
+}
+
+// ---- Faz 1, B2: anlatıcı (gerilim bütçesi, kriz ve rahatlama) ve ejderha
+
+/// <summary>Anlatıcının durumu: 2 yıllık kayan pencerede gerilim (ölüm, yangın, kıtlık, baskın), kriz ve rahatlama takvimi.</summary>
+public sealed class StoryState
+{
+    /// <summary>kapanmış gerilim kovaları (her biri 10 gün; son 24 kova = 2 yıl)</summary>
+    public List<double> Buckets = new();
+    /// <summary>açık (bu 10 günün) kovası</summary>
+    public double Bucket;
+    /// <summary>izlenen W.Metrics sayaçlarının son okunan değerleri (gerilim farkla ölçülür)</summary>
+    public JsObj<double> Seen = new();
+    /// <summary>gerilime katılmış son muharebenin id'si</summary>
+    public int LastBattle = -1;
+    /// <summary>son ölçülen pencere toplamı (2 yıl)</summary>
+    public double Tension;
+    /// <summary>art arda sakin geçen gün</summary>
+    public double CalmDays;
+    public double LastCrisis = -9999;
+    public string LastKind;
+    public double Crises;
+    /// <summary>zirveden sonraki rahatlama döneminin sonu (yeni kriz yok)</summary>
+    public double ReliefUntil;
+    /// <summary>rahatlama olayının (bereket ya da şenlik) günü; 0: yok</summary>
+    public double ReliefEvent;
+    public double LastPeak = -9999;
+    /// <summary>dünyanın olağan gerilimi: yerleşim başına gerilimin 4 yıllık üssel ortalaması (zirve buna göre; 0: henüz yok)</summary>
+    public double Base;
+    /// <summary>sert kışın geleceği yıl (0: yok) ve son sert kışın yılı</summary>
+    public double WinterYear;
+    public double LastWinter = -99;
+    /// <summary>"Kızıl Ay" (baskın dalgası) sonu: kamplar daha kalabalık akın eder</summary>
+    public double SurgeUntil;
+    /// <summary>hedef kamp sayısı (3 + yıl/6): bir sonraki kampın en erken günü</summary>
+    public double NextCampSpawn;
+}
+
+/// <summary>Ejderhanın durumu (dünyada bir kez, 18–22. yıllar arasında uyanır). Kampı <see cref="Camp"/> (Kind "dragon").</summary>
+public sealed class DragonState
+{
+    public double WakeDay;
+    /// <summary>ejderhanın kampının id'si; -1: henüz uyanmadı</summary>
+    public int Camp = -1;
+    public string Name;
+    /// <summary>kalıcı yaralar: inde ya da akında aldığı yara günde azar azar kapanır; uyandığı yaşın canı (BaseHp) hazineyle büyür</summary>
+    public double Hp, MaxHp, BaseHp;
+    public double NextRaid;
+    public double Raids;
+    /// <summary>medeniyet → yediği akın sayısı</summary>
+    public JsNumObj<double> Hits = new();
+    /// <summary>medeniyet → haraçla korunduğu son gün</summary>
+    public JsNumObj<double> Paid = new();
+    /// <summary>medeniyet → haracı en son reddettiği yıl</summary>
+    public JsNumObj<double> Refused = new();
+    public double Tributes;
+    /// <summary>ejderhaya karşı ittifakın üyeleri (medeniyet id'leri; sefer bitince boşalır)</summary>
+    public List<int> Alliance = new();
+    public double AllianceTries;
+    public double NextAlliance;
+    /// <summary>aynı anda inde buluşsunlar diye sırayla yola çıkacak ordular</summary>
+    public List<DragonMarch> Marches = new();
+    /// <summary>öldüğü gün (-1: yaşıyor), öldürenler, hazinesi</summary>
+    public double SlainDay = -1;
+    public string SlainBy;
+    public double Hoard;
+}
+
+public sealed class DragonMarch
+{
+    public int Civ;
+    /// <summary>yola çıkış günü; ordusu başka seferdeyse en geç Until'e dek ertelenir</summary>
+    public double Day, Until;
 }

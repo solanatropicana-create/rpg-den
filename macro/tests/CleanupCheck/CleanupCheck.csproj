@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A3b cleanup check (DESIGN-FAZ1.md): persistent chronicle, stolen-tech double count, prodWood / harvest /
+    teleport effects, per-mint income, gold medians, determinism. Runs the real Sim.Step() for N seeds × Y years
+    and prints the numbers. Compiles FD.Macro sources directly (not a ProjectReference) so it never races other
+    builds for FD.Macro/obj. "Before" numbers: build the same Program.cs against a pre-A3b source tree (e.g. the
+    port-exact tag exported with git archive) by passing -p:FdSrc=<that tree>/FD.Macro and a separate output dir;
+    features missing there (World.Chronicle, Economy.MintIncome, the stolenCurrent metric) are detected by reflection.
+    Run from macro/:
+      dotnet build tests/CleanupCheck -c Release
+      dotnet tests/CleanupCheck/bin/Release/net8.0/CleanupCheck.dll 1-4 60 (options: seeds, years, then the
+      determinism flag "det" and a "jobs N" parallelism setting, both written with a double-dash prefix)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CleanupCheck</RootNamespace>
+    <AssemblyName>CleanupCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219;CS8321</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <FdSrc Condition="'$(FdSrc)' == ''">../../FD.Macro</FdSrc>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="$(FdSrc)/Core/*.cs" />
+    <Compile Include="$(FdSrc)/Data/*.cs" />
+    <Compile Include="$(FdSrc)/Js/*.cs" />
+    <Compile Include="$(FdSrc)/Modules/*.cs" />
+    <EmbeddedResource Include="$(FdSrc)/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

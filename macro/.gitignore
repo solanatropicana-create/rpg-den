@@ -1,0 +1,7 @@
+bin/
+obj/
+golden/out/
+tests/jsvectors/data/
+__pycache__/
+*.swp
+reports/runs/

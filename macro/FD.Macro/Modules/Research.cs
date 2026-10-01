@@ -123,6 +123,27 @@ public static class Research
             : top.Why;
     }
 
+    /// <summary>
+    /// Araştırmadan öğrenilen düğüm (casusluk, peri paktı, yağma): Done'a eklenir, etkiler yeniden hesaplanır,
+    /// stolenTech sayılır. Bilinen düğüm yeniden eklenmez. Çalınan düğüm o an araştırılan düğümse araştırma boşa
+    /// gitmez: yeni düğüm hemen seçilir ve birikmiş ilerleme ona aktarılır. (Eskiden aynı düğüm araştırılmaya devam
+    /// eder, bitince Done'a ikinci kez eklenirdi; etkileri iki kez toplanır, çağ sayımı şişerdi.)
+    /// </summary>
+    public static void StealTech(Sim s, Civ c, string id)
+    {
+        if (s.Has(c, id)) return;
+        c.Research.Done.Add(id);
+        s.RecomputeEff(c);
+        s.Metric("stolenTech");
+        if (c.Research.Current != id) return;
+        double carry = c.Research.Progress;
+        c.Research.Current = null;
+        c.Research.Progress = 0;
+        s.Metric("stolenCurrent");
+        ChooseResearch(s, c);
+        if (J.T(c.Research.Current)) c.Research.Progress = carry;
+    }
+
     /// <summary>Tech completion: subclass pick / capstone / effects, logs, then chooseResearch.</summary>
     public static void OnTechDone(Sim s, Civ c, string id)
     {
@@ -254,12 +275,10 @@ public static class Research
             if (cand.Count > 0 && s.Rng.Chance(spy))
             {
                 string t = s.Rng.Pick(cand);
-                c.Research.Done.Add(t);
-                s.RecomputeEff(c);
-                s.Metric("stolenTech");
+                StealTech(s, c, t);
                 bool caught = s.Rng.Chance(0.35);
                 if (caught) s.AddMod(o.Id, c.Id, "spy", "Yakalanan casuslar", -12, -30, 0.02, false);
-                s.Log("class", $"{c.Name} casusları {o.Name}'dan {D.TECH[t].Name} bilgisini çaldı{(caught ? " ama yakalandılar" : "")}.", civ: c.Id, major: true);
+                s.Log("class", $"{c.Name} casusları {Tr.Ek(o.Name, "dan")} {D.TECH[t].Name} bilgisini çaldı{(caught ? " ama yakalandılar" : "")}.", civ: c.Id, major: true);
             }
         }
         // Suikast
@@ -345,7 +364,7 @@ public static class Research
                     s.Add(c, "gold", 40);
                     var o = contacts.Count > 0 ? s.Rng.Pick(contacts) : null;
                     var cand = o != null ? J.Filter(o.Research.Done, t => !s.Has(c, t) && D.TECH[t].Tree == "main" && D.TECH[t].Era <= c.Era && J.Every(D.TECH[t].Req, r => s.Has(c, r))) : new List<string>();
-                    if (o != null && cand.Count > 0) { string t = s.Rng.Pick(cand); c.Research.Done.Add(t); s.RecomputeEff(c); gift = $"40 altın ve {Tr.Ek(o.Name, "in")} rüyalarından çalınan {D.TECH[t].Name} bilgisi"; }
+                    if (o != null && cand.Count > 0) { string t = s.Rng.Pick(cand); StealTech(s, c, t); gift = $"40 altın ve {Tr.Ek(o.Name, "in")} rüyalarından çalınan {D.TECH[t].Name} bilgisi"; }
                     else gift = "peri altını (40)";
                     break;
                 }

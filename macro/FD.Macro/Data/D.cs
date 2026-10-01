@@ -55,6 +55,10 @@ public static class D
     public static JsObj<HeroClassDef> HERO_CLASSES;
     public static List<double> XP_LEVELS;
     public static JsObj<List<string>> HERO_NAMES;
+    /// <summary>ırka göre soyad / lakap havuzu (Faz 1 A3a; tam ad "Ad Soyad")</summary>
+    public static JsObj<List<string>> HERO_SURNAMES;
+    /// <summary>ırka göre yaş: [yola çıkış en genç, en yaşlı, yaşlılık başlangıcı, en uzun ömür] (yıl)</summary>
+    public static JsObj<List<double>> HERO_AGE;
     public static List<string> EPITHETS, HERO_ORIGINS, HERO_DRIVES;
     public static JsObj<JsObj<double>> RACE_STAT;
     public static JsObj<string> ALIGN_TR, PATH_TR, PATH_DESC, CLASS_PATH;

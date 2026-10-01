@@ -21,7 +21,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="../../FD.Macro/Core/*.cs" Exclude="../../FD.Macro/Core/Sim.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" Exclude="../../FD.Macro/Core/Sim.cs;../../FD.Macro/Core/Save.cs;../../FD.Macro/Core/Stats.cs" />
     <Compile Include="../../FD.Macro/Data/*.cs" />
     <Compile Include="../../FD.Macro/Js/*.cs" />
     <Compile Include="../../FD.Macro/Modules/WorldGen.cs" />

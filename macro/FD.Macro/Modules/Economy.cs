@@ -75,7 +75,8 @@ public static class Economy
         if (good == "mana") m += s.E(c, "prodMana");
         double season = 1;
         bool winterImmune = s.E(c, "winterImmune") > 0;
-        if (knd == "farm") season = winterImmune ? JsMath.Max(1, SEASON_FARM[s.Season]) : SEASON_FARM[s.Season];
+        // harvest (Kadim Şampiyon: kayıpsız hasat): tarlalar hiçbir mevsimde verim kaybetmez (yaz/güz artısı kalır)
+        if (knd == "farm") season = winterImmune || s.E(c, "harvest") > 0 ? JsMath.Max(1, SEASON_FARM[s.Season]) : SEASON_FARM[s.Season];
         else if (knd == "hunt" || knd == "dock" || knd == "herbalist") season = winterImmune ? 1 : SEASON_WILD[s.Season];
         double toolF = 1;
         if (lvl >= 2 && s.St(c, "tools") < 0.5) toolF = 0.75;
@@ -108,6 +109,21 @@ public static class Economy
     public static bool IsGlut(Sim s, Civ c, string g, double P)
     {
         return !J.T(D.GOODS[g].Food) && g != "gold" && s.St(c, g) > JsMath.Max(40, Demand(s, c, g, P) * 5);
+    }
+
+    /// <summary>Darphane geliri (altın/gün): taban + nüfus başına, yerleşim başına tavanlı.</summary>
+    public const double MINT_BASE = 0.01, MINT_PER_POP = 0.0008, MINT_CAP = 0.12;
+
+    /// <summary>
+    /// Bir yerleşimin darphane geliri (altın/gün): her darphane kendi yerleşiminin büyüklüğüyle ölçeklenir,
+    /// min(0,12; 0,01 + 0,0008 × nüfus): 8 kişilik kamp ≈ 0,016, 40 kişilik kasaba ≈ 0,042, 140+ kişilik şehir 0,12.
+    /// (Eskiden medeniyetin herhangi bir yerleşiminde darphane varsa medeniyet başına tek 0,12 sayılırdı.)
+    /// </summary>
+    public static double MintIncome(Sim s, Settlement st)
+    {
+        double n = st.Civics.Get("mint") ?? 0;
+        if (!st.Alive || !(n > 0)) return 0;
+        return n * JsMath.Min(MINT_CAP, MINT_BASE + MINT_PER_POP * s.Pop(st));
     }
 
     /// <summary>Recomputes the civ's prices: food by food need, other goods by demand vs stock (desires ×1.3).</summary>
@@ -305,7 +321,9 @@ public static class Economy
         Gear.GearTick(s, c);
         double soldiers = 0;
         foreach (var x in ss) soldiers = soldiers + x.Soldiers;
-        s.Add(c, "gold", totalPop * 0.004 * (1 + s.E(c, "tax")) + (J.Some(ss, x => J.T(x.Civics.Get("mint"))) ? 0.12 : 0) - soldiers * 0.006);
+        double mint = 0;
+        foreach (var x in ss) mint += MintIncome(s, x);
+        s.Add(c, "gold", totalPop * 0.004 * (1 + s.E(c, "tax")) + mint - soldiers * 0.006);
 
         if (need > 0.01)
         {
@@ -313,7 +331,7 @@ public static class Economy
             else foreach (var st in s.CivSettlements(c))
             {
                 st.Starving++;
-                if (st.Starving == 1) s.Log("economy", $"{st.Name}'da kıtlık başladı.", civ: c.Id, tile: st.Tile, cause: $"Gıda stoğu tükendi ({s.DateStr()})");
+                if (st.Starving == 1) s.Log("economy", $"{Tr.Ek(st.Name, "da")} kıtlık başladı.", civ: c.Id, tile: st.Tile, cause: $"Gıda stoğu tükendi ({s.DateStr()})");
                 // açlık, açığın büyüklüğüyle orantılı birikir
                 st.Hunger = (st.Hunger ?? 0) + JsMath.Min(1, need / JsMath.Max(0.05, totalPop * Sim.FOOD_PER_POP));
                 if (st.Hunger >= 10) { st.Hunger -= 10; s.RemovePop(st, 1); s.Metric("starved"); }
@@ -492,13 +510,13 @@ public static class Economy
                 return;
             }
             if (Array.IndexOf(HOUSING, k) < 0 || (k == "house" && st.Civics.Get("house") == 1) || (k == "stonehouse" && st.Civics.Get("stonehouse") == 1))
-                s.Log("build", $"{st.Name}'da {CivicName(c, k)} yükseldi.", civ: c.Id, tile: st.Tile, major: k == "tavern" || k == "unique" || k == "castle");
+                s.Log("build", $"{Tr.Ek(st.Name, "da")} {CivicName(c, k)} yükseldi.", civ: c.Id, tile: st.Tile, major: k == "tavern" || k == "unique" || k == "castle");
         }
         else if (p.Type == "workshop")
         {
             string k = p.Kind;
             st.Workshops.Set(k, (st.Workshops.Get(k) ?? 0) + 1);
-            if (st.Workshops.Get(k) == 1) s.Log("build", $"{st.Name}'da {D.WORKSHOPS[k].Name} açıldı.", civ: c.Id, tile: st.Tile);
+            if (st.Workshops.Get(k) == 1) s.Log("build", $"{Tr.Ek(st.Name, "da")} {D.WORKSHOPS[k].Name} açıldı.", civ: c.Id, tile: st.Tile);
         }
         else if (p.Type == "extract")
         {

@@ -187,6 +187,12 @@ public static class Heroes
     public static void QuestFailed(Sim s, Quest q) => throw Stub.Nope("Heroes.QuestFailed");
     public static void HeroesTick(Sim s) => throw Stub.Nope("Heroes.HeroesTick");
     public static bool TryRevive(Sim s, Hero h) => throw Stub.Nope("Heroes.TryRevive");
+    // Faz 1 A3a: Agents.SyncHeroes → Heroes.AfterBattle; FightCamp → Heroes.QuestDone (no heroes in the harness world)
+    public static void AfterBattle(Sim s, List<Combatant> cs, double xpBonus, List<Combatant> foes, string foe, string ctx)
+    {
+        foreach (var x in cs) if (x.Hero != null) throw Stub.Nope("Heroes.AfterBattle with heroes");
+    }
+    public static void QuestDone(Sim s, Hero h, Quest q, Camp cp) => throw Stub.Nope("Heroes.QuestDone");
 }
 
 public static class Will
