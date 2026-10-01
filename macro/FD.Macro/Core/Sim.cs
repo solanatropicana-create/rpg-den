@@ -52,10 +52,11 @@ public sealed partial class Sim
         Discover();
         foreach (var c in W.Civs) RecomputeEff(c);
         States.FaithTick(this);
+        W.Epoch = prehistory;   // Faz 1b-7: planlanan başlangıç (ejderha oyunun başından sayılır); tarih öncesinin sonunda yeniden yazılır
         Log("world", $"Dünya uyandı. {W.Civs.Count} topluluk ilk kamplarını kurdu: {string.Join(", ", W.Civs.Select(c => $"{c.Name} ({D.RACES[c.Race].Plural}, {Polity.Gov(c).Name}; {States.RulerTitle(this, c)})"))}.", major: true);
         for (int d = 0; d < prehistory; d++) Step();
         W.Epoch = W.Day;
-        foreach (var st in W.Settlements) if (st.Alive) W.SettleCap++;
+        foreach (var st in W.Settlements) if (st.Alive && st.Hub == null) W.SettleCap++;   // Faz 1b-7: fırsat merkezleri hariç
         W.SettleCap = Math.Max(W.SettleCap, 8);
         Orgs.Genesis(this);
     }
@@ -162,6 +163,7 @@ public sealed partial class Sim
 
     public double Housing(Settlement s)
     {
+        if (s.Hub != null) return JsMath.Max(8, Pop(s) + 4);   // Faz 1b-7: fırsat merkezi çadırda yaşar (barakası, iç göçü yok)
         double h = 4;
         foreach (var k in HousingKinds) h += (s.Civics.Get(k) ?? 0) * (D.CIVICS[k].Housing ?? 0);
         return JsMath.Max(4, h - (s.BurnedHouses ?? 0) * 4);
@@ -170,7 +172,7 @@ public sealed partial class Sim
     /// <summary>is the extraction building working (not burned, not depleted)</summary>
     public bool ExtWorking(Tile t) => t.Ext != null && !J.T(t.Ext.Depleted) && !J.T(t.Ext.Burned);
 
-    private static readonly string[] NoSlotCivics = { "hut", "house", "stonehouse", "shipyard", "lighthouse" };
+    private static readonly string[] NoSlotCivics = { "hut", "house", "stonehouse", "shipyard", "lighthouse", "palisade", "stonewall", "castle" };   // Faz 1b-7: sur ve kale yuva kullanmaz
 
     public double SlotsUsed(Settlement s)
     {
@@ -429,8 +431,9 @@ public sealed partial class Sim
         Cp?.Invoke("repair");
         foreach (var c in w.Civs) if (c.Alive && Every(CIV_AI_DAYS, c.Id * 0.75)) CivAI(c);
         if (Every(TERRITORY_DAYS)) { UpdateTerritory(); Cp?.Invoke("territory"); Diplomacy.RelationsTick(this); Cp?.Invoke("relations"); }
-        if (Every(WORLD_DAYS)) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); States.Tick(this); Cp?.Invoke("states"); Bondage.Tick(this); Patrol.BanditTick(this); Cp?.Invoke("bondage"); }
+        if (Every(WORLD_DAYS)) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); States.Tick(this); Cp?.Invoke("states"); Bondage.Tick(this); Patrol.BanditTick(this); Cp?.Invoke("bondage"); Crisis.StabilityTick(this); Works.Tick(this); Cp?.Invoke("stability"); }
         Events.PlagueTick(this); Cp?.Invoke("plague");   // Faz 1b-5: salgın günlük işler (5–10 gün)
+        Status.Tick(this); Crisis.Tick(this); Hubs.Tick(this); Cp?.Invoke("status");   // Faz 1b-7: durum tablosu, iç krizler, fırsat merkezleri
         if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) States.Yearly(this, c); Orgs.Yearly(this); Cp?.Invoke("yearly"); }   // takvim yılı: yıllık bayramlar (Faz 1b-6: tipin olayı; örgütlerinki Orgs)
         Monsters.CampsTick(this); Cp?.Invoke("camps");
         Storyteller.Tick(this); Cp?.Invoke("story");   // Faz 1 B2: anlatıcı (gerilim, kriz, rahatlama) ve ejderha

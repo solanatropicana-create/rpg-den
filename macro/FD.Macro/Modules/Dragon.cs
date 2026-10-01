@@ -142,7 +142,8 @@ public static class Dragon
     public static void Tick(Sim s)
     {
         var w = s.W;
-        w.Dragon ??= new DragonState { WakeDay = s.Rng.Int(17 * Sim.OLD_YEAR, 22 * Sim.OLD_YEAR - 1) };   // Faz 1b-5: eski 17–22. yıllar
+        // Faz 1b-5: eski 17–22. yıllar; Faz 1b-7: oyunun başından (World.Epoch) sayılır: ejderha geç tehdittir, tarih öncesinde uyanıp ölmesin
+        w.Dragon ??= new DragonState { WakeDay = w.Epoch + s.Rng.Int(17 * Sim.OLD_YEAR, 22 * Sim.OLD_YEAR - 1) };
         var d = w.Dragon;
         if (d.Camp < 0) { if (s.Day >= d.WakeDay) Wake(s, d); return; }
         var cp = CampOf(s);
@@ -384,6 +385,7 @@ public static class Dragon
         // Faz 1b-4: büyük şehirde yanan evler halkı barakalara (ve oradan göçe; Events) itecek kadar çok olamaz
         if (big) houses = JsMath.Min(houses, Math.Floor(JsMath.Max(0, s.Housing(st) - s.Pop(st) + HOMELESS_OK) / 4));
         st.BurnedHouses = (st.BurnedHouses ?? 0) + houses; st.BurnedAt = s.Day;
+        Works.Alarm(s, st);
         // Faz 1 C3: ejderha yaktığı kentin hazine payını kaçırır (nüfus payının yarısı, en çok %20; eskiden bütün hazinenin %20'si)
         double gold = driven ? 0 : Math.Floor(s.St(c, "gold") * JsMath.Min(0.2, s.Pop(st) / JsMath.Max(1, s.CivPop(c)) * 0.5));
         if (gold > 0) { s.Add(c, "gold", -gold); cp.Loot += gold; s.Metric("dragonRaidGold", gold); }

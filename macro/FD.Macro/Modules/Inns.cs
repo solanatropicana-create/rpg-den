@@ -17,7 +17,7 @@ public static class Inns
     /// doluyken (INN_POOL'a dek), ün ve iş talebiyle (Heroes.Demand) çarpılır. Eskiden 5 eski günde 0,03 / 0,012 (yeni günde ~0,024 / 0,01:
     /// han başına ~150 günde bir). Havuz artık dönüşür (Heroes.INN_STAY: yabancı ~40 gün kalıp yoluna devam eder); boşalan yer çabuk dolar.
     /// İş talebi yarı ağırlıkla sayılır (0,5 + 0,5 × talep): han yol üstündedir, kampsız bölgede de yolcu uğrar.</summary>
-    public const double INN_SPAWN_EMPTY = 0.42, INN_SPAWN = 0.23;   // Faz 1b-6: 0,3 / 0,15 (v3: han başına 10–20 günde bir doğum)
+    public const double INN_SPAWN_EMPTY = 0.36, INN_SPAWN = 0.2;   // Faz 1b-6: 0,3 / 0,15 → 0,42 / 0,23 (v3: han başına 10–20 günde bir doğum); Faz 1b-7: fırsat merkezlerinin kampları talebi artırdı, 0,36 / 0,2
     /// <summary>açık artırmanın süresi (gün; eski bir yıl) ve kahraman seferdeyse uzatma (eski 20 gün)</summary>
     public const double AUCTION_DAYS = Sim.OLD_YEAR, AUCTION_WAIT = 20 / Sim.PACE;
     /// <summary>hanı basan medeniyetin hanlardan kahraman kiralayamadığı süre (takvim yılı; eski 5 yıl)</summary>

@@ -126,6 +126,8 @@ public static class States
         {
             Die(s, r, "Pakt'a bağlandığı ortaya çıkınca aforoz edilip idam edildi");
             Succeed(s, c, r, "Yönetici aforoz edildi");
+            var seat = s.Capital(c);
+            if (seat != null) { Crisis.MarkRegime(s, seat, "aforoz", 0); Status.Set(s, seat, "newlord", "Aforoz"); }   // Faz 1b-7: taht içeriden düştü
         }
         else s.RecomputeEff(c);
     }
@@ -158,8 +160,12 @@ public static class States
                 && s.Rng.Chance(0.15 * Sim.WORLD_DAYS / Sim.YEAR)) NewHeir(s, c, r);
             // cumhuriyette seçim
             if (c.Gov == "republic" && s.Day - (c.Elected ?? s.Day) >= ELECTION_DAYS) Election(s, c, r);
-            // boylarda meydan okuma: meşruiyeti düşük reise yılda bir kez kadar düello
-            if (c.Gov == "clans" && c.Legit < 50 && s.Rng.Chance((0.08 + (50 - c.Legit) / 200) * Sim.WORLD_DAYS / Sim.YEAR)) Challenge(s, c, r);
+            // boylarda meydan okuma: meşruiyeti düşük reise yılda bir kez kadar (Faz 1b-7: 5–10 gün belirtili kriz, sonunda düello; Crisis)
+            if (c.Gov == "clans" && c.Legit < 50 && s.Rng.Chance((0.08 + (50 - c.Legit) / 200) * Sim.WORLD_DAYS / Sim.YEAR))
+            {
+                var seat = s.Capital(c);
+                if (seat != null && seat.Crisis == null) Crisis.Start(s, seat, "challenge", $"Reisin meşruiyeti düşük ({J.S(JsMath.Round(c.Legit))})", null, 0.1);
+            }
             // meşruiyet
             c.Legit = JsMath.Max(0, JsMath.Min(100, c.Legit + (LegitTarget(s, c) - c.Legit) * LEGIT_PULL));
         }
@@ -210,7 +216,7 @@ public static class States
     {
         Person nr = null;
         string how;
-        bool major = true;
+        bool major = true, feud = false;
         double legit = c.Legit;
         switch (c.Gov)
         {
@@ -229,12 +235,14 @@ public static class States
                 }
                 else
                 {
+                    // Faz 1b-7: varissiz taht: soylulardan biri tahta oturur ama tanınmaz; başkentte veraset kavgası başlar (Crisis "feud";
+                    // sonunda taht başka hanedana geçebilir, küçük krallık evlilik ittifakıyla komşuya katılabilir)
                     nr = NewPerson(s, c.Race, "ruler", c.Id, null, RulerAge(s, c.Race), RulerAlign(s, c), RulerFaith(c));
                     c.House = nr.House;
                     legit = JsMath.Min(legit, 30);
-                    how = $"VERASET KRİZİ: {old?.House ?? c.House ?? "eski"} hanedanı varissiz kaldı; soylular arasından {nr.Name} tahtı ele geçirdi";
+                    how = $"VERASET KRİZİ: {old?.House ?? c.House ?? "eski"} hanedanı varissiz kaldı; {nr.Name} tahta oturdu ama soylular onu tanımıyor";
                     s.Metric("succession_crisis");
-                    s.Metric("collapse_succession_" + c.Gov);
+                    feud = true;
                 }
                 if (c.Heir == null && s.Rng.Chance(0.5)) NewHeir(s, c, nr);
                 break;
@@ -276,6 +284,119 @@ public static class States
         s.Metric("succession");
         var cap = s.Capital(c);
         s.Log("politics", $"{c.Name}: {how}.", civ: c.Id, tile: cap?.Tile, cause: why, major: major);
+        if (feud && cap != null && cap.Crisis == null) Crisis.Start(s, cap, "feud", "Taht varissiz kaldı", null, 0.2);
+    }
+
+    // ------------------------------------------------------------ Faz 1b-7: iç düşüş, birleşme, savaşın sonucu
+    /// <summary>Taht şehri içeriden düştü (Crisis): eski yönetici ölür ya da sürülür, yeni yönetici (yeni hanedan, reis, konsey başı,
+    /// başrahip) düşük meşruiyetle gelir; darbe ve paralı askerler kanunu, mezhep bölünmesi yasayı yumuşatır; <paramref name="newGov"/>
+    /// verilirse devletin tipi değişir (adı ve yasası da). Çöküş nedeni (ölçüt 9c) eski tipe yazılır.</summary>
+    public static void Usurp(Sim s, Civ c, Settlement seat, string path, string kind, string newGov, double lead, string cause)
+    {
+        var old = Ruler(s, c);
+        string oldTitle = RulerTitleOf(c, old);
+        string prevGov = c.Gov;
+        string fate = kind switch
+        {
+            "challenge" => "düelloda öldü",
+            "feud" => "veraset savaşında tahtını kaybetti",
+            "revolt" => "soylularca tahttan indirildi",
+            "coup" => "darbeyle devrildi",
+            "mutiny" => "paralı askerlerce devrildi",
+            "schism" => "mezhep bölünmesinde makamını yitirdi",
+            _ => "devrildi",
+        };
+        if (old != null && old.Died == null)
+        {
+            if (kind == "challenge" || s.Rng.Chance(0.5)) Die(s, old, fate);
+            else { old.Role = "former"; old.Fate = fate + "; sürgüne gitti"; }
+        }
+        var heir = PersonById(s, c.Heir);
+        if (heir != null && heir.Died == null) { heir.Role = "former"; heir.Fate ??= "tahttan uzaklaştırıldı"; }
+        c.Heir = null;
+        if (newGov != null && newGov != c.Gov)
+        {
+            c.Gov = newGov;
+            c.Law = Polity.DefaultLaw(newGov);
+            c.Name = Diplomacy.FreeName(s, newGov, c.Stem ?? seat.Name, c.Id);
+            s.Metric("govChange"); s.Metric("govChange_" + prevGov + "_" + newGov);
+        }
+        var nr = NewPerson(s, c.Race, "ruler", c.Id, null, RulerAge(s, c.Race), RulerAlign(s, c), RulerFaith(c));
+        if (kind == "coup" || kind == "mutiny") nr.Align.Law = Clamp(nr.Align.Law - 0.3);
+        if (kind == "schism" && c.Law != null)
+        {
+            c.Law.Harsh = JsMath.Max(0.3, c.Law.Harsh - 0.25);
+            c.Law.FaithTol.Set("old", JsMath.Min(1, (c.Law.FaithTol.Get("old") ?? 1) + 0.2));
+        }
+        if (c.Gov == "kingdom") { c.House = nr.House; if (s.Rng.Chance(0.4)) NewHeir(s, c, nr); }
+        if (c.Gov == "republic") c.Elected = s.Day;
+        c.Ruler = nr.Id;
+        c.Legit = 38 + s.Rng.Next() * 12;
+        Realign(s, c);
+        s.RecomputeEff(c);
+        Crisis.MarkRegime(s, seat, path, lead);
+        s.Metric("collapse_" + path + "_" + prevGov);
+        s.Metric("succession");
+        if (kind == "challenge") { s.Metric("chiefDuel"); s.Metric("chiefDuelLost"); }
+        string gov = newGov != null && newGov != prevGov ? $"; devlet artık {Tr.Ek(c.Name, "dır")}" : "";
+        string how = kind switch
+        {
+            "feud" => $"veraset savaşı bitti: {old?.House ?? "eski"} hanedanı düştü, {nr.House} hanedanından {nr.Name} tahta çıktı",
+            "revolt" => $"soylular {Tr.Ek(oldTitle, "i")} tahttan indirdi; {nr.Name} ({nr.House} hanedanı) yeni lord",
+            "challenge" => $"{oldTitle} meydan okumada düelloda öldü; {nr.Name} ({nr.House} boyu) yeni reis",
+            "coup" => $"DARBE: {oldTitle} devrildi, iktidarı {nr.Name} aldı",
+            "mutiny" => $"maaşı ödenmeyen paralı askerler {Tr.Ek(seat.Name, "i")} ele geçirdi; bölük kaptanı {nr.Name} iktidarda",
+            "schism" => $"mezhep bölünmesi: ılımlılar Başkatedral'i aldı, {nr.Name} yeni başrahip",
+            _ => $"{oldTitle} devrildi; {nr.Name} iktidarda",
+        };
+        if (kind == "mutiny") s.Add(c, "gold", -s.St(c, "gold") * 0.6);
+        s.Log("politics", $"{c.Name}: {how}{gov}.", civ: c.Id, tile: seat.Tile, cause: cause, major: true);
+        Status.Set(s, seat, "newlord", "Yeni yönetim");
+    }
+
+    /// <summary>Devletler birleşir (evlilik ittifakı): küçük devletin yerleşimleri, ambarı, kahramanları ve bildiği yataklar büyüğe geçer;
+    /// küçük devlet tarihten silinir.</summary>
+    public static void Merge(Sim s, Civ small, Civ big, string how, string cause)
+    {
+        foreach (var st in s.CivSettlements(small))
+        {
+            st.Founder ??= small.Id;
+            st.LostDay = s.Day;
+            if (st.ClaimBy == big.Id) { st.ClaimBy = null; st.ClaimUntil = null; }
+            st.Civ = big.Id;
+            Status.Set(s, st, "newlord", "Birleşme");
+        }
+        foreach (var h in s.W.Heroes)
+        {
+            if (h.Civ != small.Id || h.State == "dead" || h.State == "gone") continue;
+            h.Civ = big.Id;
+            if (h.Contract != null) h.Contract.Civ = big.Id;
+        }
+        foreach (var g in small.Stock.Keys()) s.Add(big, g, small.Stock.Get(g) ?? 0);
+        small.Stock = new JsObj<double>();
+        foreach (var d in s.W.Deposits) if (d.KnownBy.Contains(small.Id) && !d.KnownBy.Contains(big.Id)) d.KnownBy.Add(big.Id);
+        var r = Ruler(s, small);
+        if (r != null && r.Died == null) { r.Role = "former"; r.Fate ??= "tahtını birleşmeye bıraktı"; }
+        small.FallCause = how;
+        s.Metric("union");
+        s.Log("politics", $"{how}: {small.Name} artık {Tr.Ek(big.Name, "in")} parçası.", civ: big.Id, tile: s.Capital(big)?.Tile, cause: cause, major: true);
+        s.UpdateTerritory();
+        s.Extinct(small);
+        s.RecomputeEff(big);
+    }
+
+    /// <summary>Savaş bitti (saldıranın gözünden): kazanan yönetim güçlenir, kaybeden sarsılır. Teokrasinin Kutsal Sefer yenilgisi
+    /// meşruiyeti çökertir ve başkentte mezhep çatışmasını açar (spec: teokrasinin çöküş yolu).</summary>
+    public static void WarEnded(Sim s, Civ att, Civ def, bool won, string kind)
+    {
+        if (won) { att.Legit = JsMath.Min(100, att.Legit + 4); def.Legit = JsMath.Max(0, def.Legit - 6); return; }
+        att.Legit = JsMath.Max(0, att.Legit - 6);
+        if (kind != "crusade" || att.Gov != "theocracy") return;
+        att.Legit = JsMath.Max(0, att.Legit - 12);
+        s.Metric("crusadeLost");
+        var seat = s.Capital(att);
+        s.Log("politics", $"{att.Name} Kutsal Sefer'den eli boş döndü; Başkatedral'in otoritesi sarsıldı.", civ: att.Id, tile: seat?.Tile, cause: $"{def.Name} karşısında yenilgi", major: true);
+        if (seat != null && seat.Crisis == null) Crisis.Start(s, seat, "schism", "Kutsal Sefer yenilgisi", null, 0.15);
     }
 
     /// <summary>Cumhuriyette seçim: konsey başı meşruiyetiyle yeniden seçilir ya da yerini başkasına bırakır.</summary>
@@ -289,22 +410,6 @@ public static class States
             return;
         }
         Succeed(s, c, r, r != null ? $"{r.Name} seçimi kaybetti" : "Seçim");
-    }
-
-    /// <summary>Boylarda meydan okuma: reis düelloda ölürse kazanan reis olur, kazanırsa meşruiyeti artar.</summary>
-    private static void Challenge(Sim s, Civ c, Person r)
-    {
-        s.Metric("chiefDuel");
-        if (r == null || s.Rng.Chance(0.5))
-        {
-            s.Metric("chiefDuelLost");
-            s.Metric("collapse_duel_" + c.Gov);
-            Die(s, r, "düelloda öldü");
-            Succeed(s, c, r, r != null ? $"{RulerTitleOf(c, r)} bir meydan okumada düelloda öldü (meşruiyet {J.S(JsMath.Round(c.Legit))})" : "Reislik boştu");
-            return;
-        }
-        c.Legit = JsMath.Min(100, c.Legit + 15);
-        s.Log("politics", $"{RulerTitleOf(c, r)} kendisine meydan okuyan boy beyini düelloda yendi.", civ: c.Id, tile: s.Capital(c)?.Tile, cause: "Boylar reisin gücünü sınadı");
     }
 
     // ------------------------------------------------------------ inanç

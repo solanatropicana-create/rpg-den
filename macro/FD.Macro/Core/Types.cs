@@ -71,6 +71,8 @@ public sealed class Project
     public int? Level;
     public double Left;
     public double Total;
+    /// <summary>Faz 1b-7: büyük proje (olay olarak gelen sınır kalesi, fener kulesi; Works)</summary>
+    public bool? Grand;
 }
 
 public sealed class PlagueInfo
@@ -137,6 +139,66 @@ public sealed class Settlement
     public JsObj<double> Faith;
     /// <summary>köleler ve hapis madenindeki mahkûmlar (nüfusun içinde; Bondage)</summary>
     public double? Slaves, Prisoners;
+    // ---- durum tablosu ve istikrar (Faz 1b-7; Modules/Status.cs, Modules/Crisis.cs)
+    /// <summary>yerleşimin durumu (Status.DEFS: prosper, boom, festival, found, shortage, plague, migration, newlord, monsters, siege,
+    /// occupation, depleted ve kriz durumları feud, revolt, separatism, coup, mutiny, schism, challenge); null: olağan</summary>
+    public string Status;
+    /// <summary>durumun başladığı ve biteceği gün</summary>
+    public double? StatusSince, StatusUntil;
+    /// <summary>sonraki durum zarının günü (5–15 günde bir)</summary>
+    public double? StatusRoll;
+    /// <summary>istikrar 0–100 (Crisis.Stability; WORLD_DAYS'te bir hesaplanır)</summary>
+    public double? Stability;
+    /// <summary>süren iç kriz (feud, revolt, separatism, coup, mutiny, schism, challenge; Crisis.cs): 5–10 günlük belirtiler, sonunda
+    /// şehir içeriden düşer ya da kriz bastırılır; null: yok</summary>
+    public string Crisis;
+    public double? CrisisSince, CrisisUntil;
+    /// <summary>krizi besleyen örgüt (darbe girişimi; Org id) ve krizin sonundaki düşüş olasılığına ek (varissiz taht, örgüt)</summary>
+    public int? CrisisOrg;
+    public double? CrisisBonus;
+    /// <summary>krizin başladığı gün yerleşimin sahibi (şehir el değiştirirse kriz söner)</summary>
+    public int? CrisisCiv;
+    /// <summary>son tehdit günü (baskın, kuşatma, akın, yağma): tepki inşaatı (sur) bu günden sonra gelir (Works)</summary>
+    public double? Alarm;
+    /// <summary>son yerel kıtlık durumunun bittiği gün (tepki inşaatı: yeni tarla)</summary>
+    public double? ShortDay;
+    /// <summary>içeriden düşüş sayısı (darbe, veraset savaşı, düello, mezhep…) ve sonuncusunun yolu ve uyarı süresi (gün)</summary>
+    public int? Regimes;
+    public string RegimeHow;
+    public double? RegimeLead;
+    /// <summary>fırsat merkezi (geçici halka; World.Hubs kimliği); null: kalıcı yerleşim</summary>
+    public int? Hub;
+}
+
+/// <summary>Faz 1b-7: fırsat merkezi (yol haritası v3, geçici halka): söylenti → hücum → zirve → tükeniş → hayalet. Tetikleyiciler:
+/// maden, savaş cephesi, antik harabe, kutsal kalıntı, yeni yol, temizlenmiş in (verimli vadi). Modules/Hubs.cs.</summary>
+public sealed class Hub
+{
+    public int Id;
+    /// <summary>mine | front | ruin | relic | road | valley</summary>
+    public string Kind;
+    public string Name;
+    public int Tile;
+    /// <summary>sahibi (yakındaki devlet); -1 yok</summary>
+    public int Civ = -1;
+    /// <summary>rumor | rush | peak | bust | ghost | done</summary>
+    public string Phase;
+    /// <summary>evrelerin başladığı günler (söylenti, hücum, zirve, tükeniş, hayalet) ve bitiş; -1: o evre yaşanmadı</summary>
+    public double Rumor = -1, Rush = -1, Peak = -1, Bust = -1, Ghost = -1, End = -1;
+    /// <summary>evrenin biteceği gün</summary>
+    public double Until;
+    /// <summary>merkezin yerleşimi (hücumda kurulur)</summary>
+    public int? Settlement;
+    /// <summary>zirvedeki en büyük nüfus</summary>
+    public double PeakPop;
+    /// <summary>sonu: ghost (terk, harabe) | village (kalıcı köy oldu) | gone (söylentide söndü)</summary>
+    public string Outcome;
+    /// <summary>tetikleyenin kimliği (savaş cephesi: saldıran devlet; vadi: kamp; harabe: eski yerleşim)</summary>
+    public int? Origin;
+    /// <summary>sahibine akan altın (toplam)</summary>
+    public double Gold;
+    /// <summary>savaş cephesi: saldırılan devlet (savaş sürdükçe pazar yaşar)</summary>
+    public int? Front;
 }
 
 public sealed class RelMod
@@ -800,6 +862,11 @@ public sealed class World
     public List<Org> Orgs = new();
     /// <summary>dünyanın yerleşim tavanı: tarih öncesinin sonunda yaşayan yerleşim sayısı (0: tarih öncesi, yerleşilebilir alanla; Diplomacy.WorldCap)</summary>
     public int SettleCap;
+    // ---- Faz 1b-7
+    /// <summary>fırsat merkezleri (geçici halka; bitenler de kalır)</summary>
+    public List<Hub> Hubs = new();
+    /// <summary>sonraki fırsat merkezi tetikleyicisinin en erken günü</summary>
+    public double NextHub;
 }
 
 // ---- Faz 1, B2: anlatıcı (gerilim bütçesi, kriz ve rahatlama) ve ejderha

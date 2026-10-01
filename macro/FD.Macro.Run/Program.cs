@@ -256,7 +256,17 @@ public static class Program
             foreach (var st in ss) { double p = s.Pop(st); pop += p; sun += p * (st.Faith?.Get("sun") ?? 0); old += p * (st.Faith?.Get("old") ?? 0); pact += p * (st.Faith?.Get("pact") ?? 0); }
             Out.WriteLine($"  {c.Name} [{c.Gov}/{c.Race}] {States.RulerTitle(s, c)} meşruiyet {JsMath.Round(c.Legit)} hiz {JsMath.Round(c.Align.Law * 100) / 100}/{JsMath.Round(c.Align.Good * 100) / 100} "
                 + $"yerleşim {ss.Count} nüfus {pop} kademe {s.CivTier(c)} büyük {J.Filter(ss, x => Sim.IsBig(x)).Count} inanç G{JsMath.Round(sun / JsMath.Max(1, pop) * 100)}/E{JsMath.Round(old / JsMath.Max(1, pop) * 100)}/P{JsMath.Round(pact / JsMath.Max(1, pop) * 100)} saldırganlık {JsMath.Round(Polity.Aggression(c) * 100) / 100}");
+            // Faz 1b-7: büyük şehirler ve taht şehri: istikrar, durum, kriz
+            foreach (var st in ss)
+                if (Crisis.Eligible(s, st))
+                    Out.WriteLine($"      {st.Name} ({Sim.TIER_TR[st.Tier]}, {s.Pop(st)}): istikrar {st.Stability ?? Crisis.Stability(s, st)}{(st.Status != null ? $", durum: {Status.Def(st.Status)?.Name}" : "")}{(st.Crisis != null ? $", KRİZ: {Crisis.Def(st.Crisis).Name} ({st.CrisisUntil - s.Day} gün)" : "")}{(st.Regimes is int rg ? $", içeriden düşüş {rg} (son: {st.RegimeHow})" : "")}");
         }
+        // Faz 1b-7: durumlar ve fırsat merkezleri
+        var byStatus = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        foreach (var st in w.Settlements) if (st.Alive && st.Status != null) byStatus[st.Status] = byStatus.TryGetValue(st.Status, out int k) ? k + 1 : 1;
+        Out.WriteLine($"  durumlar: {string.Join(", ", byStatus.Select(kv => $"{Status.Def(kv.Key)?.Name} {kv.Value}"))}");
+        foreach (var h in w.Hubs) if (h.Phase != "done") Out.WriteLine($"  fırsat merkezi: {h.Name} ({Hubs.KindName(h.Kind)}, {h.Phase}; {(h.Settlement is int hs && s.Settlement(hs) is { Alive: true } hx ? $"{s.Pop(hx)} kişi" : "henüz söylenti")})");
+        Out.WriteLine($"  biten fırsat merkezi {J.Filter(w.Hubs, h => h.Phase == "done").Count}");
         foreach (var o in w.Orgs)
         {
             int hidden = J.Filter(o.Branches, b => b.Hidden).Count;
@@ -825,13 +835,15 @@ internal static partial class StatsMode
             }
             // 3. Kamplar
             {
-                var c = new Crit { Id = "3", Name = "Kamplar", Rule = $"{lw}. yıllarda yaşayan kamp medyanı ≥ {ew}. yılların medyanı" };
+                // Faz 1b-7: v3'te kamp hedefi yılla büyümez, sabit bantta kalır (Faz 1b-4: Monsters.CAMP_LOW–CAMP_HIGH); ölçüt "geç ≥ erken"
+                // yerine: geç yılların medyanı bantta (±1) ve erken yılların en az %90'ı (bant düz olduğundan eski ölçüt yazı turasıydı)
+                var c = new Crit { Id = "3", Name = "Kamplar", Rule = $"{lw}. yıllarda yaşayan kamp medyanı bantta ({Monsters.CAMP_LOW}–{Monsters.CAMP_HIGH}, ±1) ve {ew}. yılların en az %90'ı (v3: sabit bant)" };
                 if (Y >= 3)
                 {
                     double late = Pooled(K("campsAliveAvg"), lFrom, lTo), early = Pooled(K("campsAliveAvg"), eFrom, eTo);
                     double lateEnd = Pooled(K("campsAlive"), lFrom, lTo), earlyEnd = Pooled(K("campsAlive"), eFrom, eTo);
-                    c.Pass = late >= early;
-                    c.Measured = $"{F(late)} {(late >= early ? "≥" : "<")} {F(early)} (yıl sonu sayımıyla {F(lateEnd)} / {F(earlyEnd)})";
+                    c.Pass = late >= 0.9 * early && late >= Monsters.CAMP_LOW - 1 && late <= Monsters.CAMP_HIGH + 1;
+                    c.Measured = $"geç {F(late)}, erken {F(early)} (oran {Pct(early > 0 ? late / early : double.NaN)}; yıl sonu sayımıyla {F(lateEnd)} / {F(earlyEnd)})";
                     c.Data = new JObj { { "late", late }, { "early", early }, { "lateYearEnd", lateEnd }, { "earlyYearEnd", earlyEnd } };
                 }
                 else c.Measured = $"ölçülemedi: koşu {Y} yıl";
@@ -945,6 +957,7 @@ internal static partial class StatsMode
             EvaluateV3();
             EvaluateDurations();   // Faz 1b-5
             EvaluatePolity();      // Faz 1b-6
+            EvaluateWorld();       // Faz 1b-7
         }
 
         // ------------------------------------------------------------ Faz 1b-5: v3 süre tablosu
@@ -1077,7 +1090,7 @@ internal static partial class StatsMode
                 if (e.Day < d0 || e.Day > d1) continue;
                 o.ByKind[e.Kind] = o.Kind(e.Kind) + 1;
                 if (e.Kind != "found") o.Changes++;
-                if (e.Kind == "capture" || e.Kind == "secede") o.Owner++;
+                if (e.Kind == "capture" || e.Kind == "secede" || e.Kind == "regime") o.Owner++;   // Faz 1b-7: içeriden düşüş de el değiştirmedir
                 if (WorldStats.IsMidShift(e.Kind, e.Tier)) o.Mid++;
             }
             foreach (var f in L.BigFalls) if (f.Day >= d0 && f.Day <= d1) o.Big++;
@@ -1178,7 +1191,7 @@ internal static partial class StatsMode
                 Crits.Add(new Crit
                 {
                     Id = "6c", Name = "El değiştirme (her yerleşim)", Info = true,
-                    Rule = $"fetih + bölünme, 100 günde, dünya başına ve yerleşim başına ({warmName}); hedef yok",
+                    Rule = $"fetih + bölünme + içeriden düşüş (Faz 1b-7), 100 günde, dünya başına ve yerleşim başına ({warmName}); hedef yok",
                     Measured = $"dünyada {F(ow.Med)} ({F(ow.P10)}–{F(ow.P90)}) / 100 gün; yerleşim başına {F(ps.Med * 100)} / 10 bin gün{proj}: {PF(ow.Med)} / 100 gün",
                     Data = new JObj { { "perWorld100", ow.Med }, { "perSettlement100", ps.Med }, { "proj", O.Proj } },
                 });
@@ -1215,6 +1228,8 @@ internal static partial class StatsMode
                 var bm = V3Dist(warm.D0, warm.D1, x => x.BigMean);
                 int n = Ok.Sum(r => r.Stats.V3.BigFalls.Count(f => f.Day >= warm.D0 && f.Day <= warm.D1));
                 int sec = Ok.Sum(r => r.Stats.V3.BigFalls.Count(f => f.Day >= warm.D0 && f.Day <= warm.D1 && f.Kind == "secede"));
+                var inner = Ok.SelectMany(r => r.Stats.V3.BigFalls.Where(f => f.Day >= warm.D0 && f.Day <= warm.D1 && f.Kind == "internal")).ToList();
+                string innerBy = string.Join(", ", inner.GroupBy(f => f.How ?? "?").OrderByDescending(g => g.Count()).Select(g => $"{PathTr(g.Key)} {g.Count()}"));
                 double p = bw.Med * O.Proj;
                 // ayrıştırma: savaş temposu × büyük şehre giden savaş payı × hücumun düşüşle bitme payı (sonraki adımın kolları)
                 var wars = Ok.SelectMany(r => r.Stats.V3.Wars.Where(x => x.Start >= warm.D0 && x.Start <= warm.D1)).ToList();
@@ -1225,24 +1240,26 @@ internal static partial class StatsMode
                 Crits.Add(new Crit
                 {
                     Id = "6f", Name = "Büyük şehir el değiştirmesi †", Scaled = true,
-                    Rule = $"büyük şehir (Şehir kademesi) bütün dünyada yeni takvimde 100 günde 2–4 kez el değiştirir ({warmName}); felaketle düşmez",
+                    Rule = $"büyük şehir (Şehir kademesi) bütün dünyada yeni takvimde 100 günde 2–4 kez el değiştirir ({warmName}): dışarıdan (fetih, bölünme) ya da içeriden (Faz 1b-7: tipin çöküş yolu; yönetim değişir ya da şehir ayrılır); felaketle düşmez",
                     Pass = In(p, 2, 4),
-                    Measured = $"dünyada {F(bw.Med)} ({F(bw.P10)}–{F(bw.P90)}) / 100 gün{(O.Proj != 1 ? $"; yeni takvimde {F(p)} / 100 gün" : "")}; şehir başına {F(bc.Med)} / 100 gün; dünyada ortalama {F(bm.Med)} büyük şehir; toplam {n} el değiştirme ({sec} bölünme). Ayrıştırma: dünyada {F(warRate.Med)} savaş / 100 gün{(O.Proj != 1 ? $" (yeni takvimde {PF(warRate.Med)})" : "")}, hedefi büyük şehir olan {Pct(bigShare)}; büyük şehre {bigAss.Count} hücum, düşüşle bitenlerin payı {Pct(fallShare)}",
+                    Measured = $"dünyada {F(bw.Med)} ({F(bw.P10)}–{F(bw.P90)}) / 100 gün{(O.Proj != 1 ? $"; yeni takvimde {F(p)} / 100 gün" : "")}; şehir başına {F(bc.Med)} / 100 gün; dünyada ortalama {F(bm.Med)} büyük şehir; toplam {n} el değiştirme ({n - sec - inner.Count} fetih, {sec} bölünme, {inner.Count} içeriden: {innerBy}). Ayrıştırma: dünyada {F(warRate.Med)} savaş / 100 gün{(O.Proj != 1 ? $" (yeni takvimde {PF(warRate.Med)})" : "")}, hedefi büyük şehir olan {Pct(bigShare)}; büyük şehre {bigAss.Count} hücum, düşüşle bitenlerin payı {Pct(fallShare)}",
                     Data = new JObj { { "perWorld100", bw.Med }, { "p10", bw.P10 }, { "p90", bw.P90 }, { "projected", p }, { "perCity100", bc.Med }, { "bigCities", bm.Med }, { "falls", n }, { "secessions", sec },
                         { "warsPer100", warRate.Med }, { "bigWarShare", bigShare }, { "bigAssaults", bigAss.Count }, { "bigAssaultFallShare", fallShare } },
                 });
             }
             // 6g. Uyarı süresi †
             {
-                var sl = LeadSpans(warm.D0, warm.D1, f => f.SiegeLead);
+                var sl = LeadSpans(warm.D0, warm.D1, f => f.SiegeLead ?? f.CrisisLead);   // Faz 1b-7: iç düşüşte krizin belirtileri
                 var wl = LeadSpans(warm.D0, warm.D1, f => f.WarLead);
+                var xl = LeadSpans(warm.D0, warm.D1, f => f.SiegeLead);
+                var cl = LeadSpans(warm.D0, warm.D1, f => f.CrisisLead);
                 double p = sl.Q(0.5) / O.Proj;
                 Crits.Add(new Crit
                 {
                     Id = "6g", Name = "Büyük şehir: uyarı süresi †", Scaled = true,
-                    Rule = $"büyük şehrin düşüşünden önce yeni takvimde 5–10 gün uyarı (kuşatmanın başı → düşüş, medyan; {warmName})",
+                    Rule = $"büyük şehrin düşüşünden önce yeni takvimde 5–10 gün uyarı (kuşatmanın ya da iç krizin başı → düşüş, medyan; {warmName})",
                     Pass = In(p, 5, 10),
-                    Measured = $"kuşatmanın başından {F(sl.Q(0.5))} gün ({F(sl.Q(0.1))}–{F(sl.Q(0.9))}; n = {sl.N}); savaşın başından {F(wl.Q(0.5))} gün ({F(wl.Q(0.1))}–{F(wl.Q(0.9))}){(O.Proj != 1 ? $"; yeni takvimde {F(p)} / {PD(wl.Q(0.5))} gün" : "")}",
+                    Measured = $"{F(sl.Q(0.5))} gün ({F(sl.Q(0.1))}–{F(sl.Q(0.9))}; n = {sl.N}): kuşatmanın başından {F(xl.Q(0.5))} (n = {xl.N}), iç krizin başından {F(cl.Q(0.5))} (n = {cl.N}); savaşın başından {F(wl.Q(0.5))} gün ({F(wl.Q(0.1))}–{F(wl.Q(0.9))}){(O.Proj != 1 ? $"; yeni takvimde {F(p)} / {PD(wl.Q(0.5))} gün" : "")}",
                     Data = new JObj { { "siegeLead", sl.Json() }, { "warLead", wl.Json() }, { "projected", p } },
                 });
             }
@@ -1338,10 +1355,10 @@ internal static partial class StatsMode
             return o;
         }
 
-        private static readonly string[] V3Kinds = { "capture", "secede", "famine", "plague", "siege", "burn", "tierUp", "tierDown", "abandon", "resettle", "found" };
+        private static readonly string[] V3Kinds = { "capture", "secede", "regime", "famine", "plague", "siege", "burn", "tierUp", "tierDown", "abandon", "resettle", "found" };
         private static readonly Dictionary<string, string> V3KindTr = new()
         {
-            ["capture"] = "Fetih", ["secede"] = "Bölünme", ["famine"] = "Açlık başladı", ["plague"] = "Salgın başladı", ["siege"] = "Kuşatma (hücum)",
+            ["capture"] = "Fetih", ["secede"] = "Bölünme", ["regime"] = "İçeriden düşüş (yönetim değişti)", ["famine"] = "Açlık başladı", ["plague"] = "Salgın başladı", ["siege"] = "Kuşatma (hücum)",
             ["burn"] = "Yakıldı / yandı", ["tierUp"] = "Kademe yükseldi", ["tierDown"] = "Kademe düştü", ["abandon"] = "Terk (harabe)",
             ["resettle"] = "Harabeye yeniden yerleşim", ["found"] = "Kuruluş (durum değişimi sayılmaz)",
         };
@@ -1426,7 +1443,7 @@ internal static partial class StatsMode
                 {
                     var civs = Ok.First(r => r.Seed == seed).Stats.Civs;
                     string Nm(int id) => civs.FirstOrDefault(c => c.Id == id)?.Name ?? $"#{id}";
-                    L($"| {S(seed)} | {f.Day} ({WorldStats.YearOf(f.Day)}) | {f.Name} | {(f.Kind == "secede" ? "bölünme" : "fetih")} | {Nm(f.From)} → {Nm(f.To)} | {(f.SiegeLead is int a ? $"{a} gün" : "–")} | {(f.WarLead is int b ? $"{b} gün" : "–")} |");
+                    L($"| {S(seed)} | {f.Day} ({WorldStats.YearOf(f.Day)}) | {f.Name} | {(f.Kind == "secede" ? "bölünme" : f.Kind == "internal" ? $"içeriden: {PathTr(f.How)}" : "fetih")} | {Nm(f.From)} → {Nm(f.To)} | {(f.SiegeLead is int a ? $"{a} gün" : f.CrisisLead is int k ? $"kriz {k} gün" : "–")} | {(f.WarLead is int b ? $"{b} gün" : "–")} |");
                 }
                 L();
             }
@@ -1735,6 +1752,7 @@ internal static partial class StatsMode
             V3Md(sb);
             DurMd(sb);   // Faz 1b-5
             PolityMd(sb);   // Faz 1b-6
+            WorldMd(sb);    // Faz 1b-7
             L("## Eski analizdeki sorunlar");
             L();
             L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");

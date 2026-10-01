@@ -145,6 +145,10 @@ public static class Patrol
     // ------------------------------------------------------------ aç haydutlar
     /// <summary>aç haydut kampının adı ve büyüklüğü</summary>
     public const double BANDIT_MIN = 3, BANDIT_SHARE = 0.06;
+    /// <summary>aç yerleşimden WORLD_DAYS başına haydut çıkma olasılığı (Faz 1b-6: 0,12)</summary>
+    public const double BANDIT_P = 0.2;
+    /// <summary>bir seferde haydut olan en çok (Faz 1b-7: aç büyük şehirden de çıkar)</summary>
+    public const double BANDIT_MAX = 6;
 
     /// <summary>Her WORLD_DAYS günde: açlık ya da ekmek yokluğu çeken yerleşimden halk haydut olur (yakında aç haydut kampı); aç haydutlar
     /// en yakın yerleşimden yiyecek ister (verilirse dağılır, halk döner); aç kalan kamp erir.</summary>
@@ -153,12 +157,11 @@ public static class Patrol
         var w = s.W;
         foreach (var st in w.Settlements)
         {
-            if (!st.Alive || st.Tier < 1 || Sim.IsCore(st)) continue;
-            bool hungry = st.Starving > 0 || (st.Hunger ?? 0) > 0 || (st.Lack != null && (st.Lack.Get("bread") ?? 0) >= 10);
-            if (!hungry || !s.Rng.Chance(0.12)) continue;
+            if (!st.Alive || st.Tier < 1 || st.Hub != null) continue;   // Faz 1b-7: aç büyük şehirden de haydut çıkar (RemovePop çekirdek tabanını korur)
+            if (!Hungry(st) || !s.Rng.Chance(BANDIT_P)) continue;
             double P = s.Pop(st);
-            double n = Math.Floor(JsMath.Max(BANDIT_MIN, P * BANDIT_SHARE));
-            if (P < 15 + n) continue;
+            double n = Math.Floor(JsMath.Max(BANDIT_MIN, JsMath.Min(BANDIT_MAX, P * BANDIT_SHARE)));
+            if (P < 8 + n) continue;
             var near = J.Find(w.Camps, cp => cp.Alive && cp.Kind == "bandit" && J.T(cp.Hungry) && s.G.Dist(cp.Tile, st.Tile) <= 10);
             s.RemovePop(st, n);
             s.Metric("banditsBorn", n);
@@ -195,6 +198,9 @@ public static class Patrol
             if (cp.Count <= 0) { cp.Alive = false; cp.ClearedDay = s.Day; w.Tiles[cp.Tile].Camp = null; }
         }
     }
+
+    /// <summary>Yerleşim aç mı: açlık, ekmek yokluğu ya da (Faz 1b-7) yerel kıtlık durumu.</summary>
+    public static bool Hungry(Settlement st) => st.Starving > 0 || (st.Hunger ?? 0) > 0 || (st.Lack != null && (st.Lack.Get("bread") ?? 0) >= 10) || st.Status == "shortage" || st.Status == "hunger";
 
     private static int BanditTile(Sim s, Settlement st)
     {

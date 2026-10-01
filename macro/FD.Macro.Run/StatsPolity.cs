@@ -15,11 +15,12 @@ internal static partial class StatsMode
     {
         private static readonly string[] GOVS = { "kingdom", "clans", "republic", "theocracy" };
         private static readonly Dictionary<string, string> GOV_TR = new() { ["kingdom"] = "Krallık", ["clans"] = "Boylar", ["republic"] = "Cumhuriyet", ["theocracy"] = "Teokrasi" };
-        private static readonly string[] CAUSES = { "conquest", "secession", "succession", "duel", "coup", "aforoz" };
+        // Faz 1b-7: çöküş = başkentin fethi, bölünme ya da içeriden düşüş (tipin yolu; girişim sayılmaz)
+        private static readonly string[] CAUSES = { "conquest", "secession", "succession", "nobles", "duel", "clansplit", "coup", "mutiny", "schism", "aforoz" };
         private static readonly Dictionary<string, string> CAUSE_TR = new()
         {
-            ["conquest"] = "başkent fethi", ["secession"] = "bölünme", ["succession"] = "veraset krizi", ["duel"] = "reisin düelloda ölümü",
-            ["coup"] = "darbe girişimi", ["aforoz"] = "Pakt bağı ve aforoz",
+            ["conquest"] = "başkent fethi", ["secession"] = "bölünme", ["succession"] = "veraset savaşı", ["nobles"] = "soylu isyanı", ["duel"] = "reisin düelloda ölümü",
+            ["clansplit"] = "boyların ayrılması", ["coup"] = "darbe", ["mutiny"] = "paralı askerler (iflas)", ["schism"] = "mezhep bölünmesi", ["aforoz"] = "Pakt bağı ve aforoz",
         };
 
         private static double MSum(WorldRun r, string key) => r.Stats.Years.Sum(y => y.Map("metricDeltas") is { } m && m.TryGetValue(key, out double v) ? v : 0);
@@ -114,7 +115,7 @@ internal static partial class StatsMode
                 Crits.Add(new Crit
                 {
                     Id = "9c", Name = "Tiplerin çöküş nedenleri farklı",
-                    Rule = "dört hükümet tipinin en sık çöküş nedeni birbirinden farklı (başkent fethi, bölünme, veraset krizi, düello, darbe, aforoz); tipe özgü çöküş yolları Faz 1b/7",
+                    Rule = "dört hükümet tipinin en sık çöküş nedeni birbirinden farklı (başkent fethi, bölünme ya da içeriden düşüş: veraset savaşı, soylu isyanı, düello, boyların ayrılması, darbe, paralı askerler, mezhep bölünmesi, aforoz)",
                     Pass = distinct,
                     Measured = string.Join("; ", parts),
                     Data = data,

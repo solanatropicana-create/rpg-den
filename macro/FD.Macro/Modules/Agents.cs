@@ -285,6 +285,7 @@ public static class Agents
                         if (dest != null) { s.MergePop(dest, a.Pop); s.Log("migration", $"{J.S(s.PopSize(a.Pop))} evsiz {Tr.Ek(dest.Name, "da")} yeni evlerine yerleşti.", civ: dest.Civ, tile: dest.Tile); }
                         return true;
                     }
+                    if (a.Purpose == "migrants") { Status.MigrantsArrive(s, a, tile); return true; }   // Faz 1b-7: durum göçü
                     if (a.Purpose == "refugee")
                     {
                         var to = s.Settlement(a.To);
@@ -572,6 +573,7 @@ public static class Agents
         var b = Fight();
         var def = lastDef; var mc = lastM;
         RecordBattle(s, b);
+        Works.Alarm(s, st);   // Faz 1b-7: tepki inşaatı (sur)
         ApplyDefLosses(s, st, def, 0.15, mc, cp?.Name);
         a.Troops = J.Filter(mc, x => x.Kind == "monster" && x.Hp > 0).Count;
         bool bossAlive = J.Some(mc, x => J.T(x.Boss) && x.Hp > 0);
@@ -844,6 +846,7 @@ public static class Agents
         var why = new List<string>();
         double u = Diplomacy.CityWeakness(s, st, a.Civ >= 0 ? s.W.Civs[a.Civ] : null, why);
         s.Metric("guardSiege");
+        Works.Alarm(s, st);
         s.Log("war", $"{BandName(s, a)} {Tr.Ek(st.Name, "i")} kuşattı! Hücum {J.S(Diplomacy.BIG_SIEGE_DAYS)} gün sonra{(coming.Count > 0 ? $"; {JoinNames(J.Map(coming, b => BandName(s, b)))} yolda" : "")}.",
             tile: st.Tile, civ: a.Civ >= 0 ? a.Civ : (int?)null, major: true, cause: Diplomacy.WeakText(u, why));
     }
@@ -924,6 +927,7 @@ public static class Agents
             w.Tiles[cp.Tile].Camp = null;
             double loot = JsMath.Round(cp.Loot);
             s.Metric("campCleared");
+            Hubs.FromCleared(s, cp);   // Faz 1b-7: verimli vadi (fırsat merkezi; yer varsa kalıcı köy)
             var helped = new List<Civ>();   // TS Set<Civ>: insertion order, iterated
             for (int i = 0; i < band.Count; i++)
             {
@@ -1049,6 +1053,7 @@ public static class Agents
     private static void Siege(Sim s, List<Agent> band, Settlement st)
     {
         var w = s.W;
+        Works.Alarm(s, st);
         var lead = band[0];
         var att = w.Civs[lead.Civ]; var dfc = w.Civs[st.Civ];
         var civsIn = J.Unique(J.Map(band, ba => w.Civs[ba.Civ]));
@@ -1156,6 +1161,7 @@ public static class Agents
     private static void Plunder(Sim s, Agent a, Settlement st)
     {
         var w = s.W;
+        Works.Alarm(s, st);
         var att = w.Civs[a.Civ]; var dfc = w.Civs[st.Civ];
         var side = CivTroops(s, att, a.Troops ?? 0, "A");
         var def = Defenders(s, st, "B", false);

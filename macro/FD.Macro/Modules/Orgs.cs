@@ -48,7 +48,7 @@ public static partial class Orgs
     public static double Demand(Sim s, OrgDef d, Settlement st)
     {
         var c = CivOf(s, st);
-        if (c == null || !st.Alive || st.Tier < d.MinTier) return 0;
+        if (c == null || !st.Alive || st.Hub != null || st.Tier < d.MinTier) return 0;   // Faz 1b-7: fırsat merkezinde şube yok
         string lg = Polity.Legal(c, d.Id);
         if (lg == Polity.BANNED && !d.Secret) return 0;
         double legal = lg == Polity.PATRON ? 1.3 : lg == Polity.LEGAL ? 1 : 0.6;

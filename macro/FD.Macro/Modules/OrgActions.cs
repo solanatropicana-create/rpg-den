@@ -669,8 +669,8 @@ public static partial class Orgs
     }
 
     // ------------------------------------------------------------ devleti etkileme
-    /// <summary>Lobi: en çok şubesi olan (yasal) devlette yasayı örgütün çıkarına bir adım kaydırır; darbe: meşruiyeti düşük devlette
-    /// meşruiyeti sarsar (çöküş yolları Faz 1b/7).</summary>
+    /// <summary>Lobi: en çok şubesi olan (yasal) devlette yasayı örgütün çıkarına bir adım kaydırır; darbe: meşruiyeti düşük devletin
+    /// başkentinde iç kriz besler (Faz 1b-7, Crisis).</summary>
     private static void Lobby(Sim s, Org o)
     {
         var count = new JsNumObj<double>();
@@ -689,12 +689,12 @@ public static partial class Orgs
             {
                 var st = s.Settlement(b.Settlement);
                 var x = st != null ? CivOf(s, st) : null;
-                if (x == null || x.Legit >= 40 || s.Capital(x)?.Id != st.Id || !s.Rng.Chance(0.25)) continue;
+                if (x == null || x.Legit >= 40 || s.Capital(x)?.Id != st.Id || st.Crisis != null || !s.Rng.Chance(0.25)) continue;
                 o.Gold -= 80;
-                x.Legit = JsMath.Max(0, x.Legit - 15);
+                x.Legit = JsMath.Max(0, x.Legit - 5);
                 s.Metric("orgCoup");
-                s.Metric("collapse_coup_" + x.Gov);
-                s.Log("politics", $"{x.Name} başkentinde darbe girişimi: {States.RulerTitle(s, x)} zor kurtuldu.", civ: x.Id, tile: st.Tile, cause: $"{o.Name} perde arkasında; meşruiyet {J.S(JsMath.Round(x.Legit))}", major: true);
+                // Faz 1b-7: örgütün beslediği iç kriz (tipin yolu: krallıkta soylu isyanı ya da veraset kavgası, cumhuriyette darbe…)
+                Crisis.Start(s, st, null, $"{o.Name} komplo kuruyor; meşruiyet {J.S(JsMath.Round(x.Legit))}", o, 0.1);
                 return;
             }
         }

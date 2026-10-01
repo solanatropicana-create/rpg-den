@@ -282,6 +282,7 @@ public static class Diplomacy
         {
             string why = won ? "Savaş hedefi ele geçirildi" : allyDone ? (ally.Alive ? $"{ally.Name} barış yaptı; pakt yükümlülüğü bitti" : $"{ally.Name} yok oldu; korunacak kimse kalmadı")
                 : tired ? "Ordular yıprandı" : "Savaş uzadı, halk yoruldu";
+            string kind = r.War.Kind;
             r.War = null; s.Rel(t.Id, o.Id).War = null;
             r.PeaceDay = s.Day; s.Rel(t.Id, o.Id).PeaceDay = s.Day; o.LastWarEnd = s.Day;
             foreach (var k in r.Tension.Keys()) r.Tension.Set(k, (r.Tension.Get(k) ?? 0) * (won ? 0 : 0.3));
@@ -289,6 +290,7 @@ public static class Diplomacy
             s.AddMod(o.Id, t.Id, "pastwar", "Geçmiş savaşın izleri", -30, -40, 0.02);
             s.SetMod(o.Id, t.Id, "peace", "Barış antlaşması", 20, 0.03);
             s.Log("war", $"{o.Name} ile {t.Name} barış yaptı.", civ: o.Id, cause: why, major: true);
+            States.WarEnded(s, o, t, won, kind);   // Faz 1b-7: kazanan yönetim güçlenir, kaybeden sarsılır (Kutsal Sefer yenilgisi)
         }
     }
 
@@ -419,7 +421,7 @@ public static class Diplomacy
     /// <summary>Faz 1b-6: dünyanın yerleşim tavanı (anakara): yerleşilebilir anakara karosu / WORLD_TILES_PER_SETTLEMENT. Devlet sayısı
     /// (bölünme, yeni kurucular) arttıkça yerleşim sayısı büyümesin: tavana varan dünyada yeni köy ancak bir yer boşalınca (terk, temizlenen
     /// kamp vadisi) kurulur.</summary>
-    public const double WORLD_TILES_PER_SETTLEMENT = 45;
+    public const double WORLD_TILES_PER_SETTLEMENT = 55;   // Faz 1b-7: 45 → 55 (iç krizlerle devlet sayısı arttı; dünya tarih öncesinde tavana dek dolmasın)
 
     /// <summary>Yerleşilebilir anakara karosu (çayır, orman, tepe, bataklık, tundra; ada değil).</summary>
     public static int HabitableTiles(Sim s)
@@ -431,6 +433,14 @@ public static class Diplomacy
     }
 
     public static int WorldCap(Sim s) => (int)Math.Floor(HabitableTiles(s) / WORLD_TILES_PER_SETTLEMENT);
+
+    /// <summary>Faz 1b-7: yaşayan kalıcı yerleşim (fırsat merkezleri hariç; dünyanın yerleşim tavanı buna bakar).</summary>
+    public static int PermanentCount(Sim s)
+    {
+        int n = 0;
+        foreach (var x in s.W.Settlements) if (x.Alive && x.Hub == null) n++;
+        return n;
+    }
 
     /// <summary>Faz 1b-6: temizlenen kampın vadisine (v3: kamp → köy) dünya tavanının bu kadar üstünde de köy kurulabilir</summary>
     public const int FREED_SLACK = 3;
@@ -444,11 +454,11 @@ public static class Diplomacy
         // B1: savaşta ya da başkentini yeni kaybetmişken kimse öncü yollamaz (yıkılan medeniyet köy kurarak ayakta kalmaz)
         if (s.InWar(c) || s.Day - (c.CapitalLostDay ?? -99999) < 3 * Sim.OLD_YEAR) return;
         // anakarada LandCap kadar yerleşim; Gemicilik ve Seyir (Faz 1b-3: ikisi de Kasaba kademesi) birer denizaşırı koloni hakkı açar
+        ss = J.Filter(ss, x => x.Hub == null);   // Faz 1b-7: fırsat merkezleri (geçici halka) tavana sayılmaz
         int over = J.Filter(ss, x => J.T(x.Overseas)).Count;
         var freed = FreedValley(s, c, ss);   // Faz 1b-5: temizlenen kampın vadisi
         // Faz 1b-6: dünyanın yerleşim tavanı (tarih öncesinde yerleşilebilir alanla, sonra tarih öncesinin sonundaki sayıyla: yerleşimler kalıcı)
-        int alive = 0;
-        foreach (var x in s.W.Settlements) if (x.Alive) alive++;
+        int alive = PermanentCount(s);
         int wcap = s.W.SettleCap > 0 ? s.W.SettleCap : WorldCap(s);
         bool worldOk = alive < wcap, freedOk = alive < wcap + FREED_SLACK;
         bool landOk = ss.Count - over < LandCap(s, c) && worldOk;
@@ -457,7 +467,7 @@ public static class Diplomacy
         if (freed != null && !landOk && freedOk && ss.Count - over < LandCap(s, c) + 1) landOk = true;   // boşalan vadi tavanı biraz esnetir
         if (!landOk && !seaOk) return;
         if (s.Pop(cap) < 12 + ss.Count * 5 || s.FoodTotal(c) < 30 || (s.Day - c.LastExpand < EXPAND_GAP && freed == null)) return;
-        if (J.Some(s.W.Agents, a => a.Kind == "settlers" && a.Civ == c.Id)) return;
+        if (J.Some(s.W.Agents, a => a.Kind == "settlers" && a.Civ == c.Id && a.Purpose != "migrants")) return;   // Faz 1b-7: göçmen kafilesi öncü değil
         var target = (freed != null && landOk ? FreedTarget(s, c, freed, cap) : null);
         if (target != null) s.Metric("freedValley");
         else if (s.Day - c.LastExpand >= EXPAND_GAP) target = PickSettleTarget(s, c, landOk, seaOk, cap);
@@ -1181,6 +1191,9 @@ public static class Diplomacy
         double wear = Wear(s, st);
         if (wear > 0) Add(wear, $"art arda {J.S(st.Assaults ?? 0)} hücum halkı yıprattı");
         if (st.Plague != null) Add(1, "salgın kol geziyor");
+        // Faz 1b-7: istikrar (Crisis.Stability) ve süren iç kriz
+        if (st.Stability is double stab && stab < 30) Add(0.5, "istikrar çöktü");
+        if (st.Crisis != null) Add(0.5, $"şehirde {J.TrLower(Crisis.Def(st.Crisis).Name)}");
         u -= c.Align.Law * 0.5;
         u -= Economy.ImarCalm(st);
         // başkenti düşen medeniyetin halkı yeni başkentte kenetlenir (RALLY_DAYS boyunca; savunmada ayrıca +RALLY_AC, Agents.Defenders);
@@ -1246,6 +1259,7 @@ public static class Diplomacy
         else if (st.ClaimBy != null && st.ClaimBy != st.Founder) { st.ClaimBy = null; st.ClaimUntil = null; }
         if (IsEvil(s, wc) && !IsEvil(s, dfc)) CallCrusade(s, wc, dfc, $"{wc.Name}, {Tr.Ek(st.Name, "i")} ele geçirdi");
         Bondage.OnConquest(s, st, wc);   // Faz 1b-6: boylar esir alır; köleliği yasak fatih azat eder (Bondage.Tick)
+        Status.Set(s, st, "occupation", $"{wc.Name} fethetti");   // Faz 1b-7
     }
 
     /// <summary>Başkent düştü (şehir el değiştirdikten sonra): başka yerleşimi varsa başkent en kalabalığına taşınır
@@ -1271,7 +1285,7 @@ public static class Diplomacy
     }
 
     // ------------------------------------------------------------ bölünme
-    private static string MajorityRace(Settlement st)
+    public static string MajorityRace(Settlement st)
     {
         string best = null; double bv = 0;
         foreach (var kv in st.Pop) if (kv.Value > bv) { bv = kv.Value; best = kv.Key; }
@@ -1285,7 +1299,7 @@ public static class Diplomacy
     }
 
     /// <summary>Medeniyetin sürmekte olan en uzun savaşı (gün; yoksa 0).</summary>
-    private static double LongestWar(Sim s, Civ c)
+    public static double LongestWar(Sim s, Civ c)
     {
         double m = 0;
         foreach (var o in s.W.Civs) { if (o.Id == c.Id) continue; var war = s.Rel(c.Id, o.Id).War; if (war != null) m = JsMath.Max(m, s.Day - war.Since); }
@@ -1357,7 +1371,7 @@ public static class Diplomacy
         Settlement best = null; double bu = 0; List<string> bwhy = null;
         foreach (var st in ss)
         {
-            if (st.Id == cap.Id || s.Pop(st) < SECEDE_POP || s.Pop(st) >= s.Pop(cap) - 2 || IsWarTarget(s, st)) continue;
+            if (st.Id == cap.Id || st.Hub != null || st.Crisis != null || s.Pop(st) < SECEDE_POP || s.Pop(st) >= s.Pop(cap) - 2 || IsWarTarget(s, st)) continue;
             var why = new List<string>();
             double u = Unrest(s, c, st, cap, ss.Count, why);
             if (u > bu) { bu = u; best = st; bwhy = why; }
@@ -1367,6 +1381,49 @@ public static class Diplomacy
         if (best == null || bu < min) return;
         if (!s.Rng.Chance(JsMath.Min(few ? 0.2 : 0.08, (0.015 + (bu - min) * 0.03) * (few ? 3 : 1)))) return;
         Secede(s, c, best, cap, bwhy);
+    }
+
+    /// <summary>Faz 1b-7: içeriden düşen taşra şehrinin geçebileceği komşu (yeni devlet kurulamayınca): şehre 14 fersah yakın yerleşimi olan,
+    /// c ile savaşta olmayan ya da olan, halkın ırkı ve inancına yakın, en güçlü komşu.</summary>
+    public static Civ DefectTarget(Sim s, Civ c, Settlement st)
+    {
+        string maj = MajorityRace(st) ?? c.Race;
+        Civ best = null; double bs = double.NegativeInfinity;
+        foreach (var o in s.W.Civs)
+        {
+            if (!o.Alive || o.Id == c.Id) continue;
+            double d = double.PositiveInfinity;
+            foreach (var x in s.CivSettlements(o)) d = JsMath.Min(d, s.G.Dist(x.Tile, st.Tile));
+            if (d > 14) continue;
+            double sc = (o.Race == maj ? 3 : 0) + (s.AtWar(o.Id, c.Id) ? 2 : 0) + (o.Law?.Faith != null && st.Faith != null ? (st.Faith.Get(o.Law.Faith) ?? 0) * 2 : 0) - d / 5 + MilitaryPower(s, o) / 200;
+            if (sc > bs) { bs = sc; best = o; }
+        }
+        return best;
+    }
+
+    /// <summary>Faz 1b-7: şehir komşu devlete geçer (iç düşüşün yolu; fetih gibi tarihî hak doğar).</summary>
+    public static void Defect(Sim s, Civ c, Settlement st, Civ to, string path, string cause)
+    {
+        st.Founder ??= c.Id;
+        st.LostDay = s.Day;
+        if (st.ClaimBy == to.Id) { st.ClaimBy = null; st.ClaimUntil = null; }
+        else { st.ClaimBy = c.Id; st.ClaimUntil = s.Day + CLAIM_DAYS; }
+        st.Civ = to.Id;
+        foreach (var r in s.W.Routes)
+        {
+            if (!r.Alive || (r.A != st.Id && r.B != st.Id)) continue;
+            var other = s.Settlement(r.A == st.Id ? r.B : r.A);
+            if (other != null && other.Civ == c.Id) r.Alive = false;
+        }
+        var cap = s.Capital(c);
+        foreach (var h in s.CivHeroes(c)) if (h.State == "home" && h.Pos == st.Tile && cap != null) Heroes.SendHero(s, h, cap.Tile, "home");
+        s.SetMod(c.Id, to.Id, "stolecity", $"{st.Name} bize ihanet etti", -25, 0.02, false);
+        s.Metric("defect");
+        s.Metric("collapse_" + path + "_" + c.Gov);
+        s.UpdateTerritory();
+        s.RecomputeEff(c); s.RecomputeEff(to);
+        Status.Set(s, st, "newlord", "Yeni efendi");
+        s.Log("politics", $"{st.Name}, {Tr.Ek(c.Name, "dan")} koparak {Tr.Ek(to.Name, "a")} katıldı.", civ: to.Id, tile: st.Tile, cause: cause, major: true);
     }
 
     private static readonly string[] STATE_COLORS = { "#2e8b8b", "#9b6a2f", "#c9a227", "#5662b8", "#8e3f8e", "#6b8e23", "#c0504d", "#4a6fa5", "#a0522d", "#3c8d5a", "#b8860b", "#7d5ba6" };
@@ -1380,11 +1437,14 @@ public static class Diplomacy
         return s.Rng.Weighted(Polity.GOV_IDS, g => cu.Govs.Get(g) ?? 0.5);
     }
 
-    private static string SecessionName(Sim s, string gov, string town)
+    private static string SecessionName(Sim s, string gov, string town) => FreeName(s, gov, town, -1);
+
+    /// <summary>Devlet adı (tipin kalıbıyla; başka bir devletin adıysa "Özgür …", "Yeni …").</summary>
+    public static string FreeName(Sim s, string gov, string town, int self)
     {
         string pat = Polity.GOVS[gov].Pattern;
         foreach (var n in new[] { pat.Replace("{0}", town), $"Özgür {town}", $"Yeni {pat.Replace("{0}", town)}" })
-            if (!J.Some(s.W.Civs, x => x.Name == n)) return n;
+            if (!J.Some(s.W.Civs, x => x.Id != self && x.Name == n)) return n;
         return $"{pat.Replace("{0}", town)} {J.S(s.W.Civs.Count)}";
     }
 
@@ -1397,11 +1457,16 @@ public static class Diplomacy
     /// <summary>Yerleşim ayrılır: yeni medeniyet (id = dizin) sınıfını, adını ve rengini alır; ana medeniyetin fiyatlarını,
     /// tanıdıklarını ve bildiği yatakları devralır (Faz 1b-3: kademe şehrin kendisinde); ambardan nüfus payı
     /// kadar mal götürür. Ana medeniyet şehir üzerinde tarihî hak tutar (savaş türü "reclaim").</summary>
-    private static void Secede(Sim s, Civ c, Settlement st, Settlement cap, List<string> why)
+    private static void Secede(Sim s, Civ c, Settlement st, Settlement cap, List<string> why) => SecedeAs(s, c, st, null, "secession", why);
+
+    /// <summary>Faz 1b-7: yerleşim ayrılır (bölünme ya da iç krizin yolu: soylu isyanı, boyların ayrılması, paralı askerler, mezhep
+    /// bölünmesi, veraset savaşı). <paramref name="gov"/> null ise ayrılan halkın yatkınlığı; çöküş nedeni <paramref name="path"/>.</summary>
+    public static void SecedeAs(Sim s, Civ c, Settlement st, string gov, string path, List<string> why)
     {
         var w = s.W;
+        var cap = s.Capital(c) ?? st;
         string maj = MajorityRace(st) ?? c.Race;
-        string gov = SecessionGov(s, c, maj);
+        gov ??= SecessionGov(s, c, maj);
         int id = w.Civs.Count;
         var nc = WorldGen.MakeCiv(id, maj, gov, st.Name, s.Day);
         nc.Name = SecessionName(s, gov, st.Name);
@@ -1459,7 +1524,8 @@ public static class Diplomacy
         // orada bekleyen ana medeniyet kahramanları başkente döner
         foreach (var h in s.CivHeroes(c)) if (h.State == "home" && h.Pos == st.Tile) Heroes.SendHero(s, h, cap.Tile, "home");
         c.LastSecession = s.Day;
-        s.Metric("collapse_secession_" + c.Gov);   // Faz 1b-6
+        s.Metric("collapse_" + path + "_" + c.Gov);   // Faz 1b-6; Faz 1b-7: iç krizin yolu
+        Status.Set(s, st, "newlord", "Bağımsızlık");
         s.UpdateTerritory();
         s.RecomputeEff(nc);
         s.RecomputeEff(c);

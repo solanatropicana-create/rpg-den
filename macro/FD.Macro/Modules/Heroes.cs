@@ -30,7 +30,7 @@ public static class Heroes
         var w = s.W;
         double d = 0.2;
         foreach (var cp in w.Camps)
-            if (cp.Alive && !J.T(cp.Hidden) && !J.T(w.Tiles[cp.Tile].Isle) && s.G.Dist(cp.Tile, tile) <= 15) d += D_CAMP;   // gizli in (B2) iş getirmez
+            if (cp.Alive && !J.T(cp.Hidden) && cp.Kind != "bandit" && !J.T(w.Tiles[cp.Tile].Isle) && s.G.Dist(cp.Tile, tile) <= 15) d += D_CAMP;   // gizli in (B2) iş getirmez; Faz 1b-7: haydut kampı da (devriyenin işi; kahraman doğumunu şişirmesin)
         foreach (var q in w.Quests)
         {
             if (!q.Open) continue;

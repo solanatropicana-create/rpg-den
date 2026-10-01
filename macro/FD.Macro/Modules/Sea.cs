@@ -543,6 +543,7 @@ public static class Sea
             s.Metric("portRaid");
             s.Log("sea", $"{att.Name} kadırgaları {Tr.Ek(st.Name, "in")} limanını ateşe verdi{(J.T(burn) ? $": {J.S(burn)} gemi yandı" : "")}{(gold >= 1 ? $", {J.S(JsMath.Round(gold))} altınlık ganimet" : "")}.", civ: att.Id, tile: st.Port ?? st.Tile, major: true, cause: "Deniz akını");
             if (st.Port != null) { st.BurnedHouses = (st.BurnedHouses ?? 0) + 1; st.BurnedAt = s.Day; }
+            Works.Alarm(s, st);
         }
         return FleetHome(s, a);
     }

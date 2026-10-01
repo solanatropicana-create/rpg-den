@@ -302,6 +302,7 @@ public static class Economy
             if (P <= 0) { s.Abandon(st, "Yerleşimde kimse kalmadı"); continue; }
             var jobs = new JsObj<double>();
             bool famine = daysFood < 12 / Sim.PACE;
+            double pm = Status.ProdMul(st);   // Faz 1b-7: durum (kıtlık, kuşatma, canavar tehdidi, refah…) ve iç kriz
             // kıtlıkta askerler de toplayıcılığa çıkar
             double avail = famine ? P : JsMath.Max(0, P - st.Soldiers);
             jobs.Set("asker", famine ? 0 : st.Soldiers);
@@ -327,11 +328,11 @@ public static class Economy
                 var tile = t;
                 int tIdx = ti;
                 // Faz 1b-5: verim ve iş değeri eski gün başına (karar ölçeği); üretilen ×PACE (yeni gün)
-                opts.Add(new JobOpt { Key = good, Slots = D.LEVEL_SLOTS[t.Ext.Level], V = v, Run = n => { tile.Ext.Workers = n; ProduceTile(s, c, tIdx, tile, good, y * n * Sim.PACE); } });
+                opts.Add(new JobOpt { Key = good, Slots = D.LEVEL_SLOTS[t.Ext.Level], V = v, Run = n => { tile.Ext.Workers = n; ProduceTile(s, c, tIdx, tile, good, y * n * Sim.PACE * pm); } });
             }
             // toplayıcılar
             double gy = 0.14 * WILD_YIELD * (Drought(s) ? 1 - DROUGHT_FARM : 1) * (1 + s.E(c, "prodFood") * 0.5);
-            opts.Add(new JobOpt { Key = "toplayıcı", Slots = JsMath.Min(10, forestGrass), V = gy * s.Price(c, "grain") * foodUrg * 0.9 + 0.03 * s.Price(c, "wood"), Run = n => { s.Add(c, "grain", gy * n * Sim.PACE); s.Add(c, "wood", 0.03 * n * Sim.PACE); } });
+            opts.Add(new JobOpt { Key = "toplayıcı", Slots = JsMath.Min(10, forestGrass), V = gy * s.Price(c, "grain") * foodUrg * 0.9 + 0.03 * s.Price(c, "wood"), Run = n => { s.Add(c, "grain", gy * n * Sim.PACE * pm); s.Add(c, "wood", 0.03 * n * Sim.PACE * pm); } });
             // atölyeler
             foreach (var k in D.WORKSHOP_IDS)
             {
@@ -506,7 +507,7 @@ public static class Economy
                     double rate = 0;
                     foreach (var kv in st.Pop) rate += kv.Value * D.RACES[kv.Key].Growth;
                     double crowd = JsMath.Max(0.05, 1 - P / Sim.TIER_CROWD[st.Tier]) / (1 + JsMath.Max(0, totalPop - 60) / 70);
-                    st.GrowthAcc += rate * 0.0058 * Sim.PACE * (daysFood > 30 / Sim.PACE ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + TIER_GROWTH[st.Tier] + happy) * LackGrowth(st) * ImarGrowth(st); // C3: kentte yokluk, imar; Faz 1b-3: kademe
+                    st.GrowthAcc += rate * 0.0058 * Sim.PACE * (daysFood > 30 / Sim.PACE ? 1 : 0.5) * crowd * (1 + s.E(c, "growth") + TIER_GROWTH[st.Tier] + happy) * LackGrowth(st) * ImarGrowth(st) * Status.GrowthMul(st); // C3: kentte yokluk, imar; Faz 1b-3: kademe; Faz 1b-7: durum
                     while (st.GrowthAcc >= 1)
                     {
                         st.GrowthAcc -= 1;
@@ -1047,7 +1048,7 @@ public static class Economy
         var cap = s.Capital(c);
         foreach (var st in s.CivSettlements(c))
         {
-            if (st.Project != null) continue;
+            if (st.Project != null || st.Hub != null) continue;   // Faz 1b-7: fırsat merkezi inşa etmez
             var cands = BuildCandidates(s, c, st, st.Id == cap?.Id, war);
             if (cands.Count == 0) continue;
             J.Sort(cands, (a, b) => b.Score - a.Score);
@@ -1064,6 +1065,7 @@ public static class Economy
             s.Pay(c, chosen.Cost);
             // { ...chosen.project, left: chosen.work, total: chosen.work }
             st.Project = new Project { Type = chosen.Project.Type, Kind = chosen.Project.Kind, Tile = chosen.Project.Tile, Level = chosen.Project.Level, Left = chosen.Work, Total = chosen.Work };
+            if (chosen.Project.Type == "civic" && (chosen.Project.Kind == "palisade" || chosen.Project.Kind == "stonewall")) Works.WallStarted(s, st, chosen.Project.Kind);   // Faz 1b-7
         }
     }
 
@@ -1076,6 +1078,7 @@ public static class Economy
         double P = s.Pop(st);
         double cap = s.Housing(st);
         bool civicAvail(string k) => Sim.CivicOk(st, k);   // Faz 1b-3: yerleşimin kademesi
+        bool hungry = Works.Hungry(s, st);
         // Barınma
         if (P >= cap - 2)
         {
@@ -1092,7 +1095,7 @@ public static class Economy
         var tiles = J.Filter(s.G.Within(st.Tile, s.RadiusOf(st)), t => W.Tiles[t].Owner == st.Id);
         foreach (int ti in tiles) { var t = W.Tiles[ti]; if (t.Ext != null && !J.T(t.Ext.Depleted)) extSlots += D.LEVEL_SLOTS[t.Ext.Level]; }
         var bestByKind = new JsMap<string, Cand>();
-        if (extSlots < P * 1.0 + 3)
+        if (extSlots < P * 1.0 + 3 || (hungry && extSlots < P * 1.5 + 3))
         {
             foreach (int ti in tiles)
             {
@@ -1108,6 +1111,7 @@ public static class Economy
                     if (kind == "hunt") v += y * D.LEVEL_SLOTS[lvl] * (t.Terrain == "tundra" ? D.HIDE_TUNDRA : D.HIDE) * s.Price(c, "leather");
                     if (kind == "claypit") v -= y * D.LEVEL_SLOTS[lvl] * D.BRICK_FUEL * s.Price(c, "wood");
                     double score = v * 9 + (Polity.Culture(c).Desires.Contains(good) ? 6 : 0);
+                    if (hungry && J.T(D.GOODS[good].Food)) score = score * 2 + 20;   // Faz 1b-7: kıtlıktan sonra yeni tarla
                     var cost = kind == "lumber" || kind == "hunt" ? new JsObj<double>() : D.LEVEL_COST[lvl];
                     var cand = new Cand { Score = score, Cost = cost, Work = 6 + lvl * 4, Project = new Project { Type = "extract", Kind = kind, Tile = ti, Level = lvl } };
                     var prev = bestByKind.Get(kind);
@@ -1142,7 +1146,7 @@ public static class Economy
         }
         if (J.T(st.Civics.Get("shipyard")) && st.Port != null)
         {
-            if (civicAvail("lighthouse") && !J.T(st.Civics.Get("lighthouse"))) outp.Add(new Cand { Score = 14, Cost = D.CIVICS["lighthouse"].Cost, Work = CivicWork("lighthouse"), Project = new Project { Type = "civic", Kind = "lighthouse" } });
+            // Faz 1b-7: fener kulesi büyük proje olarak gelir (Works)
             double routes = J.Filter(W.Routes, r => r.Alive && J.T(r.Sea) && (s.Settlement(r.A)?.Civ == c.Id || s.Settlement(r.B)?.Civ == c.Id)).Count;
             int ct = s.CivTier(c);
             double want = JsMath.Min(7, 1 + (ct >= Gate.SHIPBUILDING ? 1 : 0) + (ct >= Gate.NAVIGATION ? 1 : 0) + (ct >= Gate.SEATRADE ? 1 : 0) + routes);
@@ -1181,19 +1185,39 @@ public static class Economy
                 if ((st.Civics.Get(k) ?? 0) >= (d.Max ?? 99)) return;
                 outp.Add(new Cand { Score = score, Cost = d.Cost, Work = CivicWork(k), Project = new Project { Type = "civic", Kind = k } });
             }
-            if (isCap) AddCivic("tavern", 45);
+            // Faz 1b-7: taverna başkentte; devletin tavernası tavanı aşmaz (göç ve iç düşüşlerle başkent sık yer değiştiriyor: eski başkentlerde
+            // biriken tavernalar kahraman nüfusunu iki katına çıkarıyordu)
+            if (isCap && TavernCount(s, c) < 2 + s.CivSettlements(c).Count / 8) AddCivic("tavern", 45);
             if (isCap || P > 25) AddCivic("market", 30);
             AddCivic("temple", 18 + (c.Law?.Faith == "sun" ? 10 : 0) + (c.Gov == "theocracy" ? 5 : 0));   // Faz 1b-6: resmî inanç Güneş
             if (isCap) AddCivic("library", 30 + (c.Gov == "kingdom" || c.Gov == "republic" ? 10 : 0));   // Akademi'nin himayesi
             if (s.Access(c, "gold")) AddCivic("mint", 28);
             if (isCap) AddCivic("guild", 26);
-            double threat = c.Threat + (war ? 1 : 0);
-            AddCivic("palisade", 8 + threat * 35 + st.Tier * 6);
-            AddCivic("stonewall", 10 + threat * 30 + st.Tier * 6);   // Faz 1b-3: Kasaba+ (CivicDef.Tier)
-            if (isCap) AddCivic("castle", 20 + threat * 25);         // Faz 1b-3: Şehir
             if (isCap) AddCivic("unique", 40);                        // sınıf yapısı: başkent Köy olunca (eskiden alt sınıf seçimi)
         }
+        // Faz 1b-7: tepki inşaatı: sur yalnız tehditten sonra (baskın, kuşatma, yağma, akın; Works.ALARM_DAYS) ya da savaşta sınır
+        // boyunda; yuva kullanmaz. Kale büyük proje olarak gelir (Works).
+        if (Works.Alarmed(s, st) || (war && Works.Frontier(s, c, st)))
+        {
+            void AddWall(string k, double score)
+            {
+                if (!civicAvail(k)) return;
+                var d = D.CIVICS[k];
+                if ((st.Civics.Get(k) ?? 0) >= (d.Max ?? 99)) return;
+                outp.Add(new Cand { Score = score, Cost = d.Cost, Work = CivicWork(k), Project = new Project { Type = "civic", Kind = k } });
+            }
+            AddWall("palisade", 60 + st.Tier * 6);
+            if (J.T(st.Civics.Get("palisade"))) AddWall("stonewall", 58 + st.Tier * 6);   // Kasaba+ (CivicDef.Tier)
+        }
         return outp;
+    }
+
+    /// <summary>Faz 1b-7: devletin tavernası olan yaşayan yerleşim sayısı.</summary>
+    private static int TavernCount(Sim s, Civ c)
+    {
+        int n = 0;
+        foreach (var x in s.CivSettlements(c)) if (J.T(x.Civics.Get("tavern"))) n++;
+        return n;
     }
 
     private static bool Producing(Sim s, Civ c, string g)

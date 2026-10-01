@@ -1,7 +1,9 @@
 # FD.Macro: Fantastik Dünya makro simülasyonu (C#)
 
 Kendi kendine işleyen D&D dünyası: devletler (dört hükümet tipi), inançlar, örgütler, ekonomi, diplomasi, savaşlar, esaret ve devriye,
-canavar kampları, kahramanlar, hanlar, deniz. Dünya tarih öncesiyle (`Sim.PREHISTORY_DAYS`) olgun başlar.
+canavar kampları, kahramanlar, hanlar, deniz. Dünya tarih öncesiyle (`Sim.PREHISTORY_DAYS`) olgun başlar ve büyüyerek değil, durum
+değiştirerek yaşar: yerleşim durum tablosu (`Status`), büyük şehrin istikrarı ve tipe göre iç çöküş yolları (`Crisis`), fırsat
+merkezi döngüsü (`Hubs`), tepki inşaatı ve büyük projeler (`Works`).
 TypeScript simülasyonunun (`../src/sim`) birebir portudur (git etiketi `port-exact`, golden test: 3 seed × 7200 gün).
 Faz 1'den beri C# kendi yolunda ilerler; değişiklikler `DESIGN-FAZ1.md`'de, deterministik yazım kuralları `PORTING.md`'de.
 
@@ -51,13 +53,16 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 (--ye
 - `report.md`: bitiş ölçütleri tablosu (✓/✗/○, ölçülen değerler ve tanımlar; 6–7: yol haritası v3, † zaman ölçeğine bağlı; 8: v3 süre tablosu), v3 durum değişimi
   bölümü (100 günlük oranlar, bütün koşu ve ısınmadan sonra; savaş, kuşatma ve uyarı süreleri; büyük şehrin el değiştirmeleri), v3 süre tablosu
   (salgın, onarım, sur ve büyük proje, kamp → köy, han kurulumu, han doğumu, efsaneye yükseliş, ilan ömrü; `DurLog`), devlet, inanç ve örgüt
-  bölümü (9: spec §9; örgütler, devriye profili, çöküş nedenleri hükümet tipine göre, esaret, aç haydutlar), eski analizdeki
+  bölümü (9: spec §9; örgütler, devriye profili, çöküş nedenleri hükümet tipine göre, esaret, aç haydutlar), dünyanın durumu bölümü
+  (Faz 1b-7, 6k–6n: durumlar ve süreleri, göç, iç krizler tipe göre, istikrar dağılımı, içeriden düşüş yolları, tip değişimi,
+  fırsat merkezleri türe göre, tepki inşaatı), eski analizdeki
   sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
   kahraman seviye dağılımları, olay/muharebe/ölüm nedeni türleri, dünya tablosu, her ölçü için yıllık medyan (p10–p90);
 - `report.json`: aynı veriler (yıllık medyan/p10/p90 dizileri, on yıllık değerler, ölçütler);
 - `seed-N.json`: dünyanın yıllık değerleri (her ölçü bir dizi), anahtarlı sayımlar (olay türleri, seviye dağılımları, `W.Metrics`
   farkları), çöküş listesi, medeniyet (devlet) ve örgüt özetleri, efsaneler, yıl sonu hash'leri; `v3`: günlük kademe sayıları, yerleşim durum değişimleri,
-  savaşlar, kuşatmalar, büyük şehrin el değiştirmeleri, ejderha akınları (`V3Log`); `durations`: süre aralıkları (`DurLog`).
+  savaşlar, kuşatmalar, büyük şehrin el değiştirmeleri (fetih, bölünme, içeriden), ejderha akınları, durum ve kriz aralıkları, fırsat
+  merkezleri (`V3Log`); `durations`: süre aralıkları (`DurLog`).
 
 Çıkış kodu 0; bir dünya çökerse 3 (raporlar yine yazılır). Dünyalar aynı süreçte paralel koşar; simülasyonda statik değişken
 durum olmamalıdır (`--verify` bunu da yakalar).
@@ -98,7 +103,7 @@ sim.Save(stream);                       // akış sürümleri: Save(Stream, comp
 - `Save`'i iki `Step` arasında çağırın, bir `Cp`/`OnEvent` kancasının içinden değil. `Save` simülasyonda hiçbir şeyi değiştirmez.
 - Kancalar kaydedilmez: `OnEvent`, `Cp` ve `Rng.Trace` yüklemeden sonra yeniden bağlanır (ör. `new WorldStats(sim2)`).
 
-**Dosyada ne var.** `{"format":"fd-macro-save","version":4,"day":…,"seed":…,"state":{…}}` (sürüm 4: Faz 1b-6, devlet/inanç/örgüt; sürüm 1–3 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
+**Dosyada ne var.** `{"format":"fd-macro-save","version":5,"day":…,"seed":…,"state":{…}}` (sürüm 5: Faz 1b-7, yerleşim durumu, istikrar, iç kriz, fırsat merkezleri; sürüm 1–4 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
 `World`, RNG durumu ve `Rng.Calls`, kara yol önbelleği, deniz yol önbelleği (`NavCache`) ve `ShoreW`. Önbellekler sonucu etkiler
 (bayat girdiler bilerek yeniden kullanılır, boyut sınırında temizlenir), o yüzden onlar da kaydedilir. RNG durumu ayrı saklanır:
 `new Sim(seed)`'ten hemen sonra `World.RngState` henüz dünya üretiminin durumunu tutar. İlk `Step`'ten sonra ikisi hep eşittir.
