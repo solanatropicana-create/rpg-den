@@ -18,8 +18,10 @@ public static class Heroes
 
     /// <summary>tavernada en çok bu kadar serbest (yuvası taverna olan) kahraman bulunur</summary>
     public const int TAVERN_CAP = 2;
-    /// <summary>tavernaya günlük yabancı gelme olasılığı (boşken / doluyken), iş talebiyle (Demand) çarpılır</summary>
-    public const double TAVERN_SPAWN_EMPTY = 1.0 / 300, TAVERN_SPAWN = 1.0 / 600;
+    /// <summary>tavernaya günlük yabancı gelme olasılığı (boşken / doluyken), iş talebiyle (Demand) çarpılır (Faz 1b-5: eski günde 1/300 ve 1/600; ×PACE)</summary>
+    public const double TAVERN_SPAWN_EMPTY = Sim.PACE / 300, TAVERN_SPAWN = Sim.PACE / 600;
+    /// <summary>Faz 1b-5: ilanın ömrü (gün; yol haritası v3: 10–20 gün; eskiden 3 eski yıl). Başarısız sefer ödülü %25 artırır.</summary>
+    public const double QUEST_DAYS = 15;
 
     /// <summary>İş olan yere kahraman gelir: taban 0.2; 15 fersah içindeki her canlı kamp +D_CAMP, 20 fersah içindeki kampa
     /// asılmış her açık ilan +D_QUEST, savaş +0.5, medeniyetin tehdidi (en çok +1); tavan D_MAX.</summary>
@@ -162,8 +164,16 @@ public static class Heroes
 
     // ------------------------------------------------------------ ün ve efsanelik
     /// <summary>bu kadar üne ulaşan (yaşayan) kahraman efsane olur (Faz 1 C1: 30 → 27, aşağıdaki kaynaklar küçültüldükten sonra;
-    /// dünya başına efsane medyanı 13,5 → 3). Ejderhayı deviren bu kadar ün alır (Dragon.R_SLAYER), ata olmak yarısını ister.</summary>
-    public const double LEGEND_RENOWN = 27;
+    /// dünya başına efsane medyanı 13,5 → 3; Faz 1b-5: ün sönüp genç kahramanın ünü çabuk yayılınca yeniden 30). Ejderhayı deviren bu
+    /// kadar ün alır (Dragon.R_SLAYER), ata olmak yarısını ister.</summary>
+    public const double LEGEND_RENOWN = 30;
+    /// <summary>Faz 1b-5 (v3: efsaneye yükseliş 100–300 gün): genç kahramanın ünü çabuk yayılır. Doğumundan sonraki işlerinin ünü
+    /// 1 + RENOWN_YOUNG kattan başlar, RENOWN_YOUNG_DAYS günde doğrusal olarak 1 kata iner (yeni yüz dillere düşer; tanınmış kahramanın
+    /// yeni işi eski ününe eklenir ama ün söner, bkz. RENOWN_HALF).</summary>
+    public const double RENOWN_YOUNG = 1.5, RENOWN_YOUNG_DAYS = 400;
+
+    /// <summary>genç kahramanın ün katsayısı (bkz. RENOWN_YOUNG)</summary>
+    public static double YoungFame(Sim s, Hero h) => 1 + RENOWN_YOUNG * JsMath.Max(0, 1 - (s.Day - h.Born) / RENOWN_YOUNG_DAYS);
     /// <summary>ün kaynakları: sağ çıkılan zafer, kamp temizleme, kamp önderi öldürme, ilan bitirme, düello, doğal 20, yurt/han savunma.
     /// Faz 1 C1: dünya kanlandıkça (dünya başına ~100 kamp) kamp ve ilan ünü tek başına efsane yaratıyordu; artık kişisel
     /// işler (önder devirmek, yurt savunmak, düello, ejderha) ağır basar, tekrarlanan işin ünü azalır (Repeat).</summary>
@@ -177,6 +187,7 @@ public static class Heroes
     /// <summary>Ünü yazar (rn_&lt;src&gt; kişisel sayaç, renown_&lt;src&gt; dünya sayacı); efsanelik denetimi yok.</summary>
     private static void Fame(Sim s, Hero h, double v, string src)
     {
+        v *= YoungFame(s, h);
         h.Renown += v;
         h.Tally.Set("rn_" + src, (h.Tally.Get("rn_" + src) ?? 0) + v);
         s.Metric("renown_" + src, v);
@@ -365,7 +376,7 @@ public static class Heroes
             var t = s.Settlement(h0.Tavern);
             return t != null && (t.Civ == c.Id || (s.Rel(c.Id, t.Civ).Contact && s.RelValue(c.Id, t.Civ) >= 0 && !s.AtWar(c.Id, t.Civ)));
         });
-        double reserve = pop * Sim.FOOD_PER_POP * 25;
+        double reserve = pop * Sim.FOOD_PER_POP * 25 / Sim.PACE;
         var ok = J.Filter(avail, h0 => { var k0 = HeroCost(s, c, h0); return s.St(c, "gold") >= k0.Gold && s.FoodTotal(c) - k0.Food >= reserve; });
         if (ok.Count == 0) return;
         string aff = D.CLASSES[c.Cls].HeroClass;
@@ -393,7 +404,7 @@ public static class Heroes
         var path = s.Path(h.Pos, tile);
         if (path == null) { h.Pos = tile; h.State = then; return; }
         h.State = "traveling"; h.Tavern = -1;
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "hero", Civ = h.Civ, Path = path, Step = 0, Progress = 0, Speed = 0.9, Heroes = new List<int> { h.Id }, Purpose = then });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "hero", Civ = h.Civ, Path = path, Step = 0, Progress = 0, Speed = Pace.HERO, Heroes = new List<int> { h.Id }, Purpose = then });
     }
 
     /// <summary>kampın gücü; vsAc: saldıranların ortalama zırhı</summary>
@@ -438,7 +449,7 @@ public static class Heroes
             side.AddRange(Agents.CivTroops(s, c, soldiers, "A"));
             var path0 = s.Path(cap.Tile, cp.Tile);
             // aynı kampa yaklaşık aynı anda varacak dost gruplar (ilanı alan parti, av partisi) hesaba katılır
-            var probe = new Agent { Id = -1, Kind = "army", Civ = c.Id, Path = path0 ?? new List<int> { cap.Tile }, Step = 0, Progress = 0, Speed = 0.6, Heroes = J.Map(home, h => h.Id), To = cp.Id, Purpose = "expedition" };
+            var probe = new Agent { Id = -1, Kind = "army", Civ = c.Id, Path = path0 ?? new List<int> { cap.Tile }, Step = 0, Progress = 0, Speed = Pace.EXPEDITION, Heroes = J.Map(home, h => h.Id), To = cp.Id, Purpose = "expedition" };
             var allies = path0 != null ? Agents.ProbeAllies(s, probe, Agents.EtaDays(s, probe), Agents.MUSTER_CAMP) : new List<Agent>();
             var allyCs = new List<Combatant>();
             foreach (var b in allies) allyCs.AddRange(Agents.AgentCombatants(s, b, cp.Kind));
@@ -453,7 +464,7 @@ public static class Heroes
                 if (path != null)
                 {
                     foreach (var h in home) h.State = "army";
-                    s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 0.6, Heroes = J.Map(home, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cp.Id, Purpose = "expedition" });
+                    s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.EXPEDITION, Heroes = J.Map(home, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cp.Id, Purpose = "expedition" });
                     s.Log("quest", $"{c.Name}{(home.Count > 0 ? $", {string.Join(" ve ", J.Map(home, h => h.Name))} önderliğinde" : "")} {J.S(soldiers)} askerle {Lore.Ek(cp.Name, "a")} sefer başlattı.", civ: c.Id, tile: cap.Tile, cause: allies.Count > 0 ? $"{motive}; yoldaki {J.S(allies.Count)} dost grupla birlikte saldıracak" : motive, major: true);
                     if (allies.Count > 0) s.Metric("jointPlanned");
                     return;
@@ -469,7 +480,7 @@ public static class Heroes
         double bounty = JsMath.Round(JsMath.Min(s.St(c, "gold") * 0.6, (30 + c.Threat * 50) * kindF + (ReferenceEquals(cp, occ) ? 15 : 0)));
         s.Add(c, "gold", -bounty);
         var inn = J.At(J.Sort(J.Filter(s.W.Inns, i => i.Alive), (a, b) => s.G.Dist(a.Tile, cp.Tile) - s.G.Dist(b.Tile, cp.Tile)), 0);
-        var q = new Quest { Id = s.Id(), Civ = c.Id, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn != null && s.G.Dist(inn.Tile, cp.Tile) <= 22 ? inn.Id : null, Expires = s.Day + 3 * Sim.YEAR };
+        var q = new Quest { Id = s.Id(), Civ = c.Id, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn != null && s.G.Dist(inn.Tile, cp.Tile) <= 22 ? inn.Id : null, Expires = s.Day + QUEST_DAYS };
         s.W.Quests.Add(q);
         s.Metric("questPosted");
         string where = q.Inn != null ? $"{Will.InnById(s, q.Inn).Name} Hanı'nın panosuna" : "tavernalara";
@@ -537,10 +548,26 @@ public static class Heroes
         Lore.WriteEpitaph(s, h);
     }
 
-    /// <summary>iki yıldır iş bulamayan serbest kahramanın diyarı terk etmek yerine başka bir yuvaya göçme olasılığı</summary>
+    /// <summary>eski iki yıldır iş bulamayan serbest kahramanın diyarı terk etmek yerine başka bir yuvaya göçme olasılığı</summary>
     public const double MOVE_NOT_LEAVE = 0.75;
+    /// <summary>Faz 1b-5: dinlenen kahraman günde en büyük canının bu payını kapatır (eskiden 5 eski günde %10: tam iyileşme ~12 gün)</summary>
+    public const double REST_HEAL = 0.1 / (5 / Sim.PACE);
+    /// <summary>işsiz serbest kahramanın göç zarı: eski iki yıl (60 gün) işsizlikten sonra, günde bu olasılıkla (eskiden 5 eski günde 0,1)</summary>
+    public const double IDLE_DAYS = 2 * Sim.OLD_YEAR, IDLE_MOVE = 0.1 / (5 / Sim.PACE);
 
-    /// <summary>5 günde bir: dinlenenler iyileşir, irade tiki, işsiz serbest kahramanlar emekli olur, göçer ya da diyarı terk eder.</summary>
+    /// <summary>Faz 1b-5 (yol haritası v3: kahraman doğumu han başına 10–20 günde bir): handa doğan yabancı yolcudur. Hanına INN_STAY
+    /// günden uzun süredir yerleşik, teklifsiz serbest kahraman günde INN_MOVE olasılıkla yoluna devam eder: tecrübeli (Sv3+) yeri olan en
+    /// yakın tavernalardan birine göçer, acemi INN_LEAVE olasılıkla diyardan çıkar, yoksa o da bir tavernaya göçer. Han havuzu dönüşür.</summary>
+    public const double INN_STAY = 30, INN_MOVE = 0.1, INN_LEAVE = 0.3;
+    /// <summary>göçen yabancıyı kabul eden tavernada en çok bu kadar serbest kahraman olabilir (yeni doğuşun tavanı TAVERN_CAP)</summary>
+    public const int TAVERN_ROOM = 4;
+    /// <summary>Faz 1b-5 (v3: efsaneye yükseliş 100–300 gün): ün söner; efsane olmamış yaşayan kahramanın ünü RENOWN_HALF günde yarıya
+    /// iner. Efsane, ünü kısa sürede biriktiren (önder deviren, yurt savunan, düello kazanan) kahramandan çıkar, uzun ömürden değil.</summary>
+    public const double RENOWN_HALF = 90;
+    public static readonly double RENOWN_KEEP = JsMath.Pow(0.5, 1 / RENOWN_HALF);
+
+    /// <summary>Her gün (Faz 1b-5; eskiden 5 eski günde bir): dinlenenler iyileşir, ün söner, irade tiki, handaki yabancılar yoluna devam eder,
+    /// işsiz serbest kahramanlar emekli olur, göçer ya da diyarı terk eder. Yaşlılık ve emeklilik zarı takvim yılında bir.</summary>
     public static void HeroesTick(Sim s)
     {
         var w = s.W;
@@ -549,7 +576,8 @@ public static class Heroes
         {
             var h = heroes[i];
             if (h.State == "dead" || h.State == "gone" || h.State == "retired") continue;
-            if (h.State == "tavern" || h.State == "home") { PotionHeal(s, h); h.Hp = JsMath.Min(h.MaxHp, h.Hp + Math.Ceiling(h.MaxHp * 0.1)); }
+            if (h.State == "tavern" || h.State == "home") { PotionHeal(s, h); h.Hp = JsMath.Min(h.MaxHp, h.Hp + Math.Ceiling(h.MaxHp * REST_HEAL)); }
+            if (h.Renown > 0 && !J.T(h.Legend)) h.Renown *= RENOWN_KEEP;
         }
         Will.WillTick(s);
         heroes = w.Heroes;
@@ -568,9 +596,11 @@ public static class Heroes
             if (h.Civ != -1 || h.State != "tavern") continue;
             // yaşlı ya da yılları bulmuş serbest kahraman emekli olabilir
             if ((s.Day + h.Id * 5) % Sim.YEAR == 0 && Will.MaybeRetire(s, h)) continue;
+            bool bids = h.Auction != null && h.Auction.Bids.Count > 0;
+            if (h.BaseInn && h.Tavern == h.Base && !bids && s.Day - (h.BaseDay ?? h.Born) > INN_STAY && s.Rng.Chance(INN_MOVE)) { MoveOn(s, h); continue; }
             // uzun süre iş bulamayan başka yere göçer ya da diyarı terk eder
             double idle = s.Day - JsMath.Max(h.IdleSince, h.LastGoal ?? 0);
-            if (idle > 2 * Sim.YEAR && !(h.Auction != null && h.Auction.Bids.Count > 0) && s.Rng.Chance(0.1))
+            if (idle > IDLE_DAYS && !bids && s.Rng.Chance(IDLE_MOVE))
             {
                 var others = J.Filter(w.Settlements, x => x.Alive && J.T(x.Civics.Get("tavern") ?? 0) && x.Id != h.Base);
                 var inns = J.Filter(w.Inns, x => x.Alive && x.Id != h.Base);
@@ -581,7 +611,7 @@ public static class Heroes
                     int tId; string tName;
                     if (pickInn) { var ti = s.Rng.Pick(inns); tId = ti.Id; tName = ti.Name; }
                     else { var ts = s.Rng.Pick(others); tId = ts.Id; tName = ts.Name; }
-                    h.IdleSince = s.Day; h.Base = tId; h.BaseInn = pickInn; h.Auction = null;
+                    h.IdleSince = s.Day; h.Base = tId; h.BaseInn = pickInn; h.BaseDay = s.Day; h.Auction = null;
                     s.Log("hero", $"{h.Name}, iş bulamayınca {(pickInn ? $"{tName} Hanı'na" : $"{tName} tavernasına")} doğru yola çıktı.", tile: h.Pos);
                     Will.ReturnToBase(s, h);
                 }
@@ -592,5 +622,29 @@ public static class Heroes
                 }
             }
         }
+    }
+    /// <summary>Handaki yabancı yoluna devam eder (bkz. INN_STAY): tecrübeli (Sv3+) ya da INN_LEAVE zarını geçen acemi, yeri olan en yakın
+    /// üç tavernadan birine göçer; öteki (ya da yer bulamayan) diyardan çıkar.</summary>
+    private static void MoveOn(Sim s, Hero h)
+    {
+        var inn = Will.InnById(s, h.Base);
+        string innName = inn != null ? Inns.InnName(inn) : "han";
+        // yalnız yeri olan (TAVERN_ROOM'dan az serbest kahramanı olan) tavernalar: dolu diyarda yabancı yoluna devam eder
+        var towns = J.Filter(s.W.Settlements, x => x.Alive && J.T(x.Civics.Get("tavern") ?? 0)
+            && J.Filter(s.W.Heroes, o => o.Civ == -1 && !o.BaseInn && o.Base == x.Id && o.State != "dead" && o.State != "gone" && o.State != "retired").Count < TAVERN_ROOM);
+        h.Auction = null;
+        if (towns.Count > 0 && (h.Level >= 3 || !s.Rng.Chance(INN_LEAVE)))
+        {
+            J.Sort(towns, (a, b) => J.Or(s.G.Dist(a.Tile, h.Pos) - s.G.Dist(b.Tile, h.Pos), a.Id - b.Id));
+            var ts = s.Rng.Pick(towns.GetRange(0, Math.Min(3, towns.Count)));
+            h.IdleSince = s.Day; h.Base = ts.Id; h.BaseInn = false; h.BaseDay = s.Day;
+            s.Metric("innMoveOn");
+            s.Log("hero", $"{h.Name}, {Lore.Ek(innName, "da")} iş bulamayınca {Lore.Ek(ts.Name, "in")} tavernasına doğru yola çıktı.", tile: h.Pos);
+            Will.ReturnToBase(s, h);
+            return;
+        }
+        h.State = "gone";
+        s.Metric("innPassOn");
+        s.Log("hero", $"{h.Name} {Lore.Ek(innName, "dan")} ayrılıp yoluna devam etti; bu diyara bir daha uğramadı.", tile: h.Pos);
     }
 }

@@ -21,7 +21,7 @@ namespace HeroStats;
 /// </summary>
 public static class Program
 {
-    private const int YEAR = 120;
+    private const int YEAR = Sim.YEAR;   // Faz 1b-5: 40 gün
 
     public static int Main(string[] args)
     {

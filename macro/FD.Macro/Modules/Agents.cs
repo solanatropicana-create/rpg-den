@@ -144,20 +144,19 @@ public static class Agents
             if (J.T(a.Dead)) continue;
             // handa konaklayan kervan sabah yola çıkar
             if (a.RestUntil != null) { if (s.Day < a.RestUntil.Value) continue; a.RestUntil = null; }
-            if (a.Step < a.Path.Count - 1)
+            // Faz 1b-5: kovalayan akıncı avının yanına varınca (yolda geçerken de) durur
+            Agent prey = a.Kind == "raid" && a.Purpose == "caravan" && !J.T(a.Returning) ? J.Find(w.Agents, x => x.Id == a.To && !J.T(x.Dead)) : null;
+            if (a.Step < a.Path.Count - 1 && !(prey != null && s.G.Dist(TileOf(a), TileOf(prey)) <= 1))
             {
-                int next = a.Path[a.Step + 1];
+                // Faz 1b-5: ilerleme gün cinsinden: her gün bir günlük yol; karonun süresi TileDays (kara: maliyet / hız; deniz: 1 / gemi hızı).
+                // Hız birkaç karo/gün olduğundan bir günde birden çok karo geçilir; artan süre ertesi güne kalır.
                 double tele = TeleportMult(s, a);
-                if (J.T(w.Tiles[next].Sea)) a.Progress += Sea.ShipSpeed(s, a) * tele;
-                else
+                a.Progress += 1;
+                while (a.Step < a.Path.Count - 1)
                 {
-                    double cost = s.MoveCost(next);
-                    if (a.Civ >= 0 && s.E(w.Civs[a.Civ], "forestMove") > 0 && (w.Tiles[next].Terrain == "forest" || w.Tiles[next].Terrain == "oldforest")) cost = 0.5;
-                    a.Progress += a.Speed / cost * tele;
-                }
-                while (a.Progress >= 1 && a.Step < a.Path.Count - 1)
-                {
-                    a.Progress -= 1; a.Step++;
+                    double need = TileDays(s, a, a.Path[a.Step + 1]) / tele;
+                    if (!(a.Progress >= need)) { if (double.IsNaN(need) || double.IsInfinity(need)) a.Progress = JsMath.Min(a.Progress, 1); break; }
+                    a.Progress -= need; a.Step++;
                     int here = a.Path[a.Step], prev = a.Path[a.Step - 1];
                     if (J.T(w.Tiles[prev].Sea) && !J.T(w.Tiles[here].Sea)) Sea.Disembark(s, a, prev, here);
                     if (a.Kind == "hero" || a.Kind == "party") foreach (var hid in a.Heroes ?? new List<int>()) s.Hero(hid).Pos = here;
@@ -165,17 +164,21 @@ public static class Agents
                     if (a.Kind == "ship" && a.Purpose != null && a.Purpose.StartsWith("explore", StringComparison.Ordinal)) Sea.ExploreSight(s, a);
                     if (a.Kind == "army" && (a.Purpose == "war" || a.Purpose == "plunder") && !J.T(a.Returning)) PillageTile(s, a, here);
                     if (a.Kind == "caravan" && InnLife.CaravanPassInn(s, a)) { a.Progress = 0; break; }
+                    if (prey != null && s.G.Dist(here, TileOf(prey)) <= 1) { a.Progress = 0; break; }
+                    if (Sea.IsPirate(a) && a.Purpose == "prey" && Sea.PreyNear(s, a)) { a.Progress = 0; break; }
                 }
+                if (a.Step >= a.Path.Count - 1) a.Progress = 0;
             }
             if (a.Kind == "raid" && a.Purpose == "caravan" && !J.T(a.Returning))
             {
-                var cv = J.Find(w.Agents, x => x.Id == a.To && !J.T(x.Dead));
+                var cv = prey;
                 if (cv == null) { RaidReturn(s, a); continue; }
                 int here = TileOf(a), cvt = TileOf(cv);
                 if (s.G.Dist(here, cvt) <= 1) { Ambush(s, a, cv); continue; }
-                if (s.Day % 3 == 0) { var p = s.Path(here, cv.Path[Math.Min(cv.Path.Count - 1, cv.Step + 2)]); if (p != null) { a.Path = p; a.Step = 0; a.Progress = 0; } }
+                // Faz 1b-5: her gün (eskiden 3 günde bir) avın bir günlük yolunun ötesine
+                { var p = s.Path(here, cv.Path[Math.Min(cv.Path.Count - 1, cv.Step + 2 + (int)Math.Ceiling(cv.Speed))]); if (p != null) { a.Path = p; a.Step = 0; a.Progress = 0; } }
                 if (a.Chase == null) a.Chase = s.Day;
-                if (s.Day - a.Chase > 25) RaidReturn(s, a);
+                if (s.Day - a.Chase > CHASE_DAYS) RaidReturn(s, a);
                 continue;
             }
             if (a.Step >= a.Path.Count - 1 && Arrive(s, a)) a.Dead = true;
@@ -185,6 +188,18 @@ public static class Agents
 
     /// <summary>teleport etkisiyle kendi iki yerleşimi arasındaki yolculuğun hız çarpanı</summary>
     public const double TELEPORT_SPEED = 3;
+    /// <summary>akıncının kervanı kovaladığı en uzun süre (gün; eskiden 25 eski gün)</summary>
+    public const double CHASE_DAYS = 25 / Sim.PACE;
+
+    /// <summary>Faz 1b-5: ajanın karoya girmesi için gereken gün: denizde 1 / gemi hızı, karada arazi maliyeti / hız (Druid ormanı 0,5).</summary>
+    public static double TileDays(Sim s, Agent a, int tile)
+    {
+        var t = s.W.Tiles[tile];
+        if (J.T(t.Sea)) return 1 / JsMath.Max(0.1, Sea.ShipSpeed(s, a));
+        double cost = s.MoveCost(tile);
+        if (a.Civ >= 0 && s.E(s.W.Civs[a.Civ], "forestMove") > 0 && (t.Terrain == "forest" || t.Terrain == "oldforest")) cost = 0.5;
+        return cost / JsMath.Max(0.05, a.Speed);
+    }
 
     /// <summary>
     /// Işınlanma Çemberi / Gölge Adımı (<c>teleport</c>): yolu medeniyetin kendi bir yaşayan yerleşiminden başlayıp
@@ -393,6 +408,8 @@ public static class Agents
 
     // ------------------------------------------------------------ kervanlar ve ticaret
     private static readonly List<string> SUPPLY_GOODS = new() { "wood", "grain", "tools" };
+    /// <summary>yolda kalkışlar arası (gün): ticaret ve ikmal (eski 40), antlaşma (eski 35); pusuya düşen kervanın yolu (eski 70)</summary>
+    public const double TRADE_GAP = 40 / Sim.PACE, TREATY_GAP = 35 / Sim.PACE, AMBUSH_GAP = 70 / Sim.PACE;
 
     /// <summary>Kalkış günü gelen ticaret / antlaşma / ikmal yollarından yüklü kervan çıkarır.</summary>
     public static void RoutesTick(Sim s)
@@ -407,10 +424,10 @@ public static class Agents
             bool reverse = r.Kind == "trade" && r.Trips % 2 == 1;
             var src = reverse ? B : A; var dst = reverse ? A : B;
             var cs = s.W.Civs[src.Civ]; var cd = s.W.Civs[dst.Civ];
-            if (cs.Id != cd.Id && s.AtWar(cs.Id, cd.Id) && !(s.E(cs, "blackMarket") > 0)) { r.NextDepart = s.Day + 30; continue; }
+            if (cs.Id != cd.Id && s.AtWar(cs.Id, cd.Id) && !(s.E(cs, "blackMarket") > 0)) { r.NextDepart = s.Day + 30 / Sim.PACE; continue; }
             // deniz yolu: kalkış limanında boş gemi yoksa sıra öbür uca geçer
-            if (J.T(r.Sea) && (!J.T(src.Civics.Get("shipyard")) || src.Port == null || Sea.FreeHulls(s, src) < 1)) { r.Trips++; r.NextDepart = s.Day + 12; continue; }
-            r.NextDepart = s.Day + (r.Kind == "treaty" ? 35 : 40);
+            if (J.T(r.Sea) && (!J.T(src.Civics.Get("shipyard")) || src.Port == null || Sea.FreeHulls(s, src) < 1)) { r.Trips++; r.NextDepart = s.Day + 12 / Sim.PACE; continue; }
+            r.NextDepart = s.Day + (r.Kind == "treaty" ? TREATY_GAP : TRADE_GAP);
             var cargo = new JsObj<double>();
             if (r.Kind == "treaty")
             {
@@ -450,7 +467,7 @@ public static class Agents
             if (reverse) { @base = new List<int>(r.Path); @base.Reverse(); } else @base = r.Path;
             var path = J.T(r.Sea) ? @base : InnLife.InnDetour(s, @base); // deniz yolu hana uğramaz
             bool horse = Gear.TakeHorse(s, cs);
-            double speed = horse ? 0.9 : 0.65;
+            double speed = horse ? Pace.CARAVAN_HORSE : Pace.CARAVAN;
             s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "caravan", Civ = cs.Id, Path = path, Step = 0, Progress = 0, Speed = speed, Cargo = cargo, Horse = horse, Troops = guards, From = src.Id, To = dst.Id, Route = r.Id, Hull = J.T(r.Sea) ? src.Id : (int?)null });
         }
     }
@@ -490,10 +507,9 @@ public static class Agents
         return true;
     }
 
-    /// <summary>Her 4 günde bir: Köy kademesindeki medeniyet (eskiden Yol Yapımı) başkentten yerleşimlerine birer karo yol döşer.</summary>
+    /// <summary>Her gün (Faz 1b-5; eskiden 4 eski günde bir): Köy kademesindeki medeniyet (eskiden Yol Yapımı) başkentten yerleşimlerine birer karo yol döşer.</summary>
     public static void RoadsTick(Sim s)
     {
-        if (s.Day % 4 != 0) return;
         foreach (var c in s.W.Civs)
         {
             if (!c.Alive || !s.CivAt(c, Gate.ROADS)) continue;
@@ -562,7 +578,7 @@ public static class Agents
         if (J.T(a.Boss) && !bossAlive) { if (cp != null) cp.HadBoss = false; s.Log("raid", $"{(kind == "goblin" ? "Goblin şefi" : kind == "pirate" ? "Korsan kaptanı" : "Hobgoblin yüzbaşısı")} {Tr.Ek(st.Name, "da")} öldürüldü!", civ: c.Id, tile: st.Tile, battle: b.Id, major: true); }
         a.Boss = bossAlive;
         c.LastRaidedDay = s.Day;
-        if (kind == "pirate") c.Yearly.Set("pirateHit", s.Year);
+        if (kind == "pirate") c.Yearly.Set("pirateHit", s.DynYear);
         s.Metric("raids");
         if (b.Winner == "B")
         {
@@ -613,11 +629,11 @@ public static class Agents
         a.Troops = J.Filter(mons, x => x.Kind == "monster" && x.Hp > 0).Count;
         a.Boss = J.Some(mons, x => J.T(x.Boss) && x.Hp > 0);
         c.LastRaidedDay = s.Day;
-        if (kind == "pirate") c.Yearly.Set("pirateHit", s.Year);
+        if (kind == "pirate") c.Yearly.Set("pirateHit", s.DynYear);
         s.Metric("raids");
         if (b.Winner == "B")
         {
-            t.Ext.Burned = s.Day + s.Rng.Int(40, 90); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;
+            t.Ext.Burned = s.Day + s.Rng.Int(10, 22); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;   // Faz 1b-5: eski 40–90 gün
             string g = EXT_GOOD.TryGetValue(t.Ext.Kind, out var eg) ? eg : null;
             double q = J.T(g) ? Math.Floor(JsMath.Min(s.St(c, g) * 0.12, 30)) : 0;
             if (J.T(g) && q > 0) s.Add(c, g, -q);
@@ -648,7 +664,7 @@ public static class Agents
         _ = J.TrLower(D.EXTRACTS[t.Ext.Kind].Names[t.Ext.Level - 1]); // TS computes extName here but never uses it
         double dead = JsMath.Min(t.Ext.Workers, s.Rng.Int(0, 2));
         if (J.T(dead)) s.RemovePop(st, dead);
-        t.Ext.Burned = s.Day + s.Rng.Int(40, 80); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;
+        t.Ext.Burned = s.Day + s.Rng.Int(10, 20); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;   // Faz 1b-5: eski 40–80 gün
         s.Metric("extBurned");
         var att = w.Civs[a.Civ];
         s.Log("war", $"{att.Name} askerleri geçerken {Tr.Ek(st.Name, "in")} {D.ExtPoss(t.Ext.Kind, t.Ext.Level)} yakıldı{(J.T(dead) ? $", {J.S(dead)} kişi öldü" : "")}.", civ: att.Id, tile: tile, cause: "Savaşın bedelini köylüler öder");
@@ -691,7 +707,7 @@ public static class Agents
                 if (target.Cargo != null) foreach (var v in target.Cargo.Values()) loot = loot + v;
                 a.Loot = loot;
                 var r = J.Find(s.W.Routes, x => x.Id == target.Route);
-                if (r != null) r.NextDepart = s.Day + 70;
+                if (r != null) r.NextDepart = s.Day + AMBUSH_GAP;
                 if (c != null) c.Threat += 0.35;
             }
             foreach (var hid in target.Heroes ?? new List<int>()) { var h = s.Hero(hid); if (h.State != "dead") { if (h.Civ >= 0) { h.State = "traveling"; Heroes.SendHero(s, h, s.Capital(s.W.Civs[h.Civ])?.Tile ?? h.Pos, "home"); } else { Will.Note(s, h, "yolda pusuya düştü"); Will.ReturnToBase(s, h); } } }
@@ -707,10 +723,12 @@ public static class Agents
     }
 
     // ------------------------------------------------------------ ortak saldırı: hedefte toplanma
-    /// <summary>kamp baskınında dostların bekleneceği en uzun süre (gün)</summary>
-    public const double MUSTER_CAMP = 16;
-    /// <summary>kuşatmada müttefik ordunun bekleneceği en uzun süre (gün)</summary>
-    public const double MUSTER_CITY = 30;
+    /// <summary>kamp baskınında dostların bekleneceği en uzun süre (gün; eski 16)</summary>
+    public const double MUSTER_CAMP = 16 / Sim.PACE;
+    /// <summary>kuşatmada müttefik ordunun bekleneceği en uzun süre (gün; eski 30)</summary>
+    public const double MUSTER_CITY = 30 / Sim.PACE;
+    /// <summary>Faz 1b-5: sıradan yerleşim kuşatması: ordu hücumdan önce en az bu kadar gün karargâh kurar (büyük şehirde Diplomacy.BIG_SIEGE_DAYS)</summary>
+    public const double SIEGE_DAYS = 2;
 
     /// <summary>aynı hedefe giden grupları eşleştiren anahtar: c&lt;kamp&gt; ya da s&lt;yerleşim&gt; (yoksa null)</summary>
     public static string MusterKey(Agent a)
@@ -744,17 +762,12 @@ public static class Agents
     /// <summary>Ajan yolunun sonunda mı (step &gt;= path.length - 1).</summary>
     public static bool AtTarget(Agent a) => a.Step >= a.Path.Count - 1;
 
-    /// <summary>hedefe kaç günde varır (yaklaşık)</summary>
+    /// <summary>hedefe kaç günde varır (yaklaşık; Faz 1b-5: ilerleme gün cinsinden)</summary>
     public static double EtaDays(Sim s, Agent a)
     {
         double days = 0;
-        for (int i = a.Step + 1; i < a.Path.Count; i++)
-        {
-            int t = a.Path[i];
-            double per = J.T(s.W.Tiles[t].Sea) ? 1 / JsMath.Max(0.1, Sea.ShipSpeed(s, a)) : s.MoveCost(t) / JsMath.Max(0.05, a.Speed);
-            days += i == a.Step + 1 ? per * JsMath.Max(0, 1 - a.Progress) : per;
-        }
-        return days;
+        for (int i = a.Step + 1; i < a.Path.Count; i++) days += TileDays(s, a, a.Path[i]);
+        return JsMath.Max(0, days - a.Progress);
     }
 
     /// <summary>aynı hedefe giden dost gruplar (yoldakiler ve bekleyenler)</summary>
@@ -809,8 +822,10 @@ public static class Agents
         }
         var coming = J.Filter(allies, b => !AtTarget(b) && EtaDays(s, b) <= a.Muster.Until - s.Day);
         if (coming.Count > 0 && s.Day < a.Muster.Until) return;   // bekle
-        // Faz 1b-4: büyük şehir kuşatması en az BIG_SIEGE_DAYS sürer (karargâhı ilk kuran ordudan sayılır)
-        if (big && s.Day < JsMath.Min(a.Muster.Since, waiting.Count > 0 ? J.MinOf(waiting, b => b.Muster.Since) : a.Muster.Since) + Diplomacy.BIG_SIEGE_DAYS) return;
+        // Faz 1b-4: büyük şehir kuşatması en az BIG_SIEGE_DAYS sürer (karargâhı ilk kuran ordudan sayılır); Faz 1b-5: her yerleşim kuşatması
+        // en az SIEGE_DAYS (v3: kuşatma 2–6 gün)
+        double siege = big ? Diplomacy.BIG_SIEGE_DAYS : camp ? 0 : SIEGE_DAYS;
+        if (siege > 0 && s.Day < JsMath.Min(a.Muster.Since, waiting.Count > 0 ? J.MinOf(waiting, b => b.Muster.Since) : a.Muster.Since) + siege) return;
         if (cp != null && cp.Kind == "dragon" && Dragon.Gathering(s, a)) return;   // Faz 1 B2: ittifakın öbür orduları yolda
         var band = new List<Agent> { a };
         band.AddRange(waiting);

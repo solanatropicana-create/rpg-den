@@ -26,7 +26,8 @@ public static class Diplomacy
     /// <summary>TS <c>DEP_FOR[g]</c> (undefined → null, also for an undefined key).</summary>
     private static List<string> DepFor(string g) => g != null && DEP_FOR.TryGet(g, out var l) ? l : null;
 
-    /// <summary>Her 10 günde: temas, mod sönümü, değerler/sınır/ortak düşman/sınıf yakınlıkları, toprak açlığı, anlaşmazlıklar, savaş ve barış.</summary>
+    /// <summary>Her TERRITORY_DAYS (2,5) günde (eskiden 10): temas, mod sönümü (tik başına eski 10 günlük sönüm), değerler/sınır/ortak düşman/sınıf
+    /// yakınlıkları, toprak açlığı, anlaşmazlıklar, savaş ve barış.</summary>
     public static void RelationsTick(Sim s)
     {
         var civs = J.Filter(s.W.Civs, c => c.Alive);
@@ -51,7 +52,7 @@ public static class Diplomacy
             foreach (var x in s.CivSettlements(a)) foreach (var y in s.CivSettlements(b)) dists.Add(s.G.Dist(x.Tile, y.Tile));
             double minD = JsMath.Min(dists.ToArray());
             if (minD <= 9) s.SetMod(a.Id, b.Id, "border", "Sınır sürtüşmesi", -8); else s.RemoveMod(a.Id, b.Id, "border");
-            if (s.Day - a.LastRaidedDay < 240 && s.Day - b.LastRaidedDay < 240) s.SetMod(a.Id, b.Id, "enemy", "Ortak düşman: canavarlar", 10); else s.RemoveMod(a.Id, b.Id, "enemy");
+            if (s.Day - a.LastRaidedDay < 240 / Sim.PACE && s.Day - b.LastRaidedDay < 240 / Sim.PACE) s.SetMod(a.Id, b.Id, "enemy", "Ortak düşman: canavarlar", 10); else s.RemoveMod(a.Id, b.Id, "enemy");
             // sınıf yakınlıkları
             var pair = new List<Civ> { a, b };
             var paladin = J.Find(pair, c => c.Cls == "paladin");
@@ -67,7 +68,7 @@ public static class Diplomacy
                 // toprak açlığı: kalabalık, saldırgan ve sınırdaş olan komşusunun toprağına göz diker
                 var rr = s.Rel(x.Id, y.Id);
                 double agg = D.CLASSES[x.Cls].Aggression;
-                bool crowded = s.CivPop(x) >= 26 && (s.CivSettlements(x).Count >= 4 || s.Day - x.LastExpand > 400);
+                bool crowded = s.CivPop(x) >= 26 && (s.CivSettlements(x).Count >= 4 || s.Day - x.LastExpand > 400 / Sim.PACE);
                 if (minD <= 10 && agg >= 0.2 && crowded && !J.T(rr.Treaty)) rr.Land = JsMath.Min(30, (rr.Land ?? 0) + 0.25 + agg * 0.9);
                 else rr.Land = JsMath.Max(0, (rr.Land ?? 0) - 0.4);
                 if ((rr.Land ?? 0) >= 8) s.SetMod(x.Id, y.Id, "land", "Toprak hırsı", -JsMath.Min(25, JsMath.Round(rr.Land.Value * 1.2)), 0, false);
@@ -115,7 +116,7 @@ public static class Diplomacy
         if (worstG == null || r.War != null) return;
         string gg = worstG; double tension = worstV;
         double talkAt = o.Align.Law > 0.3 ? 10 : 16;
-        if (tension < talkAt || s.Day - r.LastTalk < 120 || s.RelValue(o.Id, h.Id) < -65) return;
+        if (tension < talkAt || s.Day - r.LastTalk < 120 / Sim.PACE || s.RelValue(o.Id, h.Id) < -65) return;
         r.LastTalk = s.Day;
         double p = 0.35 + h.Align.Good * 0.3 + h.Align.Law * 0.1 + s.RelValue(h.Id, o.Id) / 150 + (h.Cls == "rogue" ? 0.15 : 0);
         if (s.Rng.Chance(p))
@@ -131,7 +132,7 @@ public static class Diplomacy
             var src = srcTile != null ? s.Settlement(s.W.Tiles[srcTile.Value].Owner) : s.Capital(h);
             var dst = s.Capital(o);
             var path = src != null && dst != null ? s.Path(src.Tile, dst.Tile) : null;
-            if (src != null && dst != null && path != null) s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = src.Id, B = dst.Id, Kind = "treaty", Good = gg, Path = path, NextDepart = s.Day + 3, Trips = 0, Alive = true, Since = s.Day });
+            if (src != null && dst != null && path != null) s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = src.Id, B = dst.Id, Kind = "treaty", Good = gg, Path = path, NextDepart = s.Day + 1, Trips = 0, Alive = true, Since = s.Day });
             s.Metric("treaty");
             s.Log("diplomacy", $"{o.Name} ile {h.Name} {D.GOODS[gg].Name} Antlaşması imzaladı: {J.TrLower(D.GOODS[gg].Name)} altın karşılığında düzenli taşınacak.", civ: o.Id, cause: $"Kavga yerine pazarlık ({h.Name} teklife açıktı)", major: true);
         }
@@ -165,7 +166,7 @@ public static class Diplomacy
         for (int t = 0; t <= ct && t < TIER_NEEDS.Length; t++)
         {
             double since = t == 0 ? c.Founded : c.Yearly.Get("tier" + t) ?? c.Founded;   // kademeye ilk varış (Sim.TierRise); yoksa doğuşu
-            if (s.Day - since > TIER_NEED_YEARS * Sim.YEAR) continue;
+            if (s.Day - since > TIER_NEED_YEARS * Sim.OLD_YEAR) continue;
             foreach (var k in TIER_NEEDS[t]) if (!s.Access(c, k)) o.Add(k);
         }
         return o;
@@ -194,7 +195,7 @@ public static class Diplomacy
         if (r.War == null)
         {
             if (s.Rel(t.Id, o.Id).War != null || s.InWar(o)) return;
-            if (s.Day - (r.PeaceDay ?? -9999) < 2 * Sim.YEAR || s.Day - (o.LastWarEnd ?? -9999) < Sim.YEAR * 1.5) return;
+            if (s.Day - (r.PeaceDay ?? -9999) < PEACE_DAYS || s.Day - (o.LastWarEnd ?? -9999) < WAR_REST) return;
             var tvals = new List<double> { 0 };
             tvals.AddRange(r.Tension.Values());
             double tension = JsMath.Max(tvals.ToArray());
@@ -270,7 +271,7 @@ public static class Diplomacy
         if (r.War.Attacker != o.Id) return;
         var tgt = s.Settlement(r.War.Target);
         bool won = tgt == null || !tgt.Alive || tgt.Civ != t.Id;   // hedef artık düşmanın değil (biz ya da müttefik aldı)
-        bool isLong = s.Day - r.War.Since > 300, tired = r.War.Attacks >= 3;
+        bool isLong = s.Day - r.War.Since > WAR_LONG, tired = r.War.Attacks >= WAR_TIRED;
         // B1: pakt savaşı, korunan ortağın savaşı bitince biter
         var ally = r.War.Kind == "pact" && r.War.Ally != null ? J.At(s.W.Civs, r.War.Ally.Value) : null;
         bool allyDone = ally != null && !s.AtWar(ally.Id, t.Id);
@@ -298,7 +299,7 @@ public static class Diplomacy
             var war = s.Rel(c.Id, o.Id).War;
             if (war == null || war.Attacker != c.Id) continue;
             if (J.Some(s.W.Agents, a => a.Kind == "army" && a.Civ == c.Id && a.Purpose == "war")) continue;
-            if (s.Day - war.LastArmy < 50) continue;
+            if (s.Day - war.LastArmy < ARMY_GAP || s.Day - war.Since < MOBILIZE_DAYS) continue;   // Faz 1b-5: ilk ordu seferberlikten sonra
             var tgt = s.Settlement(war.Target);
             if (tgt == null || !tgt.Alive || tgt.Civ != o.Id) continue;
             double sol = Math.Floor(J.Sum(s.CivSettlements(c), x => x.Soldiers) * 0.75);
@@ -313,7 +314,7 @@ public static class Diplomacy
             double gal = route.Hull != null ? JsMath.Min(3, Sea.FreeGalleys(s, route.Hull)) : 0;
             s.W.Agents.Add(new Agent
             {
-                Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = 0.55, Heroes = J.Map(heroes, h => h.Id), Troops = sol, Pop = pop,
+                Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = Pace.ARMY, Heroes = J.Map(heroes, h => h.Id), Troops = sol, Pop = pop,
                 From = cap.Id, To = tgt.Id, Purpose = "war", Hull = route.Hull?.Id, Galleys = J.T(gal) ? gal : (double?)null,
             });
             if (route.Hull != null)
@@ -329,7 +330,7 @@ public static class Diplomacy
     private static void CallAllies(Sim s, Civ o, Civ t, War war, Settlement target)
     {
         var cands = J.Filter(s.W.Civs, y => y.Alive && y.Id != o.Id && y.Id != t.Id && !s.InWar(y)
-            && s.Rel(y.Id, t.Id).Contact && s.Rel(y.Id, o.Id).Contact && s.Day - (y.LastWarEnd ?? -9999) >= Sim.YEAR);
+            && s.Rel(y.Id, t.Id).Contact && s.Rel(y.Id, o.Id).Contact && s.Day - (y.LastWarEnd ?? -9999) >= Sim.OLD_YEAR);
         var scored = new List<(Civ Y, double Hate, double Love)>();
         foreach (var y in cands)
         {
@@ -374,8 +375,8 @@ public static class Diplomacy
         var cap = s.Capital(c);
         int reach = s.CivAt(c, Gate.NAVY) ? 34 : 20;
         var targets = J.Filter(s.W.Settlements, x => x.Alive && x.Civ != c.Id && s.Rel(c.Id, x.Civ).Contact && s.RelValue(c.Id, x.Civ) < (fam != null ? 15 : 0)
-            && s.Day - s.Rel(c.Id, x.Civ).LastRaid > 180 && s.G.Dist(x.Tile, cap.Tile) <= reach && !J.T(s.Rel(c.Id, x.Civ).Treaty)
-            && (fam == null || (!fam.Helped.Contains(x.Civ) && s.FoodTotal(s.W.Civs[x.Civ]) > s.CivPop(s.W.Civs[x.Civ]) * Sim.FOOD_PER_POP * 40)));
+            && s.Day - s.Rel(c.Id, x.Civ).LastRaid > 180 / Sim.PACE && s.G.Dist(x.Tile, cap.Tile) <= reach && !J.T(s.Rel(c.Id, x.Civ).Treaty)
+            && (fam == null || (!fam.Helped.Contains(x.Civ) && s.FoodTotal(s.W.Civs[x.Civ]) > s.CivPop(s.W.Civs[x.Civ]) * Sim.FOOD_PER_POP * 40 / Sim.PACE)));
         if (targets.Count == 0) return;
         // saldırgan olmayan aç medeniyet çoğunlukla sabreder: kanunlu ve iyi olan daha az, kötü olan daha çok yağmaya döner
         if (fam != null && D.CLASSES[c.Cls].Aggression < 0.6 && !s.Rng.Chance(JsMath.Max(0.05, 0.3 - c.Align.Good * 0.25 - c.Align.Law * 0.1))) return;
@@ -389,7 +390,7 @@ public static class Diplomacy
         double gal = route.Hull != null ? JsMath.Min(2, Sea.FreeGalleys(s, route.Hull)) : 0;
         s.W.Agents.Add(new Agent
         {
-            Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = 0.8, Troops = n, Pop = pop, From = cap.Id, To = st.Id, Purpose = "plunder",
+            Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = Pace.PLUNDER, Troops = n, Pop = pop, From = cap.Id, To = st.Id, Purpose = "plunder",
             Hull = route.Hull?.Id, Galleys = J.T(gal) ? gal : (double?)null,
         });
         if (fam != null) s.Metric("famineRaid");
@@ -416,27 +417,56 @@ public static class Diplomacy
         var cap = s.Capital(c);
         if (cap == null || !s.CivAt(c, Gate.ROADS)) return;
         // B1: savaşta ya da başkentini yeni kaybetmişken kimse öncü yollamaz (yıkılan medeniyet köy kurarak ayakta kalmaz)
-        if (s.InWar(c) || s.Day - (c.CapitalLostDay ?? -99999) < 3 * Sim.YEAR) return;
+        if (s.InWar(c) || s.Day - (c.CapitalLostDay ?? -99999) < 3 * Sim.OLD_YEAR) return;
         // anakarada LandCap kadar yerleşim; Gemicilik ve Seyir (Faz 1b-3: ikisi de Kasaba kademesi) birer denizaşırı koloni hakkı açar
         int over = J.Filter(ss, x => J.T(x.Overseas)).Count;
+        var freed = FreedValley(s, c, ss);   // Faz 1b-5: temizlenen kampın vadisi
         bool landOk = ss.Count - over < LandCap(s, c);
         int ct = s.CivTier(c);
         bool seaOk = ct >= Gate.SHIPBUILDING && over < (ct >= Gate.NAVIGATION ? 2 : 1) && J.Some(Sea.Ports(s, c), x => Sea.FreeHulls(s, x) > 0);
         if (!landOk && !seaOk) return;
-        if (s.Pop(cap) < 12 + ss.Count * 5 || s.FoodTotal(c) < 30 || s.Day - c.LastExpand < 160) return;
+        if (s.Pop(cap) < 12 + ss.Count * 5 || s.FoodTotal(c) < 30 || (s.Day - c.LastExpand < EXPAND_GAP && freed == null)) return;
         if (J.Some(s.W.Agents, a => a.Kind == "settlers" && a.Civ == c.Id)) return;
-        var target = PickSettleTarget(s, c, landOk, seaOk, cap);
+        var target = (freed != null && landOk ? FreedTarget(s, c, freed, cap) : null);
+        if (target != null) s.Metric("freedValley");
+        else if (s.Day - c.LastExpand >= EXPAND_GAP) target = PickSettleTarget(s, c, landOk, seaOk, cap);
         if (target == null) return;
-        var pop = s.RemovePop(cap, 5);
+        var src = target.From ?? cap;
+        var pop = s.RemovePop(src, 5);
         s.Add(c, "grain", -15); s.Add(c, "wood", -10);
         c.LastExpand = s.Day;
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "settlers", Civ = c.Id, Path = target.Path, Step = 0, Progress = 0, Speed = 0.5, Pop = pop, From = cap.Id, TargetTile = target.Tile, Purpose = target.Why, Hull = target.Hull?.Id });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "settlers", Civ = c.Id, Path = target.Path, Step = 0, Progress = 0, Speed = Pace.SETTLERS, Pop = pop, From = src.Id, TargetTile = target.Tile, Purpose = target.Why, Hull = target.Hull?.Id });
         if (target.Hull != null)
         {
             s.Metric("seaVoyage");
             s.Log("sea", $"{c.Name} 5 öncüyü {Tr.Ek(target.Hull.Name, "dan")} bir {Sea.HullName(s, c)} ile denizaşırı topraklara gönderdi.", civ: c.Id, tile: target.Hull.Port, cause: target.Why, major: true);
         }
-        else s.Log("settle", $"{c.Name} 5 öncüyü yeni bir yerleşim kurmaya gönderdi.", civ: c.Id, tile: cap.Tile, cause: target.Why);
+        else s.Log("settle", $"{c.Name} 5 öncüyü yeni bir yerleşim kurmaya gönderdi.", civ: c.Id, tile: src.Tile, cause: target.Why);
+    }
+
+    /// <summary>Faz 1b-5: temizlenen kampın vadisinde yer: kamp karosu ya da 2 fersah yakını, sahipsiz kara (su, dağ, yatak değil), öbür
+    /// yerleşimlere en az 5 fersah; kampa en yakın olan (eşitse dizinin küçüğü). Başkentten kara yolu yoksa null.</summary>
+    private static SettleTarget FreedTarget(Sim s, Civ c, Camp cp, Settlement cap)
+    {
+        var w = s.W;
+        int best = -1; double bd = double.PositiveInfinity;
+        foreach (int i in s.G.Within(cp.Tile, 2))
+        {
+            var t = w.Tiles[i];
+            if (t.Terrain == "water" || t.Terrain == "mountain" || J.T(t.Sea) || t.Owner >= 0 || t.Camp != null || t.Deposit >= 0 || t.InnZone != null || J.T(t.Isle)) continue;
+            if (J.Some(w.Settlements, x => x.Alive && s.G.Dist(x.Tile, i) < 5) || J.Some(w.Camps, x => x.Alive && s.G.Dist(x.Tile, i) < 5)) continue;
+            double d = s.G.Dist(i, cp.Tile);
+            if (d < bd) { bd = d; best = i; }
+        }
+        if (best < 0) return null;
+        // öncüler vadiye en yakın kalabalık (FREED_POP) yerleşimden çıkar; başkent daha yakınsa ya da yol yoksa başkentten
+        var from = cap;
+        double fd = s.G.Dist(cap.Tile, best);
+        foreach (var x in s.CivSettlements(c))
+            if (!J.T(x.Overseas) && s.Pop(x) >= FREED_POP && s.G.Dist(x.Tile, best) < fd) { fd = s.G.Dist(x.Tile, best); from = x; }
+        var p = s.Path(from.Tile, best);
+        if (p == null && !ReferenceEquals(from, cap)) { from = cap; p = s.Path(cap.Tile, best); }
+        return p != null ? new SettleTarget { Tile = best, Why = $"{cp.Name} temizlendi; boşalan vadi çiftçileri çekti", Path = p, From = from } : null;
     }
 
     /// <summary>TS inline type <c>{ tile; why; path; hull? }</c> of pickSettleTarget.</summary>
@@ -446,6 +476,8 @@ public static class Diplomacy
         public string Why;
         public List<int> Path;
         public Settlement Hull;
+        /// <summary>öncülerin çıktığı yerleşim (null = başkent)</summary>
+        public Settlement From;
     }
 
     /// <summary>TS inline type <c>{ i; sc; why; sea }</c> (pickSettleTarget candidates).</summary>
@@ -535,7 +567,7 @@ public static class Diplomacy
             if (theirs == null || s.G.Dist(theirs.Tile, src.Tile) > maxD) continue;
             var path = s.Path(src.Tile, theirs.Tile);
             if (path == null) continue;
-            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = src.Id, B = theirs.Id, Kind = "trade", Path = path, NextDepart = s.Day + 5, Trips = 0, Alive = true, Since = s.Day });
+            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = src.Id, B = theirs.Id, Kind = "trade", Path = path, NextDepart = s.Day + 1, Trips = 0, Alive = true, Since = s.Day });
             s.Metric("tradeRoute");
             s.Log("trade", $"{src.Name} ile {theirs.Name} arasında ticaret yolu açıldı.", civ: c.Id, tile: src.Tile, cause: $"Pazar kuruldu; {o.Name} ile ilişki {J.S(s.RelValue(c.Id, o.Id))}", major: true);
         }
@@ -557,7 +589,7 @@ public static class Diplomacy
             var o = s.W.Civs[oi];
             if (o.Id == c.Id || !o.Alive) continue;
             var r = s.Rel(c.Id, o.Id);
-            if (!r.Contact || r.War != null || s.RelValue(c.Id, o.Id) < -5 || s.Day - (r.SeaTry ?? -9999) < 90) continue;
+            if (!r.Contact || r.War != null || s.RelValue(c.Id, o.Id) < -5 || s.Day - (r.SeaTry ?? -9999) < 90 / Sim.PACE) continue;
             var between = J.Filter(alive, rt => (s.Settlement(rt.A)?.Civ == c.Id || s.Settlement(rt.B)?.Civ == c.Id) && (s.Settlement(rt.A)?.Civ == o.Id || s.Settlement(rt.B)?.Civ == o.Id));
             if (J.Some(between, rt => J.T(rt.Sea)) || between.Count >= 1 && ct < Gate.SHIPBUILDING) continue;
             r.SeaTry = s.Day; s.Rel(o.Id, c.Id).SeaTry = s.Day;
@@ -571,7 +603,7 @@ public static class Diplomacy
             if (land != null && land.Count <= bd * 1.25 && between.Count != 0) continue;
             var path = Sea.NavPath(s, pa.Tile, pb.Tile, new NavOpts { Embark = new List<int> { pa.Port.Value }, Open = open, LandOnly = new List<int> { pb.Port.Value } });
             if (path == null || !Sea.HasSea(s, path)) continue;
-            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = pa.Id, B = pb.Id, Kind = "trade", Path = path, NextDepart = s.Day + 5, Trips = 0, Alive = true, Since = s.Day, Sea = true });
+            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = pa.Id, B = pb.Id, Kind = "trade", Path = path, NextDepart = s.Day + 1, Trips = 0, Alive = true, Since = s.Day, Sea = true });
             s.Metric("seaRoute");
             s.Log("sea", $"{pa.Name} ile {pb.Name} arasında deniz ticaret yolu açıldı.", civ: c.Id, tile: pa.Port, cause: $"{J.S(bd)} karo deniz; {o.Name} ile ilişki {J.S(s.RelValue(c.Id, o.Id))}", major: true);
         }
@@ -580,14 +612,14 @@ public static class Diplomacy
         foreach (var col in s.CivSettlements(c))
         {
             if (!J.T(col.Overseas) || J.Some(alive, rt => J.T(rt.Sea) && (rt.A == col.Id || rt.B == col.Id))) continue;
-            if (c.Yearly.Get("supply" + col.Id) == s.Year) continue;
-            c.Yearly.Set("supply" + col.Id, s.Year);
+            if (c.Yearly.Get("supply" + col.Id) == s.DynYear) continue;
+            c.Yearly.Set("supply" + col.Id, s.DynYear);
             var home = J.At(J.Sort(J.Filter(mine, x => x.Id != col.Id && !J.T(x.Overseas)), (a, b) => s.G.Dist(a.Port.Value, col.Tile) - s.G.Dist(b.Port.Value, col.Tile)), 0);
             if (home == null) continue;
             var land = J.T(col.Civics.Get("shipyard")) && col.Port != null ? new List<int> { col.Port.Value } : null;
             var path = Sea.NavPath(s, home.Tile, col.Tile, new NavOpts { Embark = new List<int> { home.Port.Value }, Open = open, LandOnly = land });
             if (path == null || !Sea.HasSea(s, path)) continue;
-            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = home.Id, B = col.Id, Kind = "trade", Path = path, NextDepart = s.Day + 5, Trips = 0, Alive = true, Since = s.Day, Sea = true });
+            s.W.Routes.Add(new TradeRoute { Id = s.Id(), A = home.Id, B = col.Id, Kind = "trade", Path = path, NextDepart = s.Day + 1, Trips = 0, Alive = true, Since = s.Day, Sea = true });
             s.Metric("seaRoute");
             s.Log("sea", $"{home.Name} ile denizaşırı {col.Name} arasında ikmal gemileri işlemeye başladı.", civ: c.Id, tile: home.Port, major: false);
         }
@@ -596,7 +628,7 @@ public static class Diplomacy
     /// <summary>Bir kez: ufku keşfetmek için kâşif gönderir.</summary>
     public static void ConsiderScout(Sim s, Civ c)
     {
-        if (c.ScoutSent || s.Day < 60 + c.Id * 20) return;
+        if (c.ScoutSent || s.Day < (60 + c.Id * 20) / Sim.PACE) return;
         var cap = s.Capital(c);
         if (cap == null) return;
         c.ScoutSent = true;
@@ -611,14 +643,14 @@ public static class Diplomacy
         if (goal < 0) return;
         var p = s.Path(cap.Tile, goal);
         if (p == null) return;
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "scout", Civ = c.Id, Path = p, Step = 0, Progress = 0, Speed = 1.1, Purpose = "scout" });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "scout", Civ = c.Id, Path = p, Step = 0, Progress = 0, Speed = Pace.SCOUT, Purpose = "scout" });
         s.Log("discover", $"{c.Name} ufku keşfetmek için kâşifler gönderdi.", civ: c.Id, tile: cap.Tile);
     }
 
     private static readonly string[] REFUGEE_RACES = { "elf", "halfling", "gnome", "dragonborn", "tiefling", "human" };
     private static readonly string[] REFUGEE_WHY = { "Uzak diyarlardaki bir savaştan kaçtılar", "Ormanları yanmıştı", "Kıtlıktan kaçtılar", "Bir ejderhanın gölgesinden kaçtılar" };
 
-    /// <summary>Her 30 günde: orman yenilenmesi, göç, mülteciler, melez doğumlar, yeni kurucular.</summary>
+    /// <summary>Her WORLD_DAYS (7,5) günde (eskiden 30): orman yenilenmesi, göç, mülteciler, melez doğumlar, yeni kurucular.</summary>
     public static void WorldTick(Sim s)
     {
         var w = s.W;
@@ -641,7 +673,7 @@ public static class Diplomacy
             s.Log("migration", $"{s.RaceStr(moved)} göçmen {Tr.Ek(from.Name, "dan")} {Tr.Ek(to.Name, "a")} yerleşti.", civ: a.Id, tile: to.Tile, cause: $"{a.Name} daha müreffeh, ilişkiler iyi");
         }
         // Mülteciler
-        if (s.Year >= 3 && s.Rng.Chance(0.05))
+        if (s.DynYear >= 3 && s.Rng.Chance(0.05))
         {
             var cands = J.Filter(w.Settlements, x => x.Alive && s.Pop(x) + 3 <= s.Housing(x) + 2);
             if (cands.Count > 0)
@@ -663,12 +695,12 @@ public static class Diplomacy
             if ((st.Pop.Get("human") ?? 0) >= 3 && (st.Pop.Get("elf") ?? 0) >= 2)
             {
                 if (st.MixedSince.Get(k) == null) st.MixedSince.Set(k, s.Day);
-                if (s.Day - st.MixedSince.Get(k).Value > Sim.YEAR && s.Rng.Chance(0.08))
+                if (s.Day - st.MixedSince.Get(k).Value > Sim.OLD_YEAR && s.Rng.Chance(0.08))
                 {
                     bool first = !J.Some(w.Settlements, o => (o.Pop.Get("halfelf") ?? 0) > 0);
                     s.AddPop(st, "halfelf", 1);
                     s.Metric("halfbreed");
-                    if (first) s.Log("migration", $"{Tr.Ek(st.Name, "da")} ilk Yarı-elf doğdu.", civ: st.Civ, tile: st.Tile, cause: "İnsanlar ve Elfler bir yıldır aynı ocakta yaşıyor", major: true);
+                    if (first) s.Log("migration", $"{Tr.Ek(st.Name, "da")} ilk Yarı-elf doğdu.", civ: st.Civ, tile: st.Tile, cause: "İnsanlar ve Elfler üç aydır aynı ocakta yaşıyor", major: true);
                 }
             }
             else st.MixedSince.Delete(k);
@@ -677,7 +709,7 @@ public static class Diplomacy
         for (int i = 0; i < w.Civs.Count; i++)
         {
             var c = w.Civs[i];
-            if (c.Alive || J.T(c.Respawned) || s.Day - (c.ExtinctDay ?? 0) < 150) continue;
+            if (c.Alive || J.T(c.Respawned) || s.Day - (c.ExtinctDay ?? 0) < 150 / Sim.PACE) continue;
             c.Respawned = true;
             // B1: boşalan topraklar yeni kurucuları çeker; fethedilerek yok olanın toprağı fatihindir (boş değildir)
             if (c.FallCause == null) SpawnFounders(s);
@@ -695,7 +727,7 @@ public static class Diplomacy
     {
         double pop = s.CivPop(c);
         if (!J.T(pop)) return 0;
-        double food = JsMath.Min(3, s.FoodTotal(c) / (pop * Sim.FOOD_PER_POP * 60));
+        double food = JsMath.Min(3, s.FoodTotal(c) / (pop * Sim.FOOD_PER_POP * 60 / Sim.PACE));
         double hous = J.Sum(s.CivSettlements(c), x => s.Housing(x)) / pop;
         return food + JsMath.Min(1.5, hous);
     }
@@ -737,8 +769,41 @@ public static class Diplomacy
     // paktı kurar (Pacts / CallPact; sırt çeviren ya da ortağına saldıran "İhanet" damgası yer), kötünün saldırısı Kutsal
     // Sefer çağrısı doğurur (CallCrusade).
 
-    /// <summary>bölünme: medeniyet başına en az bu kadar gün arayla (10 yıl)</summary>
-    public const double SECEDE_GAP = 10 * Sim.YEAR;
+    // Faz 1b-5: yıl tabanlı süreler eski yılın karşılığı (Sim.OLD_YEAR = 30 gün) ile; gün tabanlılar ÷PACE
+    /// <summary>savaştan sonra aynı çiftin barış süresi (eski 2 yıl), medeniyetin yeni savaşa girmeden dinlendiği (eski 1,5 yıl)</summary>
+    public const double PEACE_DAYS = 2 * Sim.OLD_YEAR, WAR_REST = 1.5 * Sim.OLD_YEAR;
+    /// <summary>savaş bu kadar sürerse (eski 300 gün) ya da bu kadar ordu yollanınca biter; iki ordu arası en az (eski 50 gün)</summary>
+    public const double WAR_LONG = 300 / Sim.PACE, WAR_TIRED = 3, ARMY_GAP = 50 / Sim.PACE;
+    /// <summary>iki öncü kafilesi arası en az (eski 160 gün)</summary>
+    public const double EXPAND_GAP = 160 / Sim.PACE;
+    /// <summary>Faz 1b-5: savaş ilanından ilk ordunun yola çıkmasına dek seferberlik (gün; asker toplanır, erzak yüklenir). Ordular fiziksel hızla
+    /// (Pace.ARMY) eskisinden hızlı yürüdüğünden seferberlik ve kuşatma (Agents.SIEGE_DAYS) olmadan savaşlar v3'ün 10–40 gününün altına iniyordu.</summary>
+    public const double MOBILIZE_DAYS = 4;
+    /// <summary>Faz 1b-5 (v3: temizlenen kamp → yeni köy 10–20 gün): bir kara kampı temizlendikten FREED_MIN–FREED_DAYS gün sonra
+    /// (haber yayılır, çiftçiler toplanır) yakındaki medeniyet boşalan vadiye öncü yollar; bunun için öncü arası (EXPAND_GAP) beklemez,
+    /// yerleşim tavanı (LandCap) geçerli: dünya büyümez, öncüler boşalan vadiye yönelir. Vadi medeniyetin bir yerleşimine en çok FREED_REACH fersah.</summary>
+    public const double FREED_MIN = 1, FREED_DAYS = 10, FREED_REACH = 18;
+    /// <summary>boşalan vadiye öncü yollayabilecek yerleşimin en az nüfusu (vadiye en yakın böyle yerleşimden çıkarlar; yoksa başkentten)</summary>
+    public const double FREED_POP = 15;
+
+    /// <summary>Faz 1b-5: medeniyetin öncü yollayabileceği, yakında temizlenmiş bir kara kampının boş vadisi (null: yok). En eski temizlenen önce.</summary>
+    public static Camp FreedValley(Sim s, Civ c, List<Settlement> ss)
+    {
+        Camp best = null;
+        foreach (var cp in s.W.Camps)
+        {
+            if (cp.Alive || cp.ClearedDay == null || cp.Kind == "pirate" || cp.Kind == "dragon") continue;
+            double since = s.Day - cp.ClearedDay.Value;
+            if (since < FREED_MIN || since > FREED_DAYS) continue;
+            var t = s.W.Tiles[cp.Tile];
+            if (t.Owner >= 0 || t.Camp != null || J.T(t.Isle) || J.Some(s.W.Settlements, x => x.Alive && s.G.Dist(x.Tile, cp.Tile) < 5)) continue;
+            if (!J.Some(ss, x => s.G.Dist(x.Tile, cp.Tile) <= FREED_REACH)) continue;
+            if (best == null || cp.ClearedDay < best.ClearedDay) best = cp;
+        }
+        return best;
+    }
+    /// <summary>bölünme: medeniyet başına en az bu kadar gün arayla (eski 10 yıl)</summary>
+    public const double SECEDE_GAP = 10 * Sim.OLD_YEAR;
     /// <summary>bölünebilmek için en az bu kadar yerleşim (ana medeniyete en az 2 kalır)</summary>
     public const int SECEDE_MIN_SETTLEMENTS = 3;
     /// <summary>ayrılacak yerleşimin en az nüfusu (bir devlet kuracak kadar kalabalık)</summary>
@@ -746,13 +811,13 @@ public static class Diplomacy
     /// <summary>huzursuzluk bu eşiği aşınca ayrılık olasılığı başlar (bkz. Unrest: süregelen ve şimdiki yara birlikte gerekir)</summary>
     public const double UNREST_MIN = 3.25;
     /// <summary>diyarda iki bölünme arasında en az (bir "karışıklık çağı" art arda bölünmeleri sınırlar)</summary>
-    public const double SECEDE_WORLD_GAP = 3 * Sim.YEAR;
+    public const double SECEDE_WORLD_GAP = 3 * Sim.OLD_YEAR;
     /// <summary>yaşayan medeniyet tavanı (bölünme bunu aşamaz)</summary>
     public const int MAX_CIVS = 14;
     /// <summary>W.Civs listesinin (ölüler dâhil) tavanı: ilişki tablosu sınırsız büyümesin</summary>
     public const int MAX_CIV_SLOTS = 40;
     /// <summary>tarihî hakkın süresi (gün)</summary>
-    public const double CLAIM_DAYS = 15 * Sim.YEAR;
+    public const double CLAIM_DAYS = 15 * Sim.OLD_YEAR;
     /// <summary>tarihî hak, toprak ya da kaynak gerekçesinin yerini tutar ve savaş eşiğini bu kadar gevşetir</summary>
     public const double CLAIM_EASE = 5;
     /// <summary>pakt kurmak için karşılıklı ilişki en az; pakt bunun altına düşünce (PACT_KEEP) dağılır</summary>
@@ -764,13 +829,13 @@ public static class Diplomacy
     /// <summary>ortak tehdidin gücü (iki medeniyetin ona duyduğu düşmanlık toplamı, savaş +40, kötülük +15)</summary>
     public const double PACT_THREAT = 50;
     /// <summary>aynı kötü medeniyete karşı iki Kutsal Sefer çağrısı arasında en az</summary>
-    public const double CRUSADE_GAP = 8 * Sim.YEAR;
+    public const double CRUSADE_GAP = 8 * Sim.OLD_YEAR;
     /// <summary>başkenti tutmak için sağ kalan güç (asker + kahraman × 3): en az HOLD_MIN ve şehrin nüfusunun HOLD_SHARE payı</summary>
     public const double HOLD_MIN = 4, HOLD_SHARE = 0.12;
     /// <summary>başkente yürümek için gereken askerî üstünlük (MilitaryPower oranı); altında taşra kasabası hedeflenir</summary>
     public const double CAPITAL_ODDS = 1.5;
     /// <summary>başkenti düşen medeniyetin yeni başkenti bu kadar gün savunmada +RALLY_AC zırh alır (halk kenetlenir)</summary>
-    public const double RALLY_DAYS = 3 * Sim.YEAR, RALLY_AC = 2;
+    public const double RALLY_DAYS = 3 * Sim.OLD_YEAR, RALLY_AC = 2;
     /// <summary>Faz 1b-4: yeni başkentin zayıflığından düşülen (halk kenetlendi; RALLY_DAYS boyunca)</summary>
     public const double RALLY_WEAK = 1;
     /// <summary>Faz 1b-4: başkentin zayıflığından her eski başkent kaybı için düşülen (medeniyet başkentini art arda kaybetmesin)</summary>
@@ -912,7 +977,7 @@ public static class Diplomacy
         foreach (var g in s.W.Civs)
         {
             if (!g.Alive || g.Id == e.Id || (victim != null && g.Id == victim.Id) || g.Align.Good < 0.3 || IsEvil(s, g)) continue;
-            if (!s.Rel(g.Id, e.Id).Contact || s.AtWar(g.Id, e.Id) || HasPact(s, g, e) || s.InWar(g) || s.Day - (g.LastWarEnd ?? -9999) < Sim.YEAR) continue;
+            if (!s.Rel(g.Id, e.Id).Contact || s.AtWar(g.Id, e.Id) || HasPact(s, g, e) || s.InWar(g) || s.Day - (g.LastWarEnd ?? -9999) < Sim.OLD_YEAR) continue;
             double hate = s.RelValue(g.Id, e.Id);
             if (hate > 10 || J.Sum(s.CivSettlements(g), x => x.Soldiers) < 4) continue;
             var cap = s.Capital(g);
@@ -1026,12 +1091,12 @@ public static class Diplomacy
     /// asker yazımı başkentin nüfusunu bir günlüğüne düşürse de taht yerinden oynamaz).</summary>
     public static bool IsSeat(Sim s, Civ c, Settlement st) => c.Seat == st.Id || s.Capital(c)?.Id == st.Id;
 
-    /// <summary>büyük şehir kuşatması: ordu hücumdan önce en az bu kadar gün şehrin önünde karargâh kurar</summary>
-    public const double BIG_SIEGE_DAYS = 20;
+    /// <summary>büyük şehir kuşatması: ordu hücumdan önce en az bu kadar gün şehrin önünde karargâh kurar (v3: kuşatma 2–6 gün; eski 20)</summary>
+    public const double BIG_SIEGE_DAYS = 5;
     /// <summary>büyük şehir ancak zayıflığı (<see cref="CityWeakness"/>) en az bu kadarsa el değiştirir; altında hücumu kazanan ordu yağmalar</summary>
     public const double BIG_FALL = 1;
     /// <summary>art arda hücumların yıpratması: her hücum +BIG_WEAR (en çok BIG_WEAR_MAX); son hücumdan BIG_WEAR_DAYS sonra söner</summary>
-    public const double BIG_WEAR = 1, BIG_WEAR_MAX = 2, BIG_WEAR_DAYS = 2 * Sim.YEAR;
+    public const double BIG_WEAR = 1, BIG_WEAR_MAX = 2, BIG_WEAR_DAYS = 2 * Sim.OLD_YEAR;
     /// <summary>garnizon (asker / nüfus) bunun altındaysa eridi (+1), GARRISON_LOW'un altındaysa zayıf (+0,5)</summary>
     public const double GARRISON_THIN = 0.04, GARRISON_LOW = 0.08;
 
@@ -1061,11 +1126,11 @@ public static class Diplomacy
         if (st.Starving > 0) Add(1, "şehir aç"); else if (c.Famine != null && c.Famine.Declared) Add(0.5, "kıtlık ilan edilmiş");
         if (Economy.LackCount(st, Economy.LACK_UNREST, true) > 0) Add(0.5, "pazarda ekmek ya da bira yok");
         if (c.Broke != null) Add(1, "hazine boş, askerin maaşı ödenmiyor");
-        if (st.Founder != null && st.Founder != st.Civ && st.LostDay != null && s.Day - st.LostDay.Value < 10 * Sim.YEAR) Add(1, "şehir zorla alınmıştı, halk yeni efendisine ısınmadı");
+        if (st.Founder != null && st.Founder != st.Civ && st.LostDay != null && s.Day - st.LostDay.Value < 10 * Sim.OLD_YEAR) Add(1, "şehir zorla alınmıştı, halk yeni efendisine ısınmadı");
         if (att != null && st.ClaimBy == att.Id && s.Day < (st.ClaimUntil ?? 0)) Add(0.5, $"halk eski efendisi {Tr.Ek(att.Name, "i")} bekliyor");
         string maj = MajorityRace(st);
         if (maj != null && maj != c.Race) Add(0.5, $"halkının çoğu {J.TrLower(D.RACES[maj].Plural)}");
-        if (LongestWar(s, c) > 200) Add(0.5, "savaş bitmek bilmiyor");
+        if (LongestWar(s, c) > LONG_WAR) Add(0.5, "savaş bitmek bilmiyor");
         double wear = Wear(s, st);
         if (wear > 0) Add(wear, $"art arda {J.S(st.Assaults ?? 0)} hücum halkı yıprattı");
         if (st.Plague != null) Add(1, "salgın kol geziyor");
@@ -1194,23 +1259,23 @@ public static class Diplomacy
         if (far > 0) { chronic += far; why.Add(overseas ? "denizin ötesinde, başkentten kopuk" : d >= 18 ? "başkentten çok uzakta" : "başkentten uzakta"); }
         string maj = MajorityRace(st);
         if (maj != null && maj != c.Race) { chronic += 1; why.Add($"halkının çoğu {J.TrLower(D.RACES[maj].Plural)}"); }
-        if (st.Founder != null && st.Founder != c.Id && st.LostDay != null && s.Day - st.LostDay.Value < 20 * Sim.YEAR)
+        if (st.Founder != null && st.Founder != c.Id && st.LostDay != null && s.Day - st.LostDay.Value < 20 * Sim.OLD_YEAR)
         {
-            chronic += s.Day - st.LostDay.Value < 10 * Sim.YEAR ? 1 : 0.5;
+            chronic += s.Day - st.LostDay.Value < 10 * Sim.OLD_YEAR ? 1 : 0.5;
             var f = J.At(s.W.Civs, st.Founder.Value);
             why.Add(f != null ? $"{Tr.Ek(f.Name, "in")} kurduğu bu şehir zorla alınmıştı" : "zorla alınmıştı");
         }
         if (chronic < 1.5) return 0;
         // şimdiki sarsıntı
         double acute = 0;
-        if (c.CapitalLostDay != null && s.Day - c.CapitalLostDay.Value < 3 * Sim.YEAR) { acute += 1.5; why.Add("başkent düştü, taht sarsıldı"); }
+        if (c.CapitalLostDay != null && s.Day - c.CapitalLostDay.Value < 3 * Sim.OLD_YEAR) { acute += 1.5; why.Add("başkent düştü, taht sarsıldı"); }
         if (st.Starving > 0) { acute += 1; why.Add("kıtlık kapıda"); }
         if (st.Plague != null) { acute += 1; why.Add("salgın kol geziyor"); }
-        if (LongestWar(s, c) > 200) { acute += 0.75; why.Add("savaş bitmek bilmiyor"); }
-        if (st.BurnedAt != null && s.Day - st.BurnedAt.Value < Sim.YEAR) { acute += 0.5; why.Add("evleri yakılıp yıkıldı"); }
+        if (LongestWar(s, c) > LONG_WAR) { acute += 0.75; why.Add("savaş bitmek bilmiyor"); }
+        if (st.BurnedAt != null && s.Day - st.BurnedAt.Value < Sim.OLD_YEAR) { acute += 0.5; why.Add("evleri yakılıp yıkıldı"); }
         // Faz 1 C3: kentte süren yokluk (ekmek, bira, alet) ve maaş ödeyemeyen boş hazine
         if (Economy.LackCount(st, Economy.LACK_UNREST, true) > 0) { acute += 0.5; why.Add("pazarda ekmek ya da bira yok"); }
-        if (c.Broke != null && s.Day - c.Broke.Value > 30) { acute += 0.5; why.Add("hazine boş, maaşlar ödenmiyor"); }
+        if (c.Broke != null && s.Day - c.Broke.Value > 30 / Sim.PACE) { acute += 0.5; why.Add("hazine boş, maaşlar ödenmiyor"); }
         if (acute < 1) return 0;
         double u = chronic + acute;
         if (count >= 9) { u += JsMath.Min(1, (count - 8) * 0.25); why.Add("taşra yönetilemeyecek kadar geniş"); }
@@ -1219,8 +1284,11 @@ public static class Diplomacy
         return u;
     }
 
-    /// <summary>Her 30 günde (medeniyet başına): en huzursuz uzak yerleşim, eşiği aşınca olasılıkla ayrılır. Medeniyet
-    /// başına 10 yılda en çok bir bölünme; yaşayan medeniyet sayısı MAX_CIVS'i aşamaz.</summary>
+    /// <summary>savaş bu kadar günü aşınca "bitmek bilmiyor" sayılır (eski 200 gün)</summary>
+    public const double LONG_WAR = 200 / Sim.PACE;
+
+    /// <summary>Her WORLD_DAYS günde (medeniyet başına): en huzursuz uzak yerleşim, eşiği aşınca olasılıkla ayrılır. Medeniyet
+    /// başına eski 10 yılda (300 gün) en çok bir bölünme; yaşayan medeniyet sayısı MAX_CIVS'i aşamaz.</summary>
     private static void ConsiderSecession(Sim s, Civ c)
     {
         var w = s.W;

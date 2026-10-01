@@ -11,7 +11,10 @@ namespace FD.Macro;
 public static class Monsters
 {
     private static readonly JsObj<double> CAP = new JsObj<double> { ["goblin"] = 14, ["hobgoblin"] = 10, ["bugbear"] = 4, ["pirate"] = 14, ["troll"] = 5, ["dragon"] = 1 };
-    private static readonly JsObj<double> GROW = new JsObj<double> { ["goblin"] = 0.035, ["hobgoblin"] = 0.028, ["bugbear"] = 0.008, ["pirate"] = 0.022, ["troll"] = 0.006, ["dragon"] = 0 };
+    /// <summary>kampın günlük büyümesi (Faz 1b-5: eski günde goblin 0,035 …; ×PACE)</summary>
+    private static readonly JsObj<double> GROW = new JsObj<double> { ["goblin"] = 0.035 * Sim.PACE, ["hobgoblin"] = 0.028 * Sim.PACE, ["bugbear"] = 0.008 * Sim.PACE, ["pirate"] = 0.022 * Sim.PACE, ["troll"] = 0.006 * Sim.PACE, ["dragon"] = 0 };
+    /// <summary>Faz 1b-5: eski günlük olasılık p'nin yeni gündeki karşılığı (1 − (1 − p)^PACE)</summary>
+    internal static double Daily(double p) => 1 - JsMath.Pow(1 - p, Sim.PACE);
 
     /// <summary>Kamp türünün savaşçıları: n canavar (+ bugbear, trol ve ejderha dışında önder), hepsi kötü (evil). Ejderha önder
     /// (boss) bayrağı taşır; adı ve kalıcı yaraları için kamptan <see cref="CampSide"/> kullanılır.</summary>
@@ -52,15 +55,15 @@ public static class Monsters
     public static double Fort(Sim s, Camp cp)
     {
         if (cp.Kind == "pirate" || cp.Kind == "dragon") return 0;
-        double age = s.Day - JsMath.Max(cp.Founded, FORT_FROM * Sim.YEAR);
-        return age <= 0 ? 0 : JsMath.Min(FORT_MAX, Math.Floor(age / (FORT_YEARS * Sim.YEAR)));
+        double age = s.Day - JsMath.Max(cp.Founded, FORT_FROM * Sim.OLD_YEAR);
+        return age <= 0 ? 0 : JsMath.Min(FORT_MAX, Math.Floor(age / (FORT_YEARS * Sim.OLD_YEAR)));
     }
 
-    /// <summary>tahkimat: sayacın başladığı yıl, bir kademe için yıl, en çok kademe (zırh)</summary>
+    /// <summary>tahkimat: sayacın başladığı (dinamik) yıl, bir kademe için (dinamik) yıl, en çok kademe (zırh)</summary>
     public const double FORT_FROM = 15, FORT_YEARS = 2, FORT_MAX = 4;
 
     /// <summary>gizli in (Faz 1 B2) bu kadar gün sonra söylentilerle bilinir olur (ilk akını ya da bir kâşif onu daha önce açığa çıkarabilir)</summary>
-    public const double HIDE_DAYS = Sim.YEAR;
+    public const double HIDE_DAYS = Sim.OLD_YEAR;
 
     /// <summary>Gizli in bilinir olur: kahramanlar, hanlar ve medeniyetler artık onu hedef alabilir. <paramref name="by"/>: onu gören
     /// (kâşifler); null ise ilk akını ya da söylentiler.</summary>
@@ -98,8 +101,8 @@ public static class Monsters
             if (c.Kind == "dragon") continue;
             if (J.T(c.Hidden) && s.Day - c.Founded >= HIDE_DAYS) Reveal(s, c, null);   // söylentiler yayıldı
             double away = CampAway(s, c);
-            c.GrowthAcc += J.N(GROW.Get(c.Kind)) + JsMath.Min(0.02, c.Loot / 3000);
-            if (c.GrowthAcc >= 1 && c.Count + away < Cap(s, c.Kind)) { c.GrowthAcc = 0; c.Count++; }
+            c.GrowthAcc += J.N(GROW.Get(c.Kind)) + JsMath.Min(0.02, c.Loot / 3000) * Sim.PACE;
+            if (c.GrowthAcc >= 1 && c.Count + away < Cap(s, c.Kind)) { c.GrowthAcc -= 1; c.Count++; if (c.GrowthAcc >= 1) c.GrowthAcc = 0; }
             bool bossAway = J.Some(w.Agents, a => a.Kind == "raid" && a.From == c.Id && J.T(a.Boss));
             if (c.Kind == "goblin" && !c.Boss && !bossAway && !c.HadBoss && c.Count >= 11)
             {
@@ -107,7 +110,7 @@ public static class Monsters
                 s.Log("lair", $"{Tr.Ek(c.Name, "da")} goblinlerin başına acımasız bir şef geçti.", tile: c.Tile, cause: $"Kamp kalabalıklaştı ({J.S(c.Count)} goblin)", major: true);
             }
             // yayılma
-            if (c.Kind == "goblin" && c.Count >= 12 && J.Filter(w.Camps, x => x.Alive).Count < 10 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(1.0 / 200))   // Faz 1b-4: yalnız bandın altındayken
+            if (c.Kind == "goblin" && c.Count >= 12 && J.Filter(w.Camps, x => x.Alive).Count < 10 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(Daily(1.0 / 200)))   // Faz 1b-4: yalnız bandın altındayken
             {
                 var avoid = J.Map(J.Filter(w.Settlements, x => x.Alive), x => x.Tile);
                 avoid.AddRange(J.Map(alive, x => x.Tile));
@@ -116,7 +119,7 @@ public static class Monsters
                 if (t >= 0)
                 {
                     var nc = WorldGen.MakeCamp(s.Id(), "goblin", t, FreshName(s, WorldGen.GOBLIN_CAMP_NAMES), s.Day, s.Rng);
-                    nc.NextRaid = s.Day + s.Rng.Int(100, 180);
+                    nc.NextRaid = s.Day + s.Rng.Int(25, 45);   // Faz 1b-5: eski 100–180 gün
                     c.Count -= 5; nc.Count = 5;
                     w.Camps.Add(nc); w.Tiles[t].Camp = nc.Id; w.Tiles[t].Owner = -1;
                     s.Metric("campSpread");
@@ -126,7 +129,7 @@ public static class Monsters
             // hobgoblin karakoluna evrilme
             int goblinCamps = J.Filter(alive, x => x.Kind == "goblin").Count;
             int hobs = J.Filter(alive, x => x.Kind == "hobgoblin").Count;
-            if (c.Kind == "goblin" && hobs < 3 && s.Day > 4 * Sim.YEAR && (s.Day - c.Founded > 3 * Sim.YEAR || goblinCamps >= 4) && c.Count >= 10 && s.Rng.Chance(1.0 / 500))
+            if (c.Kind == "goblin" && hobs < 3 && s.Day > 4 * Sim.OLD_YEAR && (s.Day - c.Founded > 3 * Sim.OLD_YEAR || goblinCamps >= 4) && c.Count >= 10 && s.Rng.Chance(Daily(1.0 / 500)))
             {
                 c.Kind = "hobgoblin";
                 c.Name = FreshName(s, WorldGen.HOB_NAMES);
@@ -136,7 +139,7 @@ public static class Monsters
                 s.Log("lair", $"Hobgoblin lejyonerleri kampı ele geçirdi: {c.Name} kuruldu.", tile: c.Tile, major: true, cause: "Uzun süre temizlenmeyen goblin kampı disiplinli bir orduya dönüştü");
             }
             // hobgoblin işgali: terk edilmiş yerleşim ya da sahipsiz yatak
-            if (c.Kind == "hobgoblin" && c.Count >= 10 && hobs < 4 && J.Filter(w.Camps, x => x.Alive).Count < 7 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(1.0 / 300))
+            if (c.Kind == "hobgoblin" && c.Count >= 10 && hobs < 4 && J.Filter(w.Camps, x => x.Alive).Count < 7 && LandCamps(w.Camps) < CAMP_LOW && s.Rng.Chance(Daily(1.0 / 300)))
             {
                 var cand = J.Map(J.Filter(w.Settlements, x => !x.Alive && s.G.Dist(x.Tile, c.Tile) <= 12 && w.Tiles[x.Tile].Owner < 0 && w.Tiles[x.Tile].Camp == null && w.Tiles[x.Tile].InnZone == null), x => x.Tile);
                 var depTiles = new List<int>();
@@ -154,14 +157,14 @@ public static class Monsters
             }
             if (c.Kind == "pirate")
             {
-                if (!c.Boss && !bossAway && c.Count >= 9 && s.Rng.Chance(1.0 / 120)) { c.Boss = true; c.Captain = Sea.NewCaptain(s); s.Log("lair", $"{Tr.Ek(c.Name, "da")} korsanlar yeni kaptanlarını seçti: {c.Captain}.", tile: c.Tile, major: true, cause: $"Koy kalabalıklaştı ({J.S(c.Count)} korsan)"); }
+                if (!c.Boss && !bossAway && c.Count >= 9 && s.Rng.Chance(Daily(1.0 / 120))) { c.Boss = true; c.Captain = Sea.NewCaptain(s); s.Log("lair", $"{Tr.Ek(c.Name, "da")} korsanlar yeni kaptanlarını seçti: {c.Captain}.", tile: c.Tile, major: true, cause: $"Koy kalabalıklaştı ({J.S(c.Count)} korsan)"); }
                 if (s.Day >= c.NextRaid && c.Count >= 5) Sea.LaunchPirates(s, c);
                 continue;
             }
             if (s.Day >= c.NextRaid && c.Count >= (c.Kind == "goblin" ? 7 : c.Kind == "hobgoblin" ? 6 : 2)) LaunchRaid(s, c);
         }
         // bugbear ini
-        if (s.Year >= 4 && !J.Some(alive, c => c.Kind == "bugbear") && CampRoom(s) > 0 && s.Rng.Chance(1.0 / 500))
+        if (s.DynYear >= 4 && !J.Some(alive, c => c.Kind == "bugbear") && CampRoom(s) > 0 && s.Rng.Chance(Daily(1.0 / 500)))
         {
             var forest = new List<int>();
             for (int i = 0; i < w.Tiles.Count; i++)
@@ -187,10 +190,10 @@ public static class Monsters
         var story = Storyteller.State(s);
         int land = LandCamps(alive);
         double target = CampTarget(s);
-        if (land < target && s.Day >= story.NextCampSpawn && s.Rng.Chance(JsMath.Min(0.25, (target - land) / CAMP_REFILL)))
+        if (land < target && s.Day >= story.NextCampSpawn && s.Rng.Chance(Daily(JsMath.Min(0.25, (target - land) / CAMP_REFILL))))
         {
             var nc = SpawnLair(s, LateKind(s, alive), null, true, land == 0 ? "Boşalan topraklar yeni yağmacıları çekti" : null, 12, true);
-            story.NextCampSpawn = s.Day + (nc != null ? s.Rng.Int(20, 40) : 30);
+            story.NextCampSpawn = s.Day + (nc != null ? s.Rng.Int(1, 3) : 1);   // Faz 1b-5: eski 20–40 eski gün (1–3 gün); kahramanlar daha çok kamp temizliyor
         }
     }
 
@@ -201,8 +204,9 @@ public static class Monsters
     /// Canavar baskısı yıllar boyu aynı kalır; geç inler büyüklükleri ve trollerle sertleşir. Dar tutuldu: üst sınırı erken goblin
     /// yayılması doldurursa erken yıllar geç yıllardan kalabalık olur (ölçüt 3).</summary>
     public const int CAMP_LOW = 8, CAMP_HIGH = 10;
-    /// <summary>bandın altında günlük yeni in olasılığı eksik / CAMP_REFILL (en çok %25; eskiden eksik / 40): temizlenen in çabuk yerine gelir</summary>
-    public const double CAMP_REFILL = 15;
+    /// <summary>bandın altında eski günlük yeni in olasılığı eksik / CAMP_REFILL (en çok %25; eskiden eksik / 40, Faz 1b-4'te / 15): temizlenen
+    /// in çabuk yerine gelir (Faz 1b-5: yeni günde <see cref="Daily"/>; kahramanlar daha çok kamp temizlediği için 15 → 4)</summary>
+    public const double CAMP_REFILL = 4;
 
     /// <summary>bandın alt sınırı: hedef kara kampı sayısı (eskiden ⌊3 + yıl/6⌋)</summary>
     public static double CampTarget(Sim s) => CAMP_LOW;
@@ -224,7 +228,7 @@ public static class Monsters
     /// bugbear 4 + (yıl−20)/20, trol 5 + (yıl−20)/15; korsan ve ejderha sabit (bilinmeyen tür: NaN).</summary>
     public static double Cap(Sim s, string kind)
     {
-        double late = JsMath.Max(0, s.Year - 20);
+        double late = JsMath.Max(0, s.DynYear - 20);
         return kind switch
         {
             "goblin" => JsMath.Min(24, 14 + Math.Floor(late / 4)),
@@ -241,7 +245,7 @@ public static class Monsters
     /// trol (en çok 3 çete, ağırlığı yıllarla artar).</summary>
     public static string LateKind(Sim s, List<Camp> alive)
     {
-        double y = s.Year;
+        double y = s.DynYear;
         int trolls = 0, bugs = 0;
         foreach (var c in alive) { if (!c.Alive) continue; if (c.Kind == "troll") trolls++; if (c.Kind == "bugbear") bugs++; }
         return s.Rng.Weighted(LATE_KINDS, k => k switch
@@ -258,13 +262,13 @@ public static class Monsters
     /// (en çok 12), trol 3 (35. yıldan sonra 4), bugbear 3 (40. yıldan sonra 4).</summary>
     private static double StartCount(Sim s, string kind)
     {
-        double late = JsMath.Max(0, s.Year - 15);
+        double late = JsMath.Max(0, s.DynYear - 15);
         return kind switch
         {
             "goblin" => JsMath.Min(12, 5 + Math.Floor(late / 6)),
             "hobgoblin" => JsMath.Min(12, 7 + Math.Floor(late / 8)),
-            "troll" => s.Year >= 35 ? 4 : 3,
-            _ => s.Year >= 40 ? 4 : 3,
+            "troll" => s.DynYear >= 35 ? 4 : 3,
+            _ => s.DynYear >= 40 ? 4 : 3,
         };
     }
 
@@ -324,7 +328,7 @@ public static class Monsters
         if (t < 0) return null;
         var c = WorldGen.MakeCamp(s.Id(), kind, t, FreshPick(s, NamesFor(kind)), s.Day, s.Rng);
         c.Count = StartCount(s, kind);
-        if (kind == "troll") c.NextRaid = s.Day + s.Rng.Int(30, 90);   // troller aç gelir
+        if (kind == "troll") c.NextRaid = s.Day + s.Rng.Int(8, 22);   // troller aç gelir (Faz 1b-5: eski 30–90 gün)
         if (hidden) c.Hidden = true;
         w.Camps.Add(c); w.Tiles[t].Camp = c.Id; w.Tiles[t].Owner = -1;
         s.Metric("lairSpawn"); s.Metric("lairSpawn" + Heroes.UpperFirst(kind));
@@ -406,7 +410,7 @@ public static class Monsters
     public static void LaunchRaid(Sim s, Camp c)
     {
         var w = s.W;
-        c.NextRaid = s.Day + s.Rng.Int(c.Kind == "hobgoblin" ? 110 : c.Kind == "troll" ? 100 : 90, 170);
+        c.NextRaid = s.Day + s.Rng.Int(c.Kind == "hobgoblin" ? 28 : c.Kind == "troll" ? 25 : 22, 43);   // Faz 1b-5: eski 110/100/90–170 gün
         int range = c.Kind == "bugbear" ? 9 : c.Kind == "troll" ? 14 : 16;
         var caravans = J.Filter(w.Agents, a => (a.Kind == "caravan" || (c.Kind == "bugbear" && (a.Kind == "party" || a.Kind == "scout" || a.Kind == "hero"))) && !J.T(a.Dead) && a.Hull == null
             && !J.Some(J.Slice(a.Path, a.Step, a.Step + 4), t => J.T(w.Tiles[t].Sea)) && PathDist(s, a, c.Tile) <= range - 3);
@@ -447,7 +451,7 @@ public static class Monsters
             targetTile = st.Tile; to = st.Id; purpose = "settlement";
         }
         if (targetTile < 0) return;
-        double n = c.Kind == "bugbear" ? c.Count : c.Kind == "troll" ? JsMath.Min(c.Count, JsMath.Max(2, Math.Ceiling(c.Count * 0.6))) : JsMath.Min(Math.Ceiling(c.Count * 0.5), 3 + Math.Floor(s.Year / 2.0));
+        double n = c.Kind == "bugbear" ? c.Count : c.Kind == "troll" ? JsMath.Min(c.Count, JsMath.Max(2, Math.Ceiling(c.Count * 0.6))) : JsMath.Min(Math.Ceiling(c.Count * 0.5), 3 + Math.Floor(s.DynYear / 2.0));
         // Kızıl Ay (anlatıcının baskın dalgası): kamplar yarısından fazlasıyla akına çıkar
         if (c.Kind != "bugbear" && Storyteller.Surging(s)) n = JsMath.Min(c.Count, Math.Ceiling(n * 1.5));
         bool boss = c.Boss && c.Count >= 10 && s.Rng.Chance(0.5);
@@ -456,7 +460,7 @@ public static class Monsters
         c.Count -= n;
         if (boss) c.Boss = false;
         Reveal(s, c, null);   // Faz 1 B2: gizli in ilk akınıyla kendini ele verir
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "raid", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = c.Kind == "bugbear" ? 1.1 : c.Kind == "troll" ? 1.0 : 0.9, Troops = n, From = c.Id, To = to, Purpose = purpose, Boss = boss, Monster = c.Kind, TargetTile = targetTile });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "raid", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = c.Kind == "bugbear" ? Pace.RAID_BUGBEAR : c.Kind == "troll" ? Pace.RAID_TROLL : Pace.RAID, Troops = n, From = c.Id, To = to, Purpose = purpose, Boss = boss, Monster = c.Kind, TargetTile = targetTile });
     }
 
     /// <summary>JS <c>s.g.dist(a.path[Math.min(a.step, a.path.length - 1)], tile)</c>: NaN when the path is empty (undefined tile).</summary>

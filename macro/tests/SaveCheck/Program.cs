@@ -24,7 +24,7 @@ namespace SaveCheck;
 /// <item><c>negative [--seeds 1-4 | --seed S] [--k auto|K] [--days 3600]</c>: breaks reference sharing on purpose (this serializer with
 ///   preserveReferences=false, and a plain System.Text.Json round trip) and shows that the graph check and the
 ///   per-day digests detect it, next to a correct load as control.</item>
-/// <item><c>bench [--seed 1] [--days 7200]</c>: save size and save/load time of a day-N world (+ round-trip checks).</item>
+/// <item><c>bench [--seed 1] [--days 2400]</c>: save size and save/load time of a day-N world (+ round-trip checks; 2400 = 60 years of 40 days).</item>
 /// </list>
 /// Exit code 0 = all checks passed, 1 = a check failed, 2 = usage, 3 = crash.
 /// </summary>
@@ -57,7 +57,7 @@ public static class Program
     private static int Usage()
     {
         Console.Error.WriteLine("usage: SaveCheck selftest | matrix [--seeds 1-4] [--days 3600] [--ks 0,1,37,500,1234,2400,3599] [--jobs 2] [--inproc 2400] [--out DIR]"
-            + " | negative [--seeds 1-4 | --seed S] [--k auto|K] [--days 3600] | bench [--seed 1] [--days 7200] [--out DIR]");
+            + " | negative [--seeds 1-4 | --seed S] [--k auto|K] [--days 3600] | bench [--seed 1] [--days 2400] [--out DIR]");
         return 2;
     }
 
@@ -507,7 +507,7 @@ internal static class Bench
 {
     public static int Run(Opts o)
     {
-        int seed = o.Int("seed", 1), days = o.Int("days", 7200);
+        int seed = o.Int("seed", 1), days = o.Int("days", 60 * Sim.YEAR);
         string dir = o.Str("out", Path.Combine(Path.GetTempPath(), "fd-savecheck"));
         Directory.CreateDirectory(dir);
         var sw = Stopwatch.StartNew();

@@ -1,6 +1,6 @@
-# macro — durum (1 Ekim 2026, Faz 1b-4)
+# macro — durum (1 Ekim 2026, Faz 1b-5)
 
-`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1, C3, Faz 1b-3 (4X budaması, yol haritası v3) ve Faz 1b-4 (dünyanın ayarı: kamp bandı, büyük şehir, ejderha; v3 ölçüleri) değişiklikleri vardır. Godot projesine henüz bağlı değil.
+`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1, C3, Faz 1b-3 (4X budaması, yol haritası v3) Faz 1b-4 (dünyanın ayarı: kamp bandı, büyük şehir, ejderha; v3 ölçüleri) ve Faz 1b-5 (zaman ölçeği: 1 gün = 30 dk, 1 yıl = 40 gün; süre tablosu) değişiklikleri vardır. Altın test 120 günlük eski takvimle yapıldı; ana hat artık TS'den ayrı bir takvimde. Godot projesine henüz bağlı değil.
 
 ## Altın test (TS ↔ C#)
 
@@ -112,34 +112,58 @@
   - **Ejderha** büyük şehri düşüremez: akındaki ölüler şehri 85'in altına indiremez (önce alevde ölenler azalır, sonra düşen askerler yaralı sayılır), yanan evler 4 evsizi (baraka göçü eşiği) aşmaz. Anlatıcının ejderha krizi de aynı `Raid`'i kullanır.
   - **Ölçüm aracı (v3):** `Core/Stats.cs` `V3Log` (günlük kademe sayıları, yerleşim durum değişimleri, savaş, kuşatma, büyük şehrin el değiştirmesi, ejderha akınları) ve rapordaki "v3: durum değişimi" bölümü; yeni ölçütler 6a–6j ve 7 († = yeni takvime bağlı: oranlar ×4, süreler ÷4; `--proj`). Pencereler koşunun uzunluğuna göre (60 yılda eskisiyle aynı), yazılar `Sim.YEAR`'ı izler; `--days N` eklendi. "Yakıldı/yandı" sayımı onarımları saymaz (onarım `BurnedAt`'i gün − 10 yapar).
 
-**Son ölçüm** (`reports/f1b-4`, 16 dünya × 60 yıl, Faz 1b-4 dâhil): 1–5 ve 5a/5b geçiyor. Seed 1, gün 7200 hash'i `ea518c4edcbf6601` (iki ayrı süreçte aynı). Önceki ölçüm `reports/f1b-3` (hash `bc3a0162ce7eebdc`); v3 ölçüleri f1b-3 kodunda aynı araçla yeniden koşuldu (`reports/f1b-3-v3`, hash'ler aynı); aşağıdaki "f1b-3" v3 sütunu odur.
+- **Faz 1b-5 · Zaman ölçeği** (yol haritası Faz 1b/5). Kod: `Core/Time.cs` (takvim, `DynYear`, `Every`/`Tick`, `DateStr`, `Pace`), bütün modüllerde yeniden zamanlama (yorumlarda "Faz 1b-5: eski …").
+  - **Takvim:** 1 gün = 30 gerçek dakika (1 oyun saati = 75 sn), 1 hafta = 5 gün (ödeme günü), 1 ay = 10 gün, 1 yıl = 40 gün (`Sim.YEAR`, `MONTH`, `WEEK`). Mevsim yok; yıl yalnız kronik ve yaş için etiket. Tarih "Yıl N, M. ay, D. gün".
+  - **Dönüşüm kuralı:** eski 120 günlük yıl ≈ 30 yeni gün (`OLD_YEAR`), `PACE` = 4. Eski günlük oranlar (üretim, tüketim, büyüme, gelir, bakım, çürüme, açlık) ×4; günlük olasılıklar `1 − (1 − p)^4`; eski gün cinsinden süreler ve kadanslar ÷4 (`Every` kesirli dönemi 2 ve 3 gün arayla tutturur: medeniyet YZ'si eski 10 gün → 2,5); eski "yıl" kapıları `DynYear` = 1 + gün/30 ile (troller, ejderha uyanışı, kamp nüfus tavanı, ilk krizler: dünyanın gelişme hızı değişmedi). Takvim yılına bağlı kalanlar yalnız yıllık olaylar: yaş, sınıf bayramları, hanın yıllık defteri. 60 yıllık koşu artık 2400 gün = eski ölçekte 80 yıl.
+  - **Ajan hızları** (`Pace`, hex/gün; 1 hex ≈ 200 m): hız (m/s) × 75 sn × günde yol saati / 200 m. Kervan 1,0 m/s (atlı 1,6), ikmal 1,1, hancı 1,6, öncü 0,9 ve göçmen 0,8 (9 saat), ordu 1,1, sefer 1,2, han baskını 1,4, yağma 1,6 (9 saat), goblin akını 1,5, trol 1,6, bugbear 1,8, kahraman 1,5, grup 1,4, yolcu 1,3, soylu 2,1 (10 saat), kâşif 1,8 (12 saat), gemi 1,5 ve korsan 2,2 (16 saat). Yeni hızlar eskinin ~6 katı. Ajan ilerlemesi gün cinsinden (`Agent.Progress`, karonun süresi `TileDays`).
+  - **Süre tablosuna göre ayarlananlar:** salgın 5–10 gün (eski 90–160), yanan evin onarımı 1–3 gün (her gün), sur 5–10 gün, kale ve fener kulesi 15–30 gün, temizlenen kampa köy 10–20 gün, han kurulumu 5–10 gün (hancı hızı), handa kahraman doğumu han başına 10–20 günde bir (yabancı yolcu, emekli öğretmen), efsaneye yükseliş 100–300 gün (genç kahramanın ünü çabuk yayılır, efsane olmamışın ünü söner), ilan ömrü 15 gün (eski 3 yıl; başarısız sefer ödülü +%25), kahraman ve han personeli maaşı haftalık (3 hafta ödenmeyen kahraman ayrılır), büyük şehir kuşatması 6 gün (eski 20), her yerleşim kuşatması ≥ 3 gün, ejderha haracı 30 günde bir.
+  - Kayıt biçimi sürüm 3 (sürüm 2 açılmaz). Ölçüme v3 süre tablosu (8a–8j, `DurLog`) ve proje süreleri eklendi; `--proj` varsayılanı 1.
 
-| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) | f1b-3 (kademe) | f1b-4 (ayar) |
-|---|---|---|---|---|---|---|
-| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ | 1,2 ✓ | 1,03 ✓ |
-| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) | 15/16 ✓ (130 çöküş) | 14/16 ✓ (40 çöküş) |
-| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ | 10,2 / 8,16 ✓ | 9 / 8,75 ✓ |
-| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ | 1,28–1,43 ✓ | 1,29–1,38 ✓ |
-| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ | 15/16 ✓ | 13/16 ✓ |
-| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ | 5,5 ✓ | 6 ✓ |
-| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ | %39 ✓ | %42 ✓ |
-| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ |
+**Son ölçüm** (`reports/f1b-5`, 16 dünya × 60 yıl = 2400 gün, Faz 1b-5 dâhil): 1–5, 5a/5b ve süre tablosu (8a–8i) geçiyor; 6b, 6e, 6f kalıyor. Seed 1, gün 2400 hash'i `8aa42b4bbe03b9ce` (ayrı süreçte `cps 1 2400` ile aynı); SaveCheck selftest 72/72. Önceki ölçüm `reports/f1b-4` (120 günlük yıl, gün 7200 hash'i `ea518c4edcbf6601`). f1b-3 v3 sütunu `reports/f1b-3-v3`.
 
-v3 ölçütleri (Faz 1b-4; pencere 21–60. yıl, 6b bütün koşu; † yeni takvime yansıtılmış: oran ×4, süre ÷4):
+| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) | f1b-3 (kademe) | f1b-4 (ayar) | f1b-5 (40 günlük yıl) |
+|---|---|---|---|---|---|---|---|
+| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ | 1,2 ✓ | 1,03 ✓ | 1,35 ✓ |
+| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) | 15/16 ✓ (130 çöküş) | 14/16 ✓ (40 çöküş) | 14/16 ✓ (73 çöküş) |
+| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ | 10,2 / 8,16 ✓ | 9 / 8,75 ✓ | 8,9 / 8,83 ✓ |
+| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ | 1,28–1,43 ✓ | 1,29–1,38 ✓ | 1,31–1,60 ✓ |
+| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ | 15/16 ✓ | 13/16 ✓ | 16/16 ✓ |
+| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ | 5,5 ✓ | 6 ✓ | 4 ✓ |
+| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ | %39 ✓ | %42 ✓ | %33 ✓ |
+| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ |
 
-| # | Ölçüt (hedef) | f1b-3 | f1b-4 |
+v3 ölçütleri (pencere 21–60. yıl, 6b bütün koşu; † zaman ölçeğine bağlı: f1b-3/4'te eski takvimden yansıtılmış (oran ×4, süre ÷4), f1b-5'te doğrudan):
+
+| # | Ölçüt (hedef) | f1b-3 | f1b-4 | f1b-5 |
+|---|---|---|---|---|
+| 6a | Yerleşim sayısı sabit, ısınmadan sonra (değişim katsayısı ≤ %10) | %9,4 ✓ | %9,5 ✓ | %8,4 ✓ |
+| 6b | Yerleşim sayısı sabit, bütün koşu (≤ %10) | %35 ✗ | %36 ✗ | %33 ✗ |
+| 6c | El değiştirme, dünyada / 100 gün (bilgi) | 0,86 (yeni takvimde 3,5) | 0,77 (3,1) | 2,25 |
+| 6d | Durum değişimi, yerleşim başına (bilgi) | ~670 günde bir | ~675 günde bir | ~199 günde bir |
+| 6e † | Orta halka kademe değişimi (60–150 günde bir) | 1741 → 435 ✗ | 1783 → 446 ✗ | 722 ✗ |
+| 6f † | Büyük şehir el değiştirmesi (dünyada 2–4 / 100 gün) | 0,04 → 0,17 ✗ (toplam 49) | 0,02 → 0,08 ✗ (toplam 19) | 0,03 ✗ (toplam 22) |
+| 6g † | Uyarı: kuşatmanın başı → düşüş (5–10 gün) | 0 → 0 ✗ | 20 → 5 ✓ | 5 ✓ |
+| 6h † | Savaş süresi (10–40 gün) | 30 → 7,5 ✗ | 40 → 10 ✓ | 13 ✓ |
+| 6i † | Büyük şehir kuşatması (2–6 gün) | 1 → 0,25 ✗ | 21 → 5,25 ✓ | 6 ✓ (küçük yerleşim 3) |
+| 6j | Başkent kaybı, medeniyet başına en çok 3 | 7 ✗ (12 medeniyet > 3) | 2 ✓ | 3 ✓ (64 kayıp) |
+| 7 | Felaket büyük şehri düşürmez (terk yok, ejderha eşiğin altına indiremez) | ✗ (4 eski Şehir terk) | ✓ | ✓ |
+
+v3 süre tablosu (Faz 1b-5, `reports/f1b-5`; medyan, bütün dünyalar havuzlanmış):
+
+| # | Süreç | Hedef | Ölçülen |
 |---|---|---|---|
-| 6a | Yerleşim sayısı sabit, ısınmadan sonra (değişim katsayısı ≤ %10) | %9,4 ✓ | %9,5 ✓ |
-| 6b | Yerleşim sayısı sabit, bütün koşu (≤ %10) | %35 ✗ | %36 ✗ |
-| 6c | El değiştirme, dünyada / 100 gün (bilgi) | 0,86 (yeni takvimde 3,5) | 0,77 (3,1) |
-| 6d | Durum değişimi, yerleşim başına (bilgi) | ~670 günde bir | ~675 günde bir |
-| 6e † | Orta halka kademe değişimi (60–150 günde bir) | 1741 → 435 ✗ | 1783 → 446 ✗ |
-| 6f † | Büyük şehir el değiştirmesi (dünyada 2–4 / 100 gün) | 0,04 → 0,17 ✗ (toplam 49) | 0,02 → 0,08 ✗ (toplam 19) |
-| 6g † | Uyarı: kuşatmanın başı → düşüş (5–10 gün) | 0 → 0 ✗ | 20 → 5 ✓ |
-| 6h † | Savaş süresi (10–40 gün) | 30 → 7,5 ✗ | 40 → 10 ✓ |
-| 6i † | Büyük şehir kuşatması (2–6 gün) | 1 → 0,25 ✗ | 21 → 5,25 ✓ |
-| 6j | Başkent kaybı, medeniyet başına en çok 3 | 7 ✗ (12 medeniyet > 3) | 2 ✓ |
-| 7 | Felaket büyük şehri düşürmez (terk yok, ejderha eşiğin altına indiremez) | ✗ (4 eski Şehir terk) | ✓ |
+| 8a | Salgın | 5–10 gün | 6 ✓ (n = 609) |
+| 8b | Yanan ev onarımı | 1–3 gün | 3 ✓ |
+| 8c | Sur (palisat, taş sur) | 5–10 gün | 8 ✓ |
+| 8d | Kale, fener kulesi | 15–30 gün | 20 ✓ (kale 20, kule 23) |
+| 8e | Temizlenen kamp → yeni köy | 10–20 gün | 15 ✓ (temizlenen kampların %5,7'sine) |
+| 8f | Han kurulumu | 5–10 gün | 8 ✓ |
+| 8g | Handa kahraman doğumu | han başına 10–20 günde bir | 18 ✓ |
+| 8h | Efsaneye yükseliş | 100–300 gün | 263 ✓ (56–748) |
+| 8i | İlan ömrü | 10–20 gün | 15 ✓ (sabit) |
+| 8j | Maaş | haftalık | kural ○ |
+
+Faz 1b-5, f1b-4'e karşı: 60 yıl artık eski ölçekte 80 yıl kapsıyor (`DynYear`), dünya daha olgun. Çöküş 40 → 73 (başkent kaybı 29 → 64), yok olma 11 → 9; savaş medyanı 13 gün (n = 1097); büyük şehre hücum 134, düşüşle bitenlerin payı %16; büyük şehir el değiştirmesi 22 (21–60. yıl). Kahraman ölüm payı %42 → %33 (diyarı terk eden ve emekli olan arttı), Sv8+ 16/16. Ekonomi ölçekle birlikte taşındı: ambar 60. yılda ~43 gün (eski ölçekte ~170, aynı), köy+ yerleşimlerin %47'sinde kent tüketiminde yokluk (çoğu alet; #23), kıtlık neredeyse yok.
 
 Faz 1b-4, f1b-3'e karşı (16 dünya): büyük şehre hücum 55 → 114, el değiştirerek biten %89 → %18 (66'sı yağmayla, 28'i püskürtülerek bitti); büyük şehrin el değiştirmesi 49 → 19 (21–60. yıl); başkent kaybı 113 → 29, yok olma 17 → 11; bütün fetihler 820 → ~680; savaş medyanı 30 → 40 gün (Kutsal Sefer 39 → 110). Yaşayan kamp on yıllara göre 7,1 → 11 yerine 8,1 → 9,1 (bant). Ayrıştırma: dünyada ~1 savaş / 100 gün (yeni takvimde ~4), hedefi büyük şehir olan %15 (f1b-3: %8): her savaş bir büyük şehir alsa bile yeni takvimde ~4 / 100 gün.
 
@@ -223,25 +247,37 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 36. **Kütüphane ve lonca salonunun ekonomik etkisi kalmadı** (araştırma ve verim düğümleriydi). Kütüphaneyi yalnız kahramanlar kullanıyor (`Will` "library" hedefi); lonca salonu boş bir yapı.
 37. **Göç %64 azaldı** (3103 → 1128): mevsimsiz ambarlar medeniyetler arasında refah farkı yaratmıyor.
 38. **Fener kulesi yalnız Şehir kademesindeki limanlarda** (eskiden Deniz Ticareti bilen her liman); kadırga Şehir başkentiyle (60. yılda filo −%18).
-39. **Takvim geçici:** yıl hâlâ 120 gün, tarih "Yıl N, Gün D"; 40 günlük takvim sonraki adım. Han defteri 30 günlük dönem (`InnBook.Period`); kahraman maaşı ve hedef seçimi 30 günde bir. Faz 1b-4'ün süreleri (kuşatma 20 gün, yıpranma 2 yıl, kamp arası 20–40 gün) de yeniden zamanlanmalı.
+39. ~~**Takvim geçici:** yıl hâlâ 120 gün, tarih "Yıl N, Gün D"; 40 günlük takvim sonraki adım. Han defteri 30 günlük dönem (`InnBook.Period`); kahraman maaşı ve hedef seçimi 30 günde bir. Faz 1b-4'ün süreleri (kuşatma 20 gün, yıpranma 2 yıl, kamp arası 20–40 gün) de yeniden zamanlanmalı.~~ Düzeldi (Faz 1b-5): 40 günlük takvim, maaş haftalık, han defteri ve personel kararı ayda bir.
 40. **Kademe eşikleri sabit** (12 / 40 / 100; histerezis %85). Başkentlerin %33'ü 20. yılda, %87'si 60. yılda Şehir; Şehir kapıları (kadırga, efsun, kale) geç yıllarda neredeyse herkeste.
 
 ### Faz 1b-4'ten kalanlar
 41. **Büyük şehir çok seyrek el değiştiriyor:** yeni takvimde ~0,08 / 100 gün (hedef 2–4; f1b-3'te 0,17). Ayrıştırma (21–60. yıl): dünyada ~1 savaş / 100 gün (yeni takvimde ~4), hedefi büyük şehir olan %15, büyük şehre hücumların %17'si düşüşle bitiyor. Her savaş bir büyük şehir alsa bile ~4 / 100 gün: hedef ya savaşların neredeyse hepsinin çekirdek şehirler için olmasını ya da iç yoldan düşüşü (veraset krizi, darbe, mezhep bölünmesi; yol haritası Faz 1b/7) ister. Kollar: `BIG_FALL`, `BIG_WEAR`, `BIG_ODDS`, `BIG_SIEGE_DAYS`, savaş temposu.
 42. **Orta halka durgun:** Köy/Kasaba başına ~1780 günde bir kademe değişimi ya da terk (yeni takvimde ~450; hedef 60–150). Yerleşim durum tablosu (Faz 1b/7) ve yeniden zamanlama gerekir.
-43. **Küçük yerleşim kuşatması 1 gün** (yeni takvimde 0,25; v3: 2–6): karargâh süresi yalnız korunan yerleşimlerde.
-44. **Savaşların çoğu kısa:** medyan 40 gün (yeni takvimde 10, hedefin alt ucu); küçük hedefli savaş ilk fetihte biter. Kutsal Sefer uzadı (medyan 110 gün): başkente yürür, taht şehri yağmalanıp düşmez.
+43. ~~**Küçük yerleşim kuşatması 1 gün** (yeni takvimde 0,25; v3: 2–6): karargâh süresi yalnız korunan yerleşimlerde.~~ Düzeldi (Faz 1b-5): her yerleşim kuşatması ≥ 3 gün (medyan 3), büyük şehir 6.
+44. **Savaşların çoğu kısa:** f1b-4'te medyan 40 eski gün (yeni takvimde 10), Faz 1b-5'te 13 gün (p90 35): hedefin (10–40) alt ucuna yakın; küçük hedefli savaş ilk fetihte biter. Kutsal Sefer daha uzun (medyan 25 gün): başkente yürür, taht şehri yağmalanıp düşmez.
 45. **Bütün koşuda yerleşim sayısı sabit değil** (değişim katsayısı %36): dünya 8 kamptan başlıyor (dünya üretimi). Isınmadan sonra %9,5 (sınırda).
 46. **Çöküş azaldı** (130 → 40; 16 dünyanın 14'ünde ≥ 1; ölçüt 2'ye 12 dünya yeter): başkent kaybı 113 → 29.
 47. **Taht şehri geçici bir tanım:** başkent hâlâ "en kalabalık yerleşim" (B1); `Civ.Seat` yalnız bir gün geriye bakıyor (asker yazımı başkenti bir günlüğüne başka yere taşımasın). Eski kayıp başına −1 zayıflık yol haritasının "en fazla birkaç kez"i için konan yapay bir ayar: iki kez düşmüş taht neredeyse alınamaz. Devlet modelinde meşruiyetle değişmeli.
 48. **Çekirdek şehir tabanı** (`RemovePop`, 12 kişi): tabandaki şehirde ölen asker nüfustan düşmez, yalnız asker sayısı düşer; ordu daha az nüfus taşır.
 49. **Ejderha akınından sonraki 60 günde** 20 büyük şehir kademe düşürdü (bilgi; asker yazımı, salgın, göç). Akının kendisi düşüremiyor (ölçüt 7).
 50. **Kamp ölçütü (3) dar:** 9 ≥ 8,75. Bant 8–10, yayılma yalnız 8'in altında; erken yıllar üst sınıra dayanırsa ölçüt kalır.
-51. **Yeni takvime yansıtma ×4 varsayımı** (`--proj`; eski 120 günlük yıl ≈ 30 gün). Takvim değişince 1 olur, hedefler doğrudan okunur.
+51. ~~**Yeni takvime yansıtma ×4 varsayımı** (`--proj`; eski 120 günlük yıl ≈ 30 gün). Takvim değişince 1 olur, hedefler doğrudan okunur.~~ Kalktı (Faz 1b-5): `--proj` 1.
+
+### Faz 1b-5'ten kalanlar
+52. **Orta halka daha da durgun (6e):** Köy/Kasaba başına 722 günde bir kademe değişimi ya da terk (hedef 60–150; f1b-4'ün yansıtması 446). 60 yıl artık eski ölçekte 80 yıl; olgun dünyada nüfus kademe eşiklerinin uzağında duruyor. Yerleşim durum tablosu (Faz 1b/7) gerekir: kademe nüfustan değil durumdan (açlık, kuşatma, refah, göç) kaymalı.
+53. **Büyük şehir el değiştirmesi 0,03 / 100 gün (6f, hedef 2–4).** Dünyada 3,7 savaş / 100 gün, hedefi büyük şehir olan %12, büyük şehre hücumun %16'sı düşüşle bitiyor. Dış yoldan hedefe varılmıyor; iç düşüş (devlet tipine göre çöküş yolları, Faz 1b/7) ve devlet modelinin meşruiyeti (Faz 1b/6) gerekir. Bkz. #41, #47.
+54. **Bütün koşuda yerleşim sayısı sabit değil (6b, %33):** dünya 8 kamptan başlıyor. Devlet/örgüt spec'inin dünya üretimi (Faz 1b/6) doğrudan olgun dünyayla başlamalı.
+55. **Süreler sabit sayılarla tutturuldu:** büyük şehir kuşatması hep 6 gün (p10 = p90), uyarı hep 5, ilan ömrü hep 15. Hedef aralıkta ama dağılım yok; durum tablosuyla (garnizon, erzak, sur) değişken olmalı.
+56. **Temizlenen kampların yalnız %5,7'sine köy kuruluyor** (60 gün içinde; kurulanların medyanı 15 gün). Dünya dolu ve yerleşim tavanında; boşalan yer çoğunlukla boş kalıyor. Fırsat düğümü döngüsü (Faz 1b/7) buraya bağlanmalı.
+57. **Sıradan inşaat 1 günde bitiyor** (ev, atölye, yükseltme, pazar…): iş ×4 hızlandı. Süre tablosu yalnız tepki inşaatını ve büyük projeleri tanımlıyor; diğerleri için hedef yok.
+58. **Kahraman ölüm payı %33'e indi** (alt sınır %30): diyarı terk eden ve emekli olan arttı (eski ölçekte 80 yıl). Doğuş seviyesi geç on yıllarda 1,6'ya çıktı (handa emekli öğretmen: +1 seviye); sınır 2.
+59. **Yaş ve kronik takvim yılıyla:** kahramanlar 40 günlük yılla yaşlanıyor (yaş tablosu `HERO_AGE` yıl cinsinden aynı); bir kahraman ömrü artık ~1–2 bin gün. Faz 2'de oyuncu ölçeğiyle teyit edilmeli.
 
 ## Devam için
 
-1. 40 günlük takvim (sonraki adım; yıl uzunluğu ve "Gün D" biçimi): v3 ölçütlerinin † satırları (6e–6i) yeni ölçekte doğrudan okunur (`--proj 1`, `--days`); #41–#44.
-2. Sınıfların devlet/kurum spec'i (#31).
-3. #4 kronik zinciri.
-4. Faz 2: Godot gözlemci harita. `FD.Macro`'yu Godot projesine bağla.
+Yol haritası v3, Faz 1b (sırayla; her adımın sonunda ölçüm raporu ve bu dosyanın güncellenmesi):
+
+1. **Faz 1b/6 · Devlet, inanç ve örgüt modeli** (`claude/devlet-orgut-spec.md`): önce veri modeli ve dünya üretimi (#54), sonra makro eylemler, sonra devriye ve esaretin makro istatistikleri. Sınıf-medeniyet → devlet ve örgüt (#31, #47).
+2. **Faz 1b/7:** yerleşim durum tablosu (#52, #55), büyük şehrin istikrarı ve devlet tipine göre çöküş yolları (#41, #53), fırsat düğümü döngüsü (#56), tepki inşaatı.
+3. **Faz 1b/8 · Başsız ölçütler:** 2400 gün × 16 dünya; donma yok, yerleşim sayısı ~sabit ama sahiplik ve durum dalgalı, döngüler kurulup çöküyor, büyük şehir 100 günde 2–4 kez el değiştiriyor, spec §9 örgüt/devriye/esaret ölçüleri.
+4. Faz 2: #4 kronik zinciri; Godot gözlemci harita (`FD.Macro`'yu Godot projesine bağla).

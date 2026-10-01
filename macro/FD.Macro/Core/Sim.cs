@@ -11,8 +11,8 @@ namespace FD.Macro;
 /// </summary>
 public sealed partial class Sim
 {
-    public const double FOOD_PER_POP = 0.1;
-    public const int YEAR = 120;
+    /// <summary>kişi başı günlük gıda (Faz 1b-5: eski günde 0,1; yeni günde ×PACE)</summary>
+    public const double FOOD_PER_POP = 0.1 * PACE;
     public static readonly double[] TIER_SLOTS = { 4, 8, 14, 20 };
     public static readonly double[] TIER_CROWD = { 24, 55, 120, 230 };
 
@@ -56,10 +56,7 @@ public sealed partial class Sim
 
     // ------------------------------------------------------------ time & log
     public int Day => W.Day;
-    public int Year => W.Day / YEAR + 1;
-    public string DateStr() => DateStr(W.Day);
-    /// <summary>Faz 1b-3: mevsimler kalktı; geçici tarih biçimi "Yıl N, Gün D" (D = yılın 1–120. günü).</summary>
-    public string DateStr(double d) => $"Yıl {J.S(Math.Floor(d / YEAR) + 1)}, Gün {J.S(d % YEAR + 1)}";
+    // Year, DynYear, DateStr, Every: Core/Time.cs (Faz 1b-5 takvimi)
     public int Id() => W.NextId++;
 
     public GameEvent Log(string kind, string text, string cause = null, int? civ = null, int? tile = null, int? battle = null, bool? major = null)
@@ -410,23 +407,26 @@ public sealed partial class Sim
     {
         var w = W;
         w.Day++;
+        // Faz 1b-5: eski kadanslar ÷PACE (eski 5 gün → 1,25; 10 → 2,5; 30 → 7,5; 60 → 15); Every kesirli dönemi 2 ve 3 gün arayla tutturur
         foreach (var c in w.Civs) if (c.Alive) { Economy.EconomyTick(this, c); Cp?.Invoke("econ:" + c.Id); }
-        if (w.Day % 5 == 0) { foreach (var c in w.Civs) if (c.Alive) Economy.RepairTick(this, c); Cp?.Invoke("repair"); }
-        foreach (var c in w.Civs) if (c.Alive && (w.Day + c.Id * 3) % 10 == 0) CivAI(c);
-        if (w.Day % 10 == 0) { UpdateTerritory(); Cp?.Invoke("territory"); Diplomacy.RelationsTick(this); Cp?.Invoke("relations"); }
-        if (w.Day % 30 == 0) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); }
-        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Classes.ClassYearly(this, c); Cp?.Invoke("yearly"); }
+        foreach (var c in w.Civs) if (c.Alive) Economy.RepairTick(this, c);   // Faz 1b-5: her gün (yanan ev 1–3 günde onarılır)
+        Cp?.Invoke("repair");
+        foreach (var c in w.Civs) if (c.Alive && Every(CIV_AI_DAYS, c.Id * 0.75)) CivAI(c);
+        if (Every(TERRITORY_DAYS)) { UpdateTerritory(); Cp?.Invoke("territory"); Diplomacy.RelationsTick(this); Cp?.Invoke("relations"); }
+        if (Every(WORLD_DAYS)) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); }
+        Events.PlagueTick(this); Cp?.Invoke("plague");   // Faz 1b-5: salgın günlük işler (5–10 gün)
+        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Classes.ClassYearly(this, c); Cp?.Invoke("yearly"); }   // takvim yılı: yıllık bayramlar
         Monsters.CampsTick(this); Cp?.Invoke("camps");
         Storyteller.Tick(this); Cp?.Invoke("story");   // Faz 1 B2: anlatıcı (gerilim, kriz, rahatlama) ve ejderha
         Heroes.TavernsTick(this); Cp?.Invoke("taverns");
         Inns.InnsTick(this); Cp?.Invoke("inns");
-        if (w.Day % 5 == 0) { Heroes.HeroesTick(this); Cp?.Invoke("heroes"); }
+        Heroes.HeroesTick(this); Cp?.Invoke("heroes");   // Faz 1b-5: her gün (eskiden 5 eski günde bir)
         Agents.AgentsTick(this); Cp?.Invoke("agents");
         Sea.SeaTick(this); Cp?.Invoke("sea");
         Agents.RoutesTick(this); Cp?.Invoke("routes");
         Agents.RoadsTick(this); Cp?.Invoke("roads");
-        foreach (var c in w.Civs) c.Threat = JsMath.Min(1.5, JsMath.Max(0, c.Threat - 0.0015));
-        if (w.Day % 60 == 0)
+        foreach (var c in w.Civs) c.Threat = JsMath.Min(1.5, JsMath.Max(0, c.Threat - THREAT_DECAY));
+        if (Every(HISTORY_DAYS))
             foreach (var c in w.Civs)
                 if (c.Alive) c.History.Add(new HistPoint { Day = w.Day, Pop = CivPop(c), Gold = JsMath.Round(St(c, "gold")), Tier = CivTier(c) });
         // Faz 1b-4: taht şehri: gün sonunun başkenti (ertesi gün asker yazımı ya da göçle en kalabalık yerleşim değişse de
@@ -435,6 +435,11 @@ public sealed partial class Sim
         w.RngState = Rng.State();
         Cp?.Invoke("end");
     }
+
+    /// <summary>Faz 1b-5 kadansları (gün): medeniyet YZ'si (eski 10), toprak ve ilişkiler (eski 10), dünya olayları (keşif, göç, afetler;
+    /// eski 30), tarih noktası (eski 60). Tehdit günde THREAT_DECAY söner (eski 0,0015).</summary>
+    public const double CIV_AI_DAYS = 10 / PACE, TERRITORY_DAYS = 10 / PACE, WORLD_DAYS = 30 / PACE, HISTORY_DAYS = 60 / PACE;
+    public const double THREAT_DECAY = 0.0015 * PACE;
 
     public void CivAI(Civ c)
     {

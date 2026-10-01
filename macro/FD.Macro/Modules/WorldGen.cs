@@ -394,7 +394,7 @@ public static class WorldGen
     public static Camp MakeCamp(int id, string kind, int tile, string name, double day, Rng rng)
     {
         double count = kind == "goblin" ? 5 : kind == "hobgoblin" ? 7 : 3;
-        return new Camp { Id = id, Kind = kind, Tile = tile, Name = name, Count = count, Boss = kind == "hobgoblin", HadBoss = kind == "hobgoblin", Loot = 10, GrowthAcc = 0, Alive = true, NextRaid = day + rng.Int(kind == "goblin" ? 360 : 150, 460), Founded = day };
+        return new Camp { Id = id, Kind = kind, Tile = tile, Name = name, Count = count, Boss = kind == "hobgoblin", HadBoss = kind == "hobgoblin", Loot = 10, GrowthAcc = 0, Alive = true, NextRaid = day + rng.Int(kind == "goblin" ? 90 : 38, 115), Founded = day };   // Faz 1b-5: eski 360 / 150–460 gün
     }
 
     /// <summary>Sınıf tanımından yeni medeniyet: başlangıç stoku, align ve eff sınıf değerlerinin kopyası (kademe etkileri

@@ -131,7 +131,7 @@ public static class Will
         {
             var r = NearestRest(s, h.Pos);
             if (r == null) { h.State = "gone"; s.Log("hero", $"{h.Name} dinlenecek bir yer bulamayınca uzak diyarlara gitti.", tile: h.Pos); return; }
-            h.Base = r.Id; h.BaseInn = r.Inn; t = r.Tile;
+            h.Base = r.Id; h.BaseInn = r.Inn; h.BaseDay = s.Day; t = r.Tile;
         }
         Heroes.SendHero(s, h, t.Value, "tavern");
         if (h.State == "tavern") { h.Tavern = h.Base; h.IdleSince = s.Day; }
@@ -252,7 +252,7 @@ public static class Will
         if (hs.Count >= 2 && alive.Count == 1)
         {
             var h = alive[0];
-            h.SoloUntil = s.Day + 2 * Sim.YEAR;
+            h.SoloUntil = s.Day + 2 * Sim.OLD_YEAR;
             AddTrait(s, h, "lonewolf", "Partisinin tek sağ kalanı");
         }
     }
@@ -266,8 +266,10 @@ public static class Will
     /// (Faz 1 C1: 20 fersah ve 30 iken ilanlar hep ağır basıyor, düello hiç olmuyordu)</summary>
     public const double DUEL_RANGE = 30, DUEL_PULL = 60;
 
-    /// <summary>temizlenmiş bir kampın terk edilmiş ini bu kadar yıl keşfedilebilir</summary>
+    /// <summary>temizlenmiş bir kampın terk edilmiş ini bu kadar (eski) yıl keşfedilebilir</summary>
     public const double LAIR_YEARS = 6;
+    /// <summary>Faz 1b-5: serbest kahramanın hedef seçme aralığı (gün; eskiden 30 eski gün)</summary>
+    public const double DECIDE_DAYS = 30 / Sim.PACE;
 
     /// <summary>Harabe hedefinin adı: ölü yerleşim, yanmış han ("X Hanı") ya da temizlenmiş kamp; bulunamazsa null.</summary>
     private static string RuinName(Sim s, int? id)
@@ -303,7 +305,7 @@ public static class Will
         ["duel"] = new() { ["hunter"] = 0.9, ["healer"] = 0.6 },
     };
 
-    /// <summary>Serbest kahramanlar: hedefte bekleyenler ilerler, tavernadakiler 30 günde bir kez hedef seçer.</summary>
+    /// <summary>Serbest kahramanlar: hedefte bekleyenler ilerler, tavernadakiler DECIDE_DAYS günde bir kez hedef seçer.</summary>
     public static void WillTick(Sim s)
     {
         var w = s.W;
@@ -315,7 +317,7 @@ public static class Will
             if (h.State == "quest" && h.Goal != null && HeroAgent(s, h) == null) { ProgressGoal(s, h); continue; }
             if (h.State != "tavern") continue;
             if (h.Hp < h.MaxHp * 0.8) continue;
-            if ((Math.Floor(s.Day / 5.0) + h.Id) % 6 != 0) continue;   // her kahraman 30 günde bir kez karar verir
+            if (!Sim.Tick(s.Day, DECIDE_DAYS, h.Id * 1.25)) continue;   // her kahraman DECIDE_DAYS günde bir kez karar verir (Faz 1b-5: eski 30 gün)
             ChooseGoal(s, h);
         }
     }
@@ -355,7 +357,7 @@ public static class Will
     public static double Daring(Sim s, Hero h)
     {
         double since = s.Day - (h.Tally.Get("lastFight") ?? h.Born);
-        return 1 + JsMath.Min(1, since / Sim.YEAR * 0.2);
+        return 1 + JsMath.Min(1, since / Sim.OLD_YEAR * 0.2);
     }
 
     /// <summary>risk: kampın gücü / grubun (ve dostlarının) gücü</summary>
@@ -382,7 +384,7 @@ public static class Will
     {
         var path = s.Path(h.Pos, cp.Tile);
         if (path == null) return new Allies { Agents = new List<Agent>(), Cs = new List<Combatant>() };
-        var probe = new Agent { Id = -1, Kind = "party", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = 0.85, Heroes = new List<int> { h.Id }, To = cp.Id, Purpose = "quest" };
+        var probe = new Agent { Id = -1, Kind = "party", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = Pace.PARTY, Heroes = new List<int> { h.Id }, To = cp.Id, Purpose = "quest" };
         var agents = Agents.ProbeAllies(s, probe, Agents.EtaDays(s, probe), Agents.MUSTER_CAMP);
         var cs = new List<Combatant>();
         foreach (var b in agents) cs.AddRange(Agents.AgentCombatants(s, b, cp.Kind));
@@ -465,7 +467,7 @@ public static class Will
             for (int ci = 0; ci < camps.Count; ci++)
             {
                 var cp = camps[ci];
-                if (cp.Alive || cp.ClearedDay == null || s.Day - cp.ClearedDay.Value > LAIR_YEARS * Sim.YEAR || seen.Contains(cp.Id)) continue;
+                if (cp.Alive || cp.ClearedDay == null || s.Day - cp.ClearedDay.Value > LAIR_YEARS * Sim.OLD_YEAR || seen.Contains(cp.Id)) continue;
                 if (w.Tiles[cp.Tile].Camp != null || J.T(w.Tiles[cp.Tile].Isle) || s.G.Dist(h.Pos, cp.Tile) > 26 || J.Some(w.Settlements, o => o.Alive && o.Tile == cp.Tile)) continue;
                 opts.Add(new Option { Kind = "ruin", Tile = cp.Tile, Target = cp.Id, Score = Fit(h, "ruin") * 25 / (0.5 * DistPen(s, h.Pos, cp.Tile)), Text = $"terk edilmiş {cp.Name}" });
             }
@@ -479,16 +481,16 @@ public static class Will
                 if (!st.Alive || s.G.Dist(h.Pos, st.Tile) > 26) continue;
                 var c = w.Civs[st.Civ];
                 if (h.Grudge == c.Id) continue;
-                if (st.Plague != null && Fit(h, "plague") > 0 && st.Plague.Until - s.Day > 15 && !J.Some(w.Heroes, x => x.Goal != null && x.Goal.Kind == "plague" && x.Goal.Target == st.Id))
+                if (st.Plague != null && Fit(h, "plague") > 0 && st.Plague.Until - s.Day > 3 && !J.Some(w.Heroes, x => x.Goal != null && x.Goal.Kind == "plague" && x.Goal.Target == st.Id))
                     opts.Add(new Option { Kind = "plague", Tile = st.Tile, Target = st.Id, Score = Fit(h, "plague") * (35 + st.Plague.Severity * 20) / ((HasTrait(h, "plaguewalker") ? 0.35 : 0.7) * DistPen(s, h.Pos, st.Tile)), Text = $"salgınlı {st.Name}" });
-                if (J.T(st.Civics.Get("temple")) && Fit(h, "temple") > 0 && !(h.Seen ?? new List<int>()).Contains(st.Id) && s.Day - (h.Tally.Get("templeDay") ?? -9999) > Sim.YEAR)
+                if (J.T(st.Civics.Get("temple")) && Fit(h, "temple") > 0 && !(h.Seen ?? new List<int>()).Contains(st.Id) && s.Day - (h.Tally.Get("templeDay") ?? -9999) > Sim.OLD_YEAR)
                     opts.Add(new Option { Kind = "temple", Tile = st.Tile, Target = st.Id, Score = Fit(h, "temple") * 12 / DistPen(s, h.Pos, st.Tile), Text = $"{Lore.Ek(st.Name, "in")} sunağına hac" });
-                if (J.T(st.Civics.Get("library")) && Fit(h, "library") > 0 && !(h.Seen ?? new List<int>()).Contains(st.Id) && s.Day - (h.Tally.Get("libDay") ?? -9999) > Sim.YEAR)
+                if (J.T(st.Civics.Get("library")) && Fit(h, "library") > 0 && !(h.Seen ?? new List<int>()).Contains(st.Id) && s.Day - (h.Tally.Get("libDay") ?? -9999) > Sim.OLD_YEAR)
                     opts.Add(new Option { Kind = "library", Tile = st.Tile, Target = st.Id, Score = Fit(h, "library") * 26 / (0.6 * DistPen(s, h.Pos, st.Tile)), Text = $"{Lore.Ek(st.Name, "in")} kütüphanesi" });
             }
         }
         // 7) kervan soygunu
-        if (Fit(h, "rob") > 0 && s.Day - (h.Tally.Get("robDay") ?? -9999) > Sim.YEAR / 2.0)
+        if (Fit(h, "rob") > 0 && s.Day - (h.Tally.Get("robDay") ?? -9999) > Sim.OLD_YEAR / 2.0)
         {
             var routes = w.Routes;
             for (int ri = 0; ri < routes.Count; ri++)
@@ -539,7 +541,7 @@ public static class Will
                 x.Goal = new HeroGoal { Kind = o.Kind, Tile = cp.Tile, Target = cp.Id, Text = o.Text, Since = s.Day };
                 Note(s, x, o.Kind == "quest" ? $"{cp.Name} ilanını kopardı" : $"{Lore.Ek(cp.Name, "a")} ava çıktı");
             }
-            w.Agents.Add(new Agent { Id = s.Id(), Kind = "party", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = 0.85, Heroes = J.Map(crew, x => x.Id), To = cp.Id, Quest = o.Quest?.Id, Purpose = "quest" });
+            w.Agents.Add(new Agent { Id = s.Id(), Kind = "party", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = Pace.PARTY, Heroes = J.Map(crew, x => x.Id), To = cp.Id, Quest = o.Quest?.Id, Purpose = "quest" });
             s.Metric(o.Kind == "quest" ? "questTaken" : "goalHunt");
             string poster = o.Quest != null ? (o.Quest.Civ >= 0 ? w.Civs[o.Quest.Civ].Name : $"{InnById(s, o.Quest.Inn)?.Name ?? "Han"} Hanı") : "";
             s.Log("quest", crew.Count > 1
@@ -555,7 +557,7 @@ public static class Will
         var path2 = s.Path(h.Pos, o.Tile);
         if (path2 == null || path2.Count < 2) { h.State = "quest"; h.Tavern = -1; ArriveGoal(s, h); return; }
         h.State = "traveling"; h.Tavern = -1;
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "hero", Civ = -1, Path = path2, Step = 0, Progress = 0, Speed = 0.9, Heroes = new List<int> { h.Id }, Purpose = "goal" });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "hero", Civ = -1, Path = path2, Step = 0, Progress = 0, Speed = Pace.HERO, Heroes = new List<int> { h.Id }, Purpose = "goal" });
     }
 
     // ------------------------------------------------------------ hedefte
@@ -596,7 +598,7 @@ public static class Will
                     }
                     h.Tally.Set("ruins", (h.Tally.Get("ruins") ?? 0) + 1);
                     if (J.N(h.Tally.Get("ruins")) >= 3) AddTrait(s, h, "ruinrat", $"{J.S(J.N(h.Tally.Get("ruins")))} harabe keşfetti");
-                    g.Stay = s.Day + 5;
+                    g.Stay = s.Day + 1;   // Faz 1b-5: kalış süreleri ÷PACE (eski 5 / 15 / 5 / 20 / 40 gün)
                     return;
                 }
             case "plague":
@@ -605,7 +607,7 @@ public static class Will
                     if (st == null || !st.Alive || st.Plague == null) { ReturnToBase(s, h); return; }
                     var pl = st.Plague;
                     double heal = h.Cls == "cleric" || h.Cls == "druid" || h.Cls == "paladin" ? 0.55 : 0.75;
-                    pl.Severity *= heal; pl.Until = JsMath.Max(s.Day + 8, pl.Until - 25);
+                    pl.Severity *= heal; pl.Until = JsMath.Max(s.Day + 2, pl.Until - 2);   // Faz 1b-5: salgın 5–10 gün (eskiden en az 8, 25 gün kısalır)
                     s.Metric("plagueHealed");
                     var c = w.Civs[st.Civ];
                     h.Rep.Set(c.Id, (h.Rep.Get(c.Id) ?? 0) + 1);
@@ -621,7 +623,7 @@ public static class Will
                     Lore.Deed(s, h, "heal", $"salgınlı {Lore.Ek(st.Name, "a")} şifa taşıdı", st.Tile, st.Name);
                     s.Log("hero", $"{s.HeroTitle(h)} salgınlı {Lore.Ek(st.Name, "a")} şifa taşıdı; hastalık geriliyor.", tile: st.Tile, civ: c.Id, major: true, cause: $"{D.PATH_TR[h.Path]} yolu");
                     Heroes.GainXp(s, h, XP_PLAGUE, "plague");
-                    g.Stay = s.Day + 15;
+                    g.Stay = s.Day + 4;
                     return;
                 }
             case "temple":
@@ -631,16 +633,16 @@ public static class Will
                     h.Tally.Set("temple", (h.Tally.Get("temple") ?? 0) + 1); h.Tally.Set("templeDay", s.Day);
                     Heroes.GainXp(s, h, XP_TEMPLE, "temple");
                     Note(s, h, $"{s.Settlement(g.Target)?.Name ?? "bir"} sunağında dua etti");
-                    g.Stay = s.Day + 5;
+                    g.Stay = s.Day + 1;
                     return;
                 }
             case "library":
                 {
                     (h.Seen ??= new List<int>()).Add(g.Target.Value);
-                    g.Stay = s.Day + 20;
+                    g.Stay = s.Day + 5;
                     return;
                 }
-            case "rob": g.Stay = s.Day + 40; return;
+            case "rob": g.Stay = s.Day + 10; return;
             case "duel": Duel(s, h); return;
             default: ReturnToBase(s, h); return;
         }
@@ -685,7 +687,7 @@ public static class Will
             double gold = JsMath.Max(8, JsMath.Round(v * 0.6));
             h.Gold += gold;
             cv.Dead = true;
-            var r = J.Find(s.W.Routes, x => x.Id == cv.Route); if (r != null) r.NextDepart = s.Day + 60;
+            var r = J.Find(s.W.Routes, x => x.Id == cv.Route); if (r != null) r.NextDepart = s.Day + 60 / Sim.PACE;
             c.Threat += 0.15;
             Note(s, h, $"{c.Name} kervanını soydu ({J.S(gold)} altın)");
             Lore.Deed(s, h, "rob", $"{c.Name} kervanını soydu", h.Pos, c.Name);

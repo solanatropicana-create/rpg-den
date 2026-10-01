@@ -904,6 +904,104 @@ internal static class StatsMode
                 Crits.Add(c);
             }
             EvaluateV3();
+            EvaluateDurations();   // Faz 1b-5
+        }
+
+        // ------------------------------------------------------------ Faz 1b-5: v3 süre tablosu
+        /// <summary>Bütün dünyaların süre kayıtlarından (biten) süreler: f kaydı seçer, keep süzer.</summary>
+        private Spans DurSpans(Func<DurLog, List<DurSpan>> f, Func<DurSpan, bool> keep = null)
+        {
+            var o = new Spans();
+            foreach (var r in Ok) foreach (var x in f(r.Stats.Dur)) if (x.End >= 0 && (keep == null || keep(x))) o.Xs.Add(x.End - x.Start);
+            return o;
+        }
+
+        private static readonly HashSet<string> WALLS = new() { "palisade", "stonewall" }, GRAND = new() { "castle", "lighthouse" };
+
+        /// <summary>Han başına kahraman doğumu: (açık han-günü / handa doğan) ve aynı handa art arda iki doğum arası (medyan).</summary>
+        private (double DaysPerBirth, Spans Gaps, int Births, double InnDays) InnBirths(string kind)
+        {
+            var gaps = new Spans(); int births = 0; double days = 0;
+            foreach (var r in Ok)
+            {
+                var d = r.Stats.Dur;
+                days += kind == "inn" ? d.InnDays : d.TavernDays;
+                foreach (var g in d.Births.Where(b => b.Kind == kind).GroupBy(b => b.Id))
+                {
+                    var ds = g.Select(b => b.Start).OrderBy(x => x).ToList();
+                    births += ds.Count;
+                    for (int i = 1; i < ds.Count; i++) gaps.Xs.Add(ds[i] - ds[i - 1]);
+                }
+            }
+            return (births > 0 ? days / births : double.NaN, gaps, births, days);
+        }
+
+        /// <summary>Süre ölçütü: medyan hedef aralığında mı.</summary>
+        private Crit DurCrit(string id, string name, double lo, double hi, Spans sp, string rule, string extra = "")
+        {
+            double m = sp.Q(0.5);
+            return new Crit
+            {
+                Id = id, Name = name, Rule = $"{rule}: {F(lo)}–{F(hi)} gün (medyan)", Pass = sp.N > 0 ? In(m, lo, hi) : null,
+                Measured = sp.N > 0 ? $"{F(m)} gün ({F(sp.Q(0.1))}–{F(sp.Q(0.9))}; n = {sp.N}){extra}" : $"ölçülemedi (n = 0){extra}",
+                Data = new JObj { { "spans", sp.Json() }, { "target", new List<object> { lo, hi } } },
+            };
+        }
+
+        private readonly List<Crit> DurCrits = new();
+
+        private void EvaluateDurations()
+        {
+            // 8a. salgın
+            DurCrits.Add(DurCrit("8a", "Salgın süresi", 5, 10, DurSpans(d => d.Plagues), "salgın başladığı günden bittiği güne"));
+            // 8b–8d. tepki inşaatı
+            DurCrits.Add(DurCrit("8b", "Tepki inşaatı: yanan ev", 1, 3, DurSpans(d => d.Repairs), "yanan her ev yandığı günden onarıldığı güne (ilk yanan ilk onarılır)"));
+            DurCrits.Add(DurCrit("8c", "Tepki inşaatı: sur", 5, 10, DurSpans(d => d.Builds, x => WALLS.Contains(x.Kind)), "palisat ve taş sur: projenin başından bitişine",
+                $"; palisat {F(DurSpans(d => d.Builds, x => x.Kind == "palisade").Q(0.5))}, taş sur {F(DurSpans(d => d.Builds, x => x.Kind == "stonewall").Q(0.5))} gün"));
+            DurCrits.Add(DurCrit("8d", "Büyük proje (kale, kule)", 15, 30, DurSpans(d => d.Builds, x => GRAND.Contains(x.Kind)), "kale ve fener kulesi: projenin başından bitişine",
+                $"; kale {F(DurSpans(d => d.Builds, x => x.Kind == "castle").Q(0.5))} (n = {DurSpans(d => d.Builds, x => x.Kind == "castle").N}), kule {F(DurSpans(d => d.Builds, x => x.Kind == "lighthouse").Q(0.5))} gün (n = {DurSpans(d => d.Builds, x => x.Kind == "lighthouse").N})"));
+            // 8e. kamp → köy
+            {
+                int all = Ok.Sum(r => r.Stats.Dur.CampVillage.Count), got = Ok.Sum(r => r.Stats.Dur.CampVillage.Count(x => x.End >= 0));
+                var sp = DurSpans(d => d.CampVillage);
+                DurCrits.Add(DurCrit("8e", "Temizlenen kamp → yeni köy", 10, 20, sp, $"temizlenen kara kampının {WorldStats.CAMP_VILLAGE_R} fersah yakınına {WorldStats.CAMP_VILLAGE_DAYS} gün içinde ilk yerleşimin kurulması",
+                    $"; temizlenen {all} kampın {got} tanesine ({Pct(all > 0 ? got / (double)all : double.NaN)}) köy kuruldu, 20 gün içinde {Pct(all > 0 ? sp.Xs.Count(x => x <= 20) / (double)all : double.NaN)}"));
+            }
+            // 8f. han kurulumu
+            {
+                var re = DurSpans(d => d.InnSetup, x => x.Kind == "rebuild");
+                DurCrits.Add(DurCrit("8f", "Han kurulumu", 5, 10, DurSpans(d => d.InnSetup, x => x.Kind == "new"), "yeni han: hancının yola çıktığı günden kapıların açıldığı güne",
+                    $"; harabeyi yeniden kurma {F(re.Q(0.5))} gün (n = {re.N})"));
+            }
+            // 8g. kahraman doğumu
+            {
+                var (dpb, gaps, births, days) = InnBirths("inn");
+                var (tdpb, tgaps, tb, _) = InnBirths("tavern");
+                DurCrits.Add(new Crit
+                {
+                    Id = "8g", Name = "Kahraman doğumu (han)", Rule = "han başına 10–20 günde bir (açık han-günü / handa doğan kahraman)",
+                    Pass = births > 0 ? In(dpb, 10, 20) : null,
+                    Measured = $"{F(dpb)} günde bir ({births} doğum / {F(days)} han-günü); aynı handa iki doğum arası medyan {F(gaps.Q(0.5))} gün ({F(gaps.Q(0.1))}–{F(gaps.Q(0.9))}); bilgi: taverna başına {F(tdpb)} günde bir ({tb} doğum)",
+                    Data = new JObj { { "innDaysPerBirth", dpb }, { "births", births }, { "innDays", days }, { "gaps", gaps.Json() }, { "tavernDaysPerBirth", tdpb }, { "tavernBirths", tb } },
+                });
+            }
+            // 8h. efsane
+            DurCrits.Add(DurCrit("8h", "Kahramanın efsaneye yükselişi", 100, 300, DurSpans(d => d.Legends), "doğumundan efsane olduğu güne"));
+            // 8i. ilan ömrü: alınmayan ilanın panoda kaldığı süre (süresi doldu ya da kampı başkası temizledi); alınıp bitenler bilgi
+            {
+                var sp = DurSpans(d => d.Quests, x => x.Kind == "expired" || x.Kind == "closed");
+                var all = DurSpans(d => d.Quests);
+                int n = all.N, exp = Ok.Sum(r => r.Stats.Dur.Quests.Count(x => x.Kind == "expired")), done = Ok.Sum(r => r.Stats.Dur.Quests.Count(x => x.Kind == "done"));
+                DurCrits.Add(DurCrit("8i", "İlan ömrü", 10, 20, sp, "alınmayan ilanın asıldığı günden kapandığı güne (süresi doldu ya da kampı başkası temizledi)",
+                    $"; bütün ilanlar {F(all.Q(0.5))} gün (n = {n}): biten {Pct(n > 0 ? done / (double)n : double.NaN)} (asılıştan {F(DurSpans(d => d.Quests, x => x.Kind == "done").Q(0.5))} günde), süresi dolan {Pct(n > 0 ? exp / (double)n : double.NaN)}; başarısız sefer ödülü %25 artırır (Heroes.QuestFailed)"));
+            }
+            // 8j. maaş (kural)
+            DurCrits.Add(new Crit
+            {
+                Id = "8j", Name = "Yoldaş/kahraman maaşı", Info = true, Rule = "haftalık (5 gün)",
+                Measured = $"kural: medeniyetin kahramanları her {Sim.WEEK}. gün (Economy.PayHeroes), han personeli haftada bir (InnLife.PayWages); maaşı {Economy.HERO_UNPAID} hafta ödenmeyen kahraman ayrılır",
+            });
+            Crits.AddRange(DurCrits);
         }
 
         // ------------------------------------------------------------ v3 ölçüleri (Faz 1b-4)
@@ -1294,6 +1392,46 @@ internal static class StatsMode
             }
         }
 
+        /// <summary>Faz 1b-5: yol haritası v3'ün süre tablosu (hedef ve ölçülen, tek tabloda).</summary>
+        private void DurMd(StringBuilder sb)
+        {
+            void L(string s = "") => sb.Append(s).Append('\n');
+            string Of(string id) { var c = Crits.FirstOrDefault(x => x.Id == id); return c == null ? "–" : $"{c.Measured} | {Mark(c)}"; }
+            L("## v3: süre tablosu (Faz 1b-5)");
+            L();
+            L($"Yol haritası v3'ün hedef süreleri (oyun günü; 1 yıl = {YEAR} gün, 1 ay = {Sim.MONTH}, 1 hafta = {Sim.WEEK}). Bütün dünyalar havuzlanmış; 6e–6i ısınmadan sonra, 8a–8i bütün koşu. Ajan hızları `Core/Time.cs` (`Pace`).");
+            L();
+            L("| Süreç | Hedef | Ölçülen | Sonuç |");
+            L("|---|---|---|---|");
+            L($"| Orta halkada kademe kayması (6e) | yerleşim başına 60–150 günde bir | {Of("6e")} |");
+            L($"| Büyük şehir el değiştirmesi (6f) | dünyada 100 günde 2–4 | {Of("6f")} |");
+            L($"| ↳ uyarı (6g) | 5–10 gün önceden | {Of("6g")} |");
+            L($"| Savaş (6h) | 10–40 gün | {Of("6h")} |");
+            L($"| ↳ kuşatma (6i) | 2–6 gün | {Of("6i")} |");
+            L($"| Salgın (8a) | 5–10 gün | {Of("8a")} |");
+            L($"| Tepki inşaatı: yanan ev (8b) | 1–3 gün | {Of("8b")} |");
+            L($"| Tepki inşaatı: sur (8c) | 5–10 gün | {Of("8c")} |");
+            L($"| Büyük proje: kale, kule (8d) | 15–30 gün | {Of("8d")} |");
+            L($"| Temizlenen kamp → yeni köy (8e) | 10–20 gün | {Of("8e")} |");
+            L($"| Han kurulumu (8f) | 5–10 gün | {Of("8f")} |");
+            L($"| Kahraman doğumu (8g) | han başına 10–20 günde bir | {Of("8g")} |");
+            L($"| Efsaneye yükseliş (8h) | 100–300 gün | {Of("8h")} |");
+            L($"| İlan ömrü (8i) | 10–20 gün (başarısız sefer ödülü +%25) | {Of("8i")} |");
+            L($"| Yoldaş maaşı (8j) | haftalık (5 gün) | {Of("8j")} |");
+            L();
+            // yapı türlerine göre proje süreleri (bilgi)
+            var kinds = Ok.SelectMany(r => r.Stats.Dur.Builds.Where(x => x.End >= 0).Select(x => x.Kind)).Distinct().OrderBy(k => k, StringComparer.Ordinal).ToList();
+            if (kinds.Count > 0)
+            {
+                L("Proje süreleri, yapı türüne göre (gün; bütün koşu):");
+                L();
+                L("| Yapı | n | p10 | medyan | p90 |");
+                L("|---|---|---|---|---|");
+                foreach (var k in kinds) { var sp = DurSpans(d => d.Builds, x => x.Kind == k); L($"| {k} | {sp.N} | {F(sp.Q(0.1))} | {F(sp.Q(0.5))} | {F(sp.Q(0.9))} |"); }
+                L();
+            }
+        }
+
         private static string WarKindTr(string k) => k switch
         {
             "plain" => "sıradan", "tribute" => "haraç", "reclaim" => "tarihî hak", "crusade" => "Kutsal Sefer", "pact" => "savunma paktı", "ally" => "müttefik çağrısı", _ => k,
@@ -1473,6 +1611,9 @@ internal static class StatsMode
             o.Add("levels", new JObj { { "birth", LevelTable("levelBirth", false) }, { "death", LevelTable("levelDeath", false) }, { "alive", LevelTable("levelAlive", true) } });
             o.Add("criteria", Crits.Select(c => (object)new JObj { { "id", c.Id }, { "name", c.Name }, { "rule", c.Rule }, { "pass", c.Pass }, { "info", c.Info }, { "scaled", c.Scaled }, { "measured", c.Measured }, { "data", c.Data } }).ToList());
             o.Add("v3", V3Json());   // Faz 1b-4
+            var dj = new JObj();   // Faz 1b-5
+            foreach (var c in DurCrits) dj.Add(c.Id, new JObj { { "name", c.Name }, { "pass", c.Pass }, { "measured", c.Measured }, { "data", c.Data } });
+            o.Add("durations", dj);
             o.Add("knownProblems", KnownRows.Select(k => (object)new JObj { { "name", k.Name }, { "old", k.Old }, { "now", k.Now }, { "persists", k.Persists } }).ToList());
             return o;
         }
@@ -1532,7 +1673,7 @@ internal static class StatsMode
             L();
             L("## Bitiş ölçütleri");
             L();
-            L("DESIGN-FAZ1.md, \"Bitiş ölçütleri\" (1–5) ve yol haritası v3 (6–7, Faz 1b-4). ✓ geçti · ✗ kaldı · — ölçülemedi · ○ bilgi (hedef yok) · † gelecek zaman ölçeğine bağlı (yeni takvime yansıtılmış değerle değerlendirilir; bkz. \"v3: durum değişimi\").");
+            L("DESIGN-FAZ1.md, \"Bitiş ölçütleri\" (1–5), yol haritası v3 (6–7, Faz 1b-4) ve v3'ün süre tablosu (8, Faz 1b-5). ✓ geçti · ✗ kaldı · — ölçülemedi · ○ bilgi (hedef yok) · † zaman ölçeğine bağlı" + (O.Proj != 1 ? $" (yeni takvime yansıtılmış değerle değerlendirilir: ×{F(O.Proj)} / ÷{F(O.Proj)}; bkz. \"v3: durum değişimi\")." : $" (Faz 1b-5'ten beri takvim yeni ölçekte: 1 yıl = {YEAR} gün, değerler doğrudan okunur)."));
             L();
             L("| # | Ölçüt | Koşul | Ölçülen | Sonuç |");
             L("|---|---|---|---|---|");
@@ -1552,6 +1693,7 @@ internal static class StatsMode
             L("- **6–7 (v3):** bkz. \"v3: durum değişimi\" bölümü. Pencere: ısınmadan sonra (koşunun son üçte ikisi); 6b bütün koşu. Büyük şehir = Şehir kademesi (`Sim.BIG_TIER`). El değiştirme = fetih ya da bölünme. Kuşatma = hedefin önünde ilk savaş ordusunun karargâh kurduğu günden (`Agent.Muster`) hücum muharebesine; karargâhsız hücum 1 gün. Uyarı = kuşatmanın (ya da savaşın) başından büyük şehrin el değiştirdiği güne. Savaş = `War.Since`'ten savaşın ilişkiden düştüğü güne.");
             L();
             V3Md(sb);
+            DurMd(sb);   // Faz 1b-5
             L("## Eski analizdeki sorunlar");
             L();
             L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");

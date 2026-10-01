@@ -326,12 +326,13 @@ public sealed class Hero
     public double? Hired;
     public bool? Legend;
     public double? LastGoal;
+    public double? BaseDay;              // Faz 1b-5: bu yuvaya (han ya da taverna) geldiği gün; null = doğduğu gün (han havuzunun dönüşümü)
     // ---- kimlik ve ilerleme (Faz 1, A3a): Name = "Given Surname"
     public string Given;                 // ön ad
     public string Surname;               // soyad ya da lakap (ırka göre havuzdan ya da atadan)
     public int? Lineage;                 // soyundan geldiği kahramanın id'si
     public int BirthLevel;               // doğuş seviyesi
-    public double BirthAge;              // yola çıktığı yaş (yıl); yaş = BirthAge + (gün − Born) / 120
+    public double BirthAge;              // yola çıktığı yaş (yıl); yaş = BirthAge + (gün − Born) / Sim.YEAR (40)
     public double Renown;                // ün: efsanelik seviyeden bağımsız, ünle gelir
     public List<HeroDeed> Deeds = new(); // kilometre taşları (destanın malzemesi)
     public string Epitaph;               // ölünce yazılan destan (kronikteki metnin aynısı)

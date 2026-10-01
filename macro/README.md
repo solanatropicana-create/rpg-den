@@ -36,7 +36,7 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 (--ye
 | Seçenek | Varsayılan | |
 |---|---|---|
 | `--seeds` | `1-16` | seed listesi ve aralıkları (`1,3,5-8`) |
-| `--years` | `60` | dünya başına yıl (1 yıl = `Sim.YEAR` gün; şimdilik 120) |
+| `--years` | `60` | dünya başına yıl (1 yıl = `Sim.YEAR` = 40 gün, Faz 1b-5; 60 yıl = 2400 gün) |
 | `--days` | — | `--years` yerine gün; son yıl yarım kalabilir (ölçütler tam yıllarla) |
 | `--out` | (gerekli) | `report.md` ve `report.json` klasörü |
 | `--runs` | `<out>/worlds` | dünya başına `seed-N.json` klasörü; `reports/runs/<ad>` git'e girmez |
@@ -44,17 +44,18 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 (--ye
 | `--label` | `--out` klasörünün adı | rapor başlığı |
 | `--verify` | `1` | ilk N seed toplayıcısız yeniden koşulur; her yıl sonu hash'i karşılaştırılır (determinizm + toplayıcı salt okunur) |
 | `--saveload` | `1` | `Sim.Save`/`Sim.Load` varsa ilk N seed yıl ortasında kaydedilip yüklenir, sonraki hash'ler karşılaştırılır |
-| `--proj` | `4` (yıl 120 günken), `1` | v3 hedeflerinin yeni takvime yansıtılması: oranlar ×K, süreler ÷K (eski 120 günlük yıl ≈ 30 yeni gün) |
+| `--proj` | `1` (yıl 40 gün; yıl 120 günken 4) | v3 hedeflerinin yansıtılması: oranlar ×K, süreler ÷K. Faz 1b-5'ten beri takvim yeni ölçekte, değerler doğrudan okunur |
 
 Çıktı:
-- `report.md`: bitiş ölçütleri tablosu (✓/✗/○, ölçülen değerler ve tanımlar; 6–7: yol haritası v3, † gelecek zaman ölçeğine bağlı), v3 durum değişimi
-  bölümü (100 günlük oranlar, bütün koşu ve ısınmadan sonra; savaş, kuşatma ve uyarı süreleri; büyük şehrin el değiştirmeleri), eski analizdeki
+- `report.md`: bitiş ölçütleri tablosu (✓/✗/○, ölçülen değerler ve tanımlar; 6–7: yol haritası v3, † zaman ölçeğine bağlı; 8: v3 süre tablosu), v3 durum değişimi
+  bölümü (100 günlük oranlar, bütün koşu ve ısınmadan sonra; savaş, kuşatma ve uyarı süreleri; büyük şehrin el değiştirmeleri), v3 süre tablosu
+  (salgın, onarım, sur ve büyük proje, kamp → köy, han kurulumu, han doğumu, efsaneye yükseliş, ilan ömrü; `DurLog`), eski analizdeki
   sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
   kahraman seviye dağılımları, olay/muharebe/ölüm nedeni türleri, dünya tablosu, her ölçü için yıllık medyan (p10–p90);
 - `report.json`: aynı veriler (yıllık medyan/p10/p90 dizileri, on yıllık değerler, ölçütler);
 - `seed-N.json`: dünyanın yıllık değerleri (her ölçü bir dizi), anahtarlı sayımlar (olay türleri, seviye dağılımları, `W.Metrics`
   farkları), çöküş listesi, medeniyet özetleri, efsaneler, yıl sonu hash'leri; `v3`: günlük kademe sayıları, yerleşim durum değişimleri,
-  savaşlar, kuşatmalar, büyük şehrin el değiştirmeleri, ejderha akınları (`V3Log`).
+  savaşlar, kuşatmalar, büyük şehrin el değiştirmeleri, ejderha akınları (`V3Log`); `durations`: süre aralıkları (`DurLog`).
 
 Çıkış kodu 0; bir dünya çökerse 3 (raporlar yine yazılır). Dünyalar aynı süreçte paralel koşar; simülasyonda statik değişken
 durum olmamalıdır (`--verify` bunu da yakalar).
@@ -64,7 +65,7 @@ Toplayıcıyı kendi kodundan kullanmak için (`FD.Macro/Core/Stats.cs`):
 ```csharp
 var sim = new Sim(seed);
 var st = new WorldStats(sim);      // Sim.OnEvent'e bağlanır, önceki işleyiciyi zincirler
-for (int d = 1; d <= 7200; d++) { sim.Step(); st.AfterStep(); }
+for (int d = 1; d <= 60 * Sim.YEAR; d++) { sim.Step(); st.AfterStep(); }
 st.Finish();                       // st.Years[y - 1]["majorEvents"], st.CollapseLog, st.ToJson()
 ```
 
@@ -95,7 +96,7 @@ sim.Save(stream);                       // akış sürümleri: Save(Stream, comp
 - `Save`'i iki `Step` arasında çağırın, bir `Cp`/`OnEvent` kancasının içinden değil. `Save` simülasyonda hiçbir şeyi değiştirmez.
 - Kancalar kaydedilmez: `OnEvent`, `Cp` ve `Rng.Trace` yüklemeden sonra yeniden bağlanır (ör. `new WorldStats(sim2)`).
 
-**Dosyada ne var.** `{"format":"fd-macro-save","version":2,"day":…,"seed":…,"state":{…}}` (sürüm 2: Faz 1b-3; sürüm 1 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
+**Dosyada ne var.** `{"format":"fd-macro-save","version":3,"day":…,"seed":…,"state":{…}}` (sürüm 3: Faz 1b-5, 40 günlük takvim; sürüm 1–2 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
 `World`, RNG durumu ve `Rng.Calls`, kara yol önbelleği, deniz yol önbelleği (`NavCache`) ve `ShoreW`. Önbellekler sonucu etkiler
 (bayat girdiler bilerek yeniden kullanılır, boyut sınırında temizlenir), o yüzden onlar da kaydedilir. RNG durumu ayrı saklanır:
 `new Sim(seed)`'ten hemen sonra `World.RngState` henüz dünya üretiminin durumunu tutar. İlk `Step`'ten sonra ikisi hep eşittir.
@@ -122,7 +123,7 @@ dotnet build tests/SaveCheck -c Release
 dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll selftest            # birim denetimleri
 dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll matrix              # seed 1–4 × 3600 gün, K ∈ {0,1,37,500,1234,2400,3599}
 dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll negative            # paylaşımı bozan kayıt yakalanıyor mu
-dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll bench --days 7200   # boyut ve süre
+dotnet tests/SaveCheck/bin/Release/net8.0/SaveCheck.dll bench --days 2400   # boyut ve süre (60 yıl)
 ```
 
 - `matrix`: her seed için bir süreç kesintisiz koşar ve her günün özetini yazar. Her K'da kaydeder; aynı süreçte yükleyip iki

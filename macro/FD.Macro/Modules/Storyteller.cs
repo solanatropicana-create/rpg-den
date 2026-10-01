@@ -12,18 +12,19 @@ namespace FD.Macro;
 
 public static class Storyteller
 {
-    /// <summary>gerilim kovası (gün) ve pencere (kova): 24 × 10 gün = 2 yıl</summary>
-    public const int BUCKET = 10, WINDOW = 24;
-    /// <summary>bu kadar gün art arda sakin geçerse kriz gelebilir</summary>
-    public const double CALM_DAYS = 60;
-    /// <summary>iki kriz arası en az (gün)</summary>
-    public const double MIN_GAP = 1.5 * Sim.YEAR;
+    /// <summary>gerilim kovası (gün) ve pencere (kova): 24 × 2,5 gün = 60 gün (eski 24 × 10 gün = 2 eski yıl; Faz 1b-5)</summary>
+    public const double BUCKET = 10 / Sim.PACE;
+    public const int WINDOW = 24;
+    /// <summary>bu kadar gün art arda sakin geçerse kriz gelebilir (eski 60)</summary>
+    public const double CALM_DAYS = 60 / Sim.PACE;
+    /// <summary>iki kriz arası en az (gün; eski 1,5 yıl)</summary>
+    public const double MIN_GAP = 1.5 * Sim.OLD_YEAR;
     /// <summary>gerilim bütçesi yerleşim başına (2 yıllık pencere / yaşayan yerleşim, en az 10): bunun altı sakinlik, PEAK üstü zirve</summary>
     public const double CALM = 1.8, PEAK = 3.2;
     /// <summary>göreli zirve: dünya büyüyüp olgunlaşınca yerleşim başına gerilim PEAK'e pek varmaz; dünyanın kendi olağanının
     /// (BASE_YEARS yıllık üssel ortalama) PEAK_REL katını ve PEAK_FLOOR'u aşan bir dalga da zirve sayılır</summary>
     public const double PEAK_REL = 1.3, PEAK_FLOOR = 2.0, BASE_YEARS = 4;
-    /// <summary>ilk krizler bu yıldan sonra (genç dünya önce kendi hikâyesini yazar)</summary>
+    /// <summary>ilk krizler bu (dinamik) yıldan sonra (genç dünya önce kendi hikâyesini yazar)</summary>
     public const int FIRST_YEAR = 5;
 
     /// <summary>Anlatıcının durumu (ilk çağrıda kurulur; zar atmaz).</summary>
@@ -41,7 +42,7 @@ public static class Storyteller
         Dragon.Tick(s);
         DroughtTick(s, st);
         if (st.ReliefEvent > 0 && s.Day >= st.ReliefEvent) { st.ReliefEvent = 0; ReliefEvent(s); }
-        if (s.Day % BUCKET == 0) { Close(st); Decide(s, st); }
+        if (s.Every(BUCKET)) { Close(st); Decide(s, st); }
     }
 
     // ------------------------------------------------------------ gerilim
@@ -94,12 +95,12 @@ public static class Storyteller
     /// </summary>
     private static void Decide(Sim s, StoryState st)
     {
-        if (st.Buckets.Count < WINDOW || s.Year < FIRST_YEAR) return;
+        if (st.Buckets.Count < WINDOW || s.DynYear < FIRST_YEAR) return;
         double p = Pressure(s, st);
         if (!(st.Base > 0)) st.Base = p;
         double peak = JsMath.Min(PEAK, JsMath.Max(PEAK_FLOOR, PEAK_REL * st.Base));
-        st.Base += (p - st.Base) * BUCKET / (BASE_YEARS * Sim.YEAR);
-        if (p >= peak && s.Day >= st.ReliefUntil && s.Day - st.LastPeak >= 2 * Sim.YEAR) { StartRelief(s, st); return; }
+        st.Base += (p - st.Base) * BUCKET / (BASE_YEARS * Sim.OLD_YEAR);
+        if (p >= peak && s.Day >= st.ReliefUntil && s.Day - st.LastPeak >= 2 * Sim.OLD_YEAR) { StartRelief(s, st); return; }
         if (s.Day < st.ReliefUntil) { st.CalmDays = 0; return; }
         st.CalmDays = p < CALM ? st.CalmDays + BUCKET : 0;
         if (st.CalmDays >= CALM_DAYS && s.Day - st.LastCrisis >= MIN_GAP && s.Rng.Chance(0.25)) Crisis(s, st);
@@ -126,9 +127,9 @@ public static class Storyteller
             {
                 "campWave" => room <= 0 ? 0 : 1 + 0.25 * JsMath.Max(0, target - land.Count),
                 "raidSurge" => land.Count >= 3 ? 0.5 + 0.1 * land.Count : 0,
-                "drought" => s.Year - st.LastDrought >= 6 && st.DroughtUntil <= s.Day ? 0.8 : 0,
+                "drought" => s.DynYear - st.LastDrought >= 6 && st.DroughtUntil <= s.Day ? 0.8 : 0,
                 "plague" => big != null ? 0.7 : 0,
-                "trolls" => s.Year >= 15 && trolls < 3 && room > 0 ? 0.6 + s.Year / 50.0 : 0,
+                "trolls" => s.DynYear >= 15 && trolls < 3 && room > 0 ? 0.6 + s.DynYear / 50.0 : 0,
                 "dragon" => dragon ? 1.4 : 0,
                 _ => 0,
             };
@@ -171,14 +172,14 @@ public static class Storyteller
     {
         var civ = PickVictim(s);
         if (civ == null) return false;
-        string kind = s.Year < 10 ? "goblin" : s.Rng.Chance(0.6) ? "hobgoblin" : "goblin";
-        int n = Math.Min(s.Year >= 30 ? 3 : 2, Monsters.CampRoom(s));   // Faz 1b-4: kamp bandının üstüne çıkmaz
+        string kind = s.DynYear < 10 ? "goblin" : s.Rng.Chance(0.6) ? "hobgoblin" : "goblin";
+        int n = Math.Min(s.DynYear >= 30 ? 3 : 2, Monsters.CampRoom(s));   // Faz 1b-4: kamp bandının üstüne çıkmaz
         var made = new List<Camp>();
         for (int i = 0; i < n; i++)
         {
             var c = Monsters.SpawnLair(s, kind, civ, false, null, 11);
             if (c == null) break;
-            c.NextRaid = s.Day + s.Rng.Int(20, 60);
+            c.NextRaid = s.Day + s.Rng.Int(5, 15);   // Faz 1b-5: eski 20–60 gün
             made.Add(c);
         }
         if (made.Count == 0) return false;
@@ -196,9 +197,9 @@ public static class Storyteller
         foreach (var c in land)
         {
             c.Count = JsMath.Min(Monsters.Cap(s, c.Kind), c.Count + 2);
-            c.NextRaid = JsMath.Min(c.NextRaid, s.Day + s.Rng.Int(3, 30));
+            c.NextRaid = JsMath.Min(c.NextRaid, s.Day + s.Rng.Int(1, 8));   // Faz 1b-5: eski 3–30 gün
         }
-        st.SurgeUntil = s.Day + 60;
+        st.SurgeUntil = s.Day + 60 / Sim.PACE;
         s.Log("crisis", "Kızıl Ay doğdu! İnlerde canavarlar kudurdu; akın davulları gece boyu çalıyor.", tile: land[0].Tile, major: true,
             cause: $"{J.S(land.Count)} in aynı anda kan kokusu aldı");
         return true;
@@ -208,15 +209,15 @@ public static class Storyteller
     private static readonly List<string> PLAGUE_WHY = new() { "Uzak diyarlardan gelen bir kervan hastalığı taşıdı; kalabalık sokaklarda hızla yayılıyor", "Kirli kuyular ve tıklım tıklım pazarlar hastalığı büyüttü", "Ambarlardan sokaklara taşan fareler hastalığı yaydı" };
     private static readonly List<string> TROLL_WHY = new() { "Troller yaralarını kapatır; onları ancak ateş durdurur", "Dağ geçitlerindeki av tükenince troller ovaya indi", "Yaşlı bir trol anası yavrularını yeni av yerlerine saldı" };
 
-    /// <summary>Kuraklık (Faz 1b-3: sert kışın yerine, mevsimsiz): 60–90 gün boyunca tarla ve toplayıcı verimi yarıya iner
+    /// <summary>Kuraklık (Faz 1b-3: sert kışın yerine, mevsimsiz): 15–23 gün (Faz 1b-5; eski 60–90) boyunca tarla ve toplayıcı verimi yarıya iner
     /// (Economy.DROUGHT_FARM), kasaba yangınları sıklaşır; ambarlardaki tahılın %20–40'ını kara pas çürütür. Kıtlık ve açlık
     /// olursa Economy'nin kıtlık düzeninden gelir.</summary>
     private static bool StartDrought(Sim s, StoryState st)
     {
-        if (s.Year - st.LastDrought < 6 || st.DroughtUntil > s.Day) return false;
-        double days = s.Rng.Int(60, 90);
+        if (s.DynYear - st.LastDrought < 6 || st.DroughtUntil > s.Day) return false;
+        double days = s.Rng.Int(15, 23);
         double share = 0.2 + Math.Floor(s.Rng.Next() * 5) * 0.05;
-        st.DroughtUntil = s.Day + days; st.LastDrought = s.Year;
+        st.DroughtUntil = s.Day + days; st.LastDrought = s.DynYear;
         double lost = 0;
         foreach (var c in s.W.Civs)
         {
@@ -241,7 +242,7 @@ public static class Storyteller
     private static bool Plague(Sim s, Settlement big)
     {
         if (big == null) return false;
-        double until = s.Day + s.Rng.Int(90, 160);
+        double until = s.Day + s.Rng.Int(8, 10);   // Faz 1b-5 (v3: salgın 5–10 gün; eski 90–160)
         double sev = 1.2 + s.Rng.Next() * 0.6;
         big.Plague = new PlagueInfo { Since = s.Day, Until = until, Severity = sev, Dead = 0 };
         s.Metric("plague");
@@ -257,7 +258,7 @@ public static class Storyteller
         var civ = PickVictim(s);
         var c = Monsters.SpawnLair(s, "troll", civ, false, null);
         if (c == null) return false;
-        c.NextRaid = s.Day + s.Rng.Int(10, 30);
+        c.NextRaid = s.Day + s.Rng.Int(3, 8);   // Faz 1b-5: eski 10–30 gün
         s.Log("crisis", $"Trol çetesi! Dağlardan inen troller {Lore.Ek(c.Name, "a")} yerleşti; {(civ != null ? $"{Tr.Ek(civ.Name, "in")} köyleri" : "sınır köyleri")} tehlikede.", civ: civ?.Id, tile: c.Tile, major: true,
             cause: s.Rng.Pick(TROLL_WHY));
         return true;
@@ -273,11 +274,11 @@ public static class Storyteller
     }
 
     // ------------------------------------------------------------ rahatlama
-    /// <summary>Rahatlama dönemi (1–1,5 yıl): yeni kriz yok; 1–3 ay içinde bereketli bir hasat ya da şenlik.</summary>
+    /// <summary>Rahatlama dönemi (30–45 gün; eski 1–1,5 yıl): yeni kriz yok; 8–23 gün içinde bereketli bir hasat ya da şenlik.</summary>
     public static void StartRelief(Sim s, StoryState st)
     {
-        st.ReliefUntil = s.Day + s.Rng.Int(120, 180);
-        st.ReliefEvent = s.Day + s.Rng.Int(30, 90);
+        st.ReliefUntil = s.Day + s.Rng.Int(30, 45);
+        st.ReliefEvent = s.Day + s.Rng.Int(8, 23);
         st.LastPeak = s.Day; st.CalmDays = 0;
         s.Metric("relief");
     }

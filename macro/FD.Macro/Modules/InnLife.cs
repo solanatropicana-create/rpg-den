@@ -56,8 +56,11 @@ public static class InnLife
     /// <summary>Servis kapasitesi: 3 + personelin STAFF[role].serve toplamı.</summary>
     public static double ServeCap(Inn inn) => 3 + J.Reduce(inn.Staff, (a, x) => a + D.STAFF[x.Role].Serve, 0.0);
 
-    /// <summary>Personelin ücret toplamı (STAFF[role].wage; her 30 günde ödenir).</summary>
+    /// <summary>Personelin ücret toplamı (STAFF[role].wage: 30 günlük ücret; Faz 1b-5: haftalık ödenir, WAGE_WEEK payı).</summary>
     public static double Wages(Inn inn) => J.Reduce(inn.Staff, (a, x) => a + D.STAFF[x.Role].Wage, 0.0);
+
+    /// <summary>Faz 1b-5: personel ödeme günü haftada bir (yol haritası v3); 30 günlük ücretin hafta payı</summary>
+    public const double WAGE_WEEK = Sim.WEEK / 30.0;
 
     /// <summary>İnşaat / genişletme aşamasının adı ("" inşaat yoksa).</summary>
     public static string BuildStageName(Inn inn)
@@ -84,8 +87,8 @@ public static class InnLife
         if (inn.Log.Count > 90) J.Splice(inn.Log, 0, inn.Log.Count - 90);
     }
 
-    /// <summary>hanın hesap dönemi (gün)</summary>
-    public const double BOOK_DAYS = 30;
+    /// <summary>hanın hesap dönemi (gün; Faz 1b-5: bir ay, eskiden 30 gün)</summary>
+    public const double BOOK_DAYS = Sim.MONTH;
 
     private static InnBook Book(Sim s, Inn inn)
     {
@@ -237,7 +240,7 @@ public static class InnLife
         string r0 = RaceFrom(s, homeSt);
         inn.Staff.Add(new InnStaff { Name = PersonName(s, r0), Race = r0, Role = "cirak", Since = s.Day, From = originName });
         if (s.Rng.Chance(0.5)) { string r1 = RaceFrom(s, homeSt); inn.Staff.Add(new InnStaff { Name = PersonName(s, r1), Race = r1, Role = "seyis", Since = s.Day, From = originName }); }
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "keeper", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = 0.55, From = originId, To = inn.Id, Inn = inn.Id, TargetTile = site, Purpose = "found" });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "keeper", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = Pace.KEEPER, From = originId, To = inn.Id, Inn = inn.Id, TargetTile = site, Purpose = "found" });
         string where = WhereStr(s, site);
         AddLog(s, inn, "build", $"Hancı {keeper} {Tr.Ek(originName, "dan")} öküz arabasıyla yola çıktı");
         s.Metric("innKeeper");
@@ -312,8 +315,10 @@ public static class InnLife
         EnsureStaff(s, inn);
     }
 
-    /// <summary>Faz 1b-3: mevsim yok; inşaat hızı eski kış ×0,6'nın yıllık ortalaması</summary>
-    public const double BUILD_PACE = 0.9;
+    /// <summary>Faz 1b-3: mevsim yok; inşaat hızı eski kış ×0,6'nın yıllık ortalaması. Faz 1b-5 (yol haritası v3: han kurulumu 5–10 gün,
+    /// hancının yolu dâhil): iş ve malzeme toplama eski günün ×PACE'inin dört katı (küçük yol hanı birkaç günde çatılır); gündelikçinin
+    /// yevmiyesi gün başına aynı. Taş hiçbir yerden gelmezse STONE_WAIT gün sonra ahşap temelle yetinilir.</summary>
+    public const double BUILD_PACE = 0.9 * Sim.PACE * 4, STONE_WAIT = 8;
 
     private static void BuildTick(Sim s, Inn inn)
     {
@@ -330,7 +335,7 @@ public static class InnLife
         {
             bool ok = PlaceOrder(s, inn, new Want { Wood = forest ? 0 : Math.Ceiling(b.WoodNeed - b.Wood), Stone = quarry ? 0 : Math.Ceiling(b.StoneNeed - b.Stone) });
             // taş hiçbir yerden gelmiyorsa ahşap temelle yetin
-            if (!ok && b.Stone < b.StoneNeed && !quarry && s.Day - b.Started > 60) { b.WoodNeed += Math.Ceiling((b.StoneNeed - b.Stone) * 0.8); b.StoneNeed = Math.Floor(b.Stone); AddLog(s, inn, "build", "Taş bulunamadı; temel ahşapla güçlendirildi"); }
+            if (!ok && b.Stone < b.StoneNeed && !quarry && s.Day - b.Started > STONE_WAIT) { b.WoodNeed += Math.Ceiling((b.StoneNeed - b.Stone) * 0.8); b.StoneNeed = Math.Floor(b.Stone); AddLog(s, inn, "build", "Taş bulunamadı; temel ahşapla güçlendirildi"); }
         }
         double mat = JsMath.Min(J.T(b.WoodNeed) ? b.Wood / b.WoodNeed : 1, J.T(b.StoneNeed) ? b.Stone / b.StoneNeed : 1);
         double cap = b.Need * JsMath.Min(1, mat + 0.15);
@@ -346,7 +351,7 @@ public static class InnLife
     {
         var c = s.W.Civs[st.Civ];
         var cargo = new JsObj<double>();
-        double reserve = s.CivPop(c) * Sim.FOOD_PER_POP * 40 + 15;   // kendi ambar payına (40 gün) dokunmaz
+        double reserve = s.CivPop(c) * Sim.FOOD_PER_POP * 40 / Sim.PACE + 15;   // kendi ambar payına (eski 40 gün) dokunmaz
         double surplus = s.FoodTotal(c) - reserve;
         double fNeed = want.Food ?? 0, aNeed = want.Ale ?? 0, got = 0;
         double Take(string g, double units)
@@ -413,7 +418,7 @@ public static class InnLife
         inn.Total.Bought += cost;
         string desc = string.Join(", ", J.Map(cargo.Entries(), kv => $"{J.S(kv.Value)} {J.TrLower(D.GOODS[kv.Key].Name)}"));
         int id = s.Id();
-        w.Agents.Add(new Agent { Id = id, Kind = "supply", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 0.7, Cargo = cargo, From = stB.Id, To = inn.Id, Inn = inn.Id, Purpose = "supply" });
+        w.Agents.Add(new Agent { Id = id, Kind = "supply", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.SUPPLY, Cargo = cargo, From = stB.Id, To = inn.Id, Inn = inn.Id, Purpose = "supply" });
         inn.Order = new InnOrder { Agent = id, FromName = stB.Name, Goods = desc, Cost = cost, Day = s.Day };
         AddLog(s, inn, "buy", $"{Tr.Ek(stB.Name, "dan")} {desc} ısmarlandı ({c.Name})", -cost);
         s.Metric("innBuy");
@@ -509,7 +514,7 @@ public static class InnLife
         return new List<(string Kind, double W)>
         {
             ("merchant", 2 + JsMath.Min(3, routes * 0.3)), ("pilgrim", temple ? 1.4 : 0.3), ("bard", bardCiv ? 1.5 : 0.6), ("hunter", ForestNear(s, inn.Tile) ? 1 : 0.4),
-            ("scholar", lib ? 0.9 : 0.15), ("soldier", war ? 1.6 : 0.4), ("refugee", trouble ? 2.2 : 0), ("wanderer", 1), ("noble", s.Year >= 6 && inn.Level >= 2 ? 0.35 : 0),
+            ("scholar", lib ? 0.9 : 0.15), ("soldier", war ? 1.6 : 0.4), ("refugee", trouble ? 2.2 : 0), ("wanderer", 1), ("noble", s.DynYear >= 6 && inn.Level >= 2 ? 0.35 : 0),
         };
     }
 
@@ -564,7 +569,7 @@ public static class InnLife
             Id = gid, Kind = kind, Name = gname, Race = race, N = n, Civ = from.Civ, From = from.Id, FromName = from.Name, To = to?.Id ?? -1, ToName = toName, Why = why,
             Purse = purse, Spent = 0, Nights = nights, Arrived = s.Day, Mood = 0.7,
         };
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "traveler", Civ = from.Civ, Path = path, Step = 0, Progress = 0, Speed = kind == "noble" ? 1 : 0.8, From = from.Id, To = inn.Id, Inn = inn.Id, Guest = g, Purpose = "come" });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "traveler", Civ = from.Civ, Path = path, Step = 0, Progress = 0, Speed = kind == "noble" ? Pace.NOBLE : Pace.TRAVELER, From = from.Id, To = inn.Id, Inn = inn.Id, Guest = g, Purpose = "come" });
         s.Metric("innTraveler");
     }
 
@@ -575,7 +580,7 @@ public static class InnLife
         if (to == null || !to.Alive) return;
         var path = s.Path(fromTile, to.Tile);
         if (path == null || path.Count < 2) { if (g.Kind == "refugee") s.AddPop(to, g.Race, g.N); return; }
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "traveler", Civ = g.Civ, Path = path, Step = 0, Progress = 0, Speed = g.Kind == "noble" ? 1 : 0.8, From = innId, To = to.Id, Inn = innId, Guest = g, Purpose = "leave" });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "traveler", Civ = g.Civ, Path = path, Step = 0, Progress = 0, Speed = g.Kind == "noble" ? Pace.NOBLE : Pace.TRAVELER, From = innId, To = to.Id, Inn = innId, Guest = g, Purpose = "leave" });
     }
 
     /// <summary>Yolcu vardı: hana giriş yapar; ayrılan göçmen hedef yerleşime katılır (true = ajan biter).</summary>
@@ -827,7 +832,7 @@ public static class InnLife
 
     private static void PayWages(Sim s, Inn inn)
     {
-        double due = Wages(inn);
+        double due = Wages(inn) * WAGE_WEEK;
         if (!J.T(due)) return;
         if (inn.Gold >= due) { inn.Gold -= due; Book(s, inn).Wage += due; return; }
         double paid = JsMath.Max(0, inn.Gold);
@@ -843,7 +848,7 @@ public static class InnLife
     {
         if (inn.Stage != "open" || inn.Build != null || inn.Level >= 3) return;
         var u = D.INN_UPGRADE[inn.Level + 1];
-        if (s.Year < u.Year || inn.Fame < u.Fame || inn.Gold < u.Gold + 30) return;
+        if (s.DynYear < u.Year || inn.Fame < u.Fame || inn.Gold < u.Gold + 30) return;
         var h = J.Slice(inn.Hist, -12);
         double busy = h.Count > 0 ? J.Reduce(h, (a, x) => a + x.Guests, 0.0) / h.Count : 0;
         if (inn.Turned < 5 && busy < D.INN_LEVEL[inn.Level].Rooms * 0.65) return;
@@ -869,10 +874,10 @@ public static class InnLife
     /// <summary>usta hanın çırağı yetişince kendi hanını kurmaya gider</summary>
     private static void ConsiderApprentice(Sim s, Inn inn)
     {
-        if (inn.Level < 2 || s.Year < 5) return;
+        if (inn.Level < 2 || s.DynYear < 5) return;
         int active = J.Filter(s.W.Inns, x => x.Stage != "ruin").Count;
-        if (active >= s.W.InnPlan.Target + (s.Year >= 12 ? 1 : 0)) return;
-        var ap = J.Find(inn.Staff, x => x.Role == "cirak" && s.Day - x.Since >= 2 * Sim.YEAR);
+        if (active >= s.W.InnPlan.Target + (s.DynYear >= 12 ? 1 : 0)) return;
+        var ap = J.Find(inn.Staff, x => x.Role == "cirak" && s.Day - x.Since >= 2 * Sim.OLD_YEAR);
         if (ap == null || !s.Rng.Chance(0.4)) return;
         if (!DispatchKeeper(s, fromInn: inn, name: ap.Name, race: ap.Race)) return;
         inn.Staff = J.Filter(inn.Staff, x => x != ap);
@@ -887,10 +892,10 @@ public static class InnLife
         var plan = w.InnPlan;
         if (plan.Wave > 0 && s.Day >= plan.Next)
         {
-            if (DispatchKeeper(s)) plan.Wave--; else if (s.Day > 90) plan.Wave = 0;
-            plan.Next = s.Day + s.Rng.Int(2, 5);
+            if (DispatchKeeper(s)) plan.Wave--; else if (s.Day > 90 / Sim.PACE) plan.Wave = 0;
+            plan.Next = s.Day + s.Rng.Int(1, 2);   // Faz 1b-5: eski 2–5 gün
         }
-        if (s.Day % 90 == 45 && plan.Wave == 0 && w.Inns.Count < plan.Target && s.Rng.Chance(0.5)) DispatchKeeper(s);
+        if (s.Every(90 / Sim.PACE, 45 / Sim.PACE) && plan.Wave == 0 && w.Inns.Count < plan.Target && s.Rng.Chance(0.5)) DispatchKeeper(s);
         // JS for...of: keeps the array it started with and re-reads its length (inns pushed meanwhile are visited)
         var inns = w.Inns;
         for (int ii = 0; ii < inns.Count; ii++)
@@ -899,7 +904,7 @@ public static class InnLife
             if (inn.Stage == "road") continue;
             if (inn.Stage == "ruin")
             {
-                if (s.Day % 30 == 0 && s.Day - (inn.RuinedDay ?? 0) >= 3 * Sim.YEAR && !J.Some(w.Camps, c => c.Alive && s.G.Dist(c.Tile, inn.Tile) <= 10)) DispatchKeeper(s, rebuild: inn);
+                if (s.Every(Sim.WORLD_DAYS) && s.Day - (inn.RuinedDay ?? 0) >= 3 * Sim.OLD_YEAR && !J.Some(w.Camps, c => c.Alive && s.G.Dist(c.Tile, inn.Tile) <= 10)) DispatchKeeper(s, rebuild: inn);
                 continue;
             }
             if (inn.Build != null) BuildTick(s, inn);
@@ -914,7 +919,9 @@ public static class InnLife
             if (s.Rng.Chance(ArrivalRate(s, inn))) SpawnTraveler(s, inn);
             Nightly(s, inn);
             Restock(s, inn);
-            if ((s.Day + inn.Id) % 30 == 0) { PayWages(s, inn); EnsureStaff(s, inn); ConsiderUpgrade(s, inn); }
+            // Faz 1b-5: haftalık ödeme günü; personel ve genişletme kararı ayda bir (eskiden üçü birlikte 30 günde bir)
+            if ((s.Day + inn.Id) % Sim.WEEK == 0) PayWages(s, inn);
+            if ((s.Day + inn.Id) % Sim.MONTH == 0) { EnsureStaff(s, inn); ConsiderUpgrade(s, inn); }
             if ((s.Day + inn.Id) % Sim.YEAR == 0) { inn.Turned = Math.Floor(inn.Turned / 2); ConsiderApprentice(s, inn); Remit(s, inn); }
         }
     }

@@ -214,17 +214,25 @@ public static class Sea
     public static bool OpenSea(Sim s, Civ c) => s.CivAt(c, Gate.NAVIGATION);
 
     // ------------------------------------------------------------ hareket
-    /// <summary>denizde günlük ilerleme (karo/gün)</summary>
+    /// <summary>denizde günlük ilerleme (karo/gün). Faz 1b-5: fiziksel hızdan (Pace.SHIP: koga ~3 knot, günde 16 saat; korsan kayığı
+    /// Pace.PIRATE); eski artılar (açık deniz +0,2, deniz ticareti +0,1, filo +0,05) eski tabanın (0,85) payı olarak.</summary>
     public static double ShipSpeed(Sim s, Agent a)
     {
         var c = a.Civ >= 0 ? s.W.Civs[a.Civ] : null;
-        if (a.Monster == "pirate") return 1.25; // hafif korsan kayıkları
+        if (a.Monster == "pirate") return Pace.PIRATE; // hafif korsan kayıkları
         double v = 0.85;
         int ct = c != null ? s.CivTier(c) : 0;
         if (c != null && ct >= Gate.NAVIGATION) v += 0.2;
         if (c != null && ct >= Gate.SEATRADE && (a.Kind == "caravan" || a.Kind == "ship")) v += 0.1;
         if (a.Kind == "ship" && !StartsExplore(a.Purpose)) v += 0.05;
-        return v;
+        return v * (Pace.SHIP / Pace.SHIP_OLD);
+    }
+
+    /// <summary>Faz 1b-5: denizdeki korsan avının (prey) 2 karo yakınında mı (yolda geçerken de durur).</summary>
+    public static bool PreyNear(Sim s, Agent a)
+    {
+        var t = J.Find(s.W.Agents, x => x.Id == a.To && !J.T(x.Dead));
+        return t != null && s.G.Dist(Agents.TileOf(a), Agents.TileOf(t)) <= 2;
     }
 
     /// <summary>denizden karaya adım: gemi limanına döner ya da (ordu) kıyıda bekler</summary>
@@ -240,7 +248,7 @@ public static class Sea
         var c = s.W.Civs[a.Civ];
         var p = NavPath(s, seaTile, home.Port.Value, new NavOpts { Embark = new List<int>(), Open = OpenSea(s, c), LandOnly = new List<int> { home.Port.Value } });
         if (p == null || p.Count < 2) return;
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = a.Civ, Path = p, Step = 0, Progress = 0, Speed = 1, Hull = home.Id, Purpose = "return" });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = a.Civ, Path = p, Step = 0, Progress = 0, Speed = Pace.SHIP, Hull = home.Id, Purpose = "return" });
     }
 
     /// <summary>ordu dönüşü: karaya çıktığı yerden yeniden biner, kendi limanında iner (null = deniz yolu yok)</summary>
@@ -260,7 +268,7 @@ public static class Sea
     public static void SeaTick(Sim s)
     {
         var w = s.W;
-        if (w.Day % 30 == 7)
+        if (s.Every(Sim.WORLD_DAYS, 7 / Sim.PACE))
         {
             var sts = w.Settlements;
             for (int k = 0; k < sts.Count; k++)
@@ -282,11 +290,12 @@ public static class Sea
             if (!J.T(a.Dead) && IsFleet(a)) Intercept(s, a);
             if (!J.T(a.Dead) && a.Kind == "raid" && a.Monster == "pirate" && !J.T(a.Returning)) PirateSea(s, a);
         }
-        if (w.Day % 10 == 3) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderSeaExplore(s, c); }
-        if (w.Day % 10 == 6) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderFleet(s, c); }
-        if (w.Day % 10 == 8) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderPirateHunt(s, c); }
-        if (w.Day % Sim.YEAR == 60) PirateCoveTick(s);
-        if (w.Day % Sim.YEAR == 90) VolcanoTick(s);
+        // Faz 1b-5: eski 10 günlük kararlar 2,5 günde; eski yıllıklar eski yılın karşılığında (OLD_YEAR)
+        if (s.Every(10 / Sim.PACE, 3 / Sim.PACE)) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderSeaExplore(s, c); }
+        if (s.Every(10 / Sim.PACE, 6 / Sim.PACE)) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderFleet(s, c); }
+        if (s.Every(10 / Sim.PACE, 8 / Sim.PACE)) for (int k = 0; k < w.Civs.Count; k++) { var c = w.Civs[k]; if (c.Alive) ConsiderPirateHunt(s, c); }
+        if (s.Every(Sim.OLD_YEAR, 60 / Sim.PACE)) PirateCoveTick(s);
+        if (s.Every(Sim.OLD_YEAR, 90 / Sim.PACE)) VolcanoTick(s);
     }
 
     /// <summary>yanardağ adası: arada bir kül püskürür; adadaki koloninin evleri ve tarlaları zarar görür</summary>
@@ -302,7 +311,7 @@ public static class Sea
             double burnt = s.Rng.Int(1, 2);
             st.BurnedHouses = (st.BurnedHouses ?? 0) + burnt; st.BurnedAt = s.Day;
             int fields = 0;
-            foreach (int i in s.G.Within(st.Tile, s.RadiusOf(st))) { var t = s.W.Tiles[i]; if (t.Ext != null && t.Owner == st.Id && t.Ext.Kind == "farm" && s.ExtWorking(t) && fields < 2) { t.Ext.Burned = s.Day + 60; t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0; fields++; } }
+            foreach (int i in s.G.Within(st.Tile, s.RadiusOf(st))) { var t = s.W.Tiles[i]; if (t.Ext != null && t.Owner == st.Id && t.Ext.Kind == "farm" && s.ExtWorking(t) && fields < 2) { t.Ext.Burned = s.Day + 60 / Sim.PACE; t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0; fields++; } }
             s.Metric("eruption");
             s.Log("world", $"{Tr.Ek(isl.Name, "da")}ki yanardağ kül püskürdü: {Tr.Ek(st.Name, "da")} {J.S(burnt)} ev yandı{(fields != 0 ? $", {J.S(fields)} tarla küle gömüldü" : "")}.", civ: st.Civ, tile: isl.Peak, major: true, cause: "Volkanik ada; zengin topraklar, huysuz dağ");
         }
@@ -317,7 +326,9 @@ public static class Sea
         int here = Agents.TileOf(a);
         var c = a.Civ >= 0 ? w.Civs[a.Civ] : null;
         if (c == null) return false; // korsanlar suları bilir
-        double p = 0.00012 * (ShoreWater(s)[here] != 0 ? 0.6 : 1.8) * STORM_AVG;
+        // Faz 1b-5: fırtına riski denizde alınan yolla: eski günlük olasılık eski hızla (~1 karo/gün) bir karonun riskiydi; yeni günde gemi
+        // hızı oranında (sefer başına risk aynı)
+        double p = 0.00012 * (ShoreWater(s)[here] != 0 ? 0.6 : 1.8) * STORM_AVG * (Pace.SHIP / Pace.SHIP_OLD);
         if (c != null && OpenSea(s, c)) p *= 0.65;
         if (c != null && J.Some(s.CivSettlements(c), x => J.T(x.Civics.Get("lighthouse")) && x.Port != null && s.G.Dist(x.Port.Value, here) <= 8)) p *= 0.4;
         if (!s.Rng.Chance(p)) return false;
@@ -335,7 +346,7 @@ public static class Sea
         // tekil gemiler: çoğu hasarla kurtulur, beşte biri batar
         if (s.Rng.Chance(0.8))
         {
-            a.Progress = JsMath.Min(a.Progress, 0) - 2;
+            a.Progress = JsMath.Min(a.Progress, 0) - 0.5;   // Faz 1b-5: yarım gün yitirir (eskiden 2 eski gün)
             if (a.Kind != "ship" && c != null) s.Log("sea", $"{Tr.Ek(who, "in")} gemisi fırtınaya yakalandı; direği kırıldı ama batmadı.", civ: a.Civ, tile: here);
             return false;
         }
@@ -449,7 +460,7 @@ public static class Sea
         path.Add(port.Port.Value);
         path.Reverse();
         c.SeaScout = true;
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 1, Hull = port.Id, Purpose = "explore" });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.SHIP, Hull = port.Id, Purpose = "explore" });
         s.Metric("seaExplore");
         s.Log("sea", $"{c.Name} denizcileri {Tr.Ek(port.Name, "dan")} ufkun ötesine yelken açtı.", civ: c.Id, tile: port.Port, major: true, cause: "Açık denizde yıldızlarla yön bulmak");
     }
@@ -500,7 +511,7 @@ public static class Sea
         {
             var o = w.Civs[k];
             if (o.Id == c.Id || !o.Alive || !s.AtWar(c.Id, o.Id)) continue;
-            if (s.Day - (c.Yearly.Get("fleet" + J.S(o.Id)) ?? -9999) < 200) continue;
+            if (s.Day - (c.Yearly.Get("fleet" + J.S(o.Id)) ?? -9999) < 200 / Sim.PACE) continue;
             foreach (var st in Ports(s, o)) { int d = s.G.Dist(st.Port.Value, @base.Port.Value); if (d < bd && d <= (OpenSea(s, c) ? 50 : 30)) { bd = d; best = st; } }
         }
         if (best == null) return;
@@ -511,7 +522,7 @@ public static class Sea
         var oc = w.Civs[best.Civ];
         c.Yearly.Set("fleet" + J.S(oc.Id), s.Day);
         double n = JsMath.Min(4, FreeGalleys(s, @base));
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 1, Hull = @base.Id, Galleys = n, Purpose = "fleet", To = best.Id });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "ship", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.SHIP, Hull = @base.Id, Galleys = n, Purpose = "fleet", To = best.Id });
         s.Metric("fleetSortie");
         s.Log("sea", $"{c.Name} {J.S(n)} kadırgayla {Tr.Ek(@base.Name, "dan")} {Tr.Ek(best.Name, "in")} limanına akına çıktı.", civ: c.Id, tile: @base.Port, major: true, cause: $"{oc.Name} ile savaş");
     }
@@ -599,7 +610,7 @@ public static class Sea
     private static void PirateCoveTick(Sim s)
     {
         var w = s.W;
-        if (s.Year < 5) return;
+        if (s.DynYear < 5) return;
         double ships = 0; foreach (var c in w.Civs) if (c.Alive) ships += Fleet(s, c).Ships;
         if (ships < 3) return;
         var coves = J.Filter(w.Camps, c => c.Alive && c.Kind == "pirate");
@@ -607,7 +618,7 @@ public static class Sea
         var clearedDays = J.Map(J.Filter(w.Camps, c => c.Kind == "pirate" && !c.Alive), c => c.ClearedDay ?? c.Founded);
         clearedDays.Insert(0, -9999);
         double lastClear = JsMath.Max(clearedDays.ToArray());
-        if (s.Day - lastClear < 2 * Sim.YEAR) return;
+        if (s.Day - lastClear < 2 * Sim.OLD_YEAR) return;
         int seaRoutes = J.Filter(w.Routes, r => r.Alive && J.T(r.Sea)).Count;
         int max = (w.SeaProfile == "kita" ? 1 : 2) + (seaRoutes >= 6 ? 1 : 0);
         if (coves.Count >= max || !s.Rng.Chance(0.4)) return;
@@ -637,7 +648,7 @@ public static class Sea
         var cp = WorldGen.MakeCamp(s.Id(), "pirate", best, name, s.Day, s.Rng);
         cp.Count = 7; cp.Boss = true; cp.HadBoss = true; cp.Loot = 20;
         cp.Captain = NewCaptain(s);
-        cp.NextRaid = s.Day + s.Rng.Int(60, 120);
+        cp.NextRaid = s.Day + s.Rng.Int(15, 30);   // Faz 1b-5: eski 60–120 gün
         w.Camps.Add(cp);
         w.Tiles[best].Camp = cp.Id; w.Tiles[best].Owner = -1;
         var bestIsle = IsleOf(s, best);
@@ -657,8 +668,8 @@ public static class Sea
     public static void LaunchPirates(Sim s, Camp cp)
     {
         var w = s.W;
-        cp.NextRaid = s.Day + s.Rng.Int(80, 150);
-        double n = JsMath.Min(Math.Ceiling(cp.Count * 0.6), 3 + Math.Floor(s.Year / 3.0), 9);
+        cp.NextRaid = s.Day + s.Rng.Int(20, 38);   // Faz 1b-5: eski 80–150 gün
+        double n = JsMath.Min(Math.Ceiling(cp.Count * 0.6), 3 + Math.Floor(s.DynYear / 3.0), 9);
         var prey = J.Filter(w.Agents, a => !J.T(a.Dead) && a.Civ >= 0 && (a.Kind == "caravan" || a.Kind == "settlers" || (a.Kind == "ship" && !IsFleet(a)))
             && OnSea(s, a) && !Smugglers(w.Civs[a.Civ]) && s.G.Dist(Agents.TileOf(a), cp.Tile) <= 30 && a.Path.Count - a.Step > 4);
         var coast = new List<CoastSpot>();
@@ -692,7 +703,7 @@ public static class Sea
         cp.Count -= n;
         bool boss = cp.Boss && s.Rng.Chance(0.35);
         if (boss) cp.Boss = false;
-        w.Agents.Add(new Agent { Id = s.Id(), Kind = "raid", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = 1, Troops = n, From = cp.Id, To = to, Purpose = purpose, Boss = boss, Monster = "pirate", TargetTile = targetTile });
+        w.Agents.Add(new Agent { Id = s.Id(), Kind = "raid", Civ = -1, Path = path, Step = 0, Progress = 0, Speed = Pace.RAID, Troops = n, From = cp.Id, To = to, Purpose = purpose, Boss = boss, Monster = "pirate", TargetTile = targetTile });
         s.Metric("pirateSortie");
     }
 
@@ -714,9 +725,9 @@ public static class Sea
             var t = J.Find(w.Agents, x => x.Id == a.To && !J.T(x.Dead));
             if (t == null || !OnSea(s, t)) { Agents.RaidReturn(s, a); return; }
             a.Chase ??= s.Day;
-            if (s.Day - a.Chase.Value > 35) { Agents.RaidReturn(s, a); return; }
+            if (s.Day - a.Chase.Value > 35 / Sim.PACE) { Agents.RaidReturn(s, a); return; }
             if (s.G.Dist(here, Agents.TileOf(t)) <= 2) { PirateAttack(s, a, t, cp); return; }
-            if (s.Day % 3 == 0)
+            // Faz 1b-5: her gün (eskiden 3 eski günde bir) avın önüne
             {
                 int goal = AheadOf(s, t, (int)Math.Ceiling(s.G.Dist(here, Agents.TileOf(t)) * 0.8) + 1);
                 var p = goal >= 0 ? NavPath(s, here, goal, new NavOpts { Embark = new List<int>(), Open = true }) : null;
@@ -775,7 +786,7 @@ public static class Sea
         if (deadG != 0 && home != null) home.Galleys = JsMath.Max(0, (home.Galleys ?? 0) - deadG);
         if (t.Kind == "caravan") t.Troops = J.Filter(A, x => (x.Kind == "soldier" || x.Kind == "unique") && x.Hp > 0).Count;
         string what = t.Kind == "settlers" ? "öncü gemisini" : t.Kind == "caravan" ? "yük gemisini" : StartsExplore(t.Purpose) ? "keşif gemisini" : "gemisini";
-        c.Yearly.Set("pirateHit", s.Year);
+        c.Yearly.Set("pirateHit", s.DynYear);
         if (b.Winner == "B")
         {
             double value = 0;
@@ -821,7 +832,7 @@ public static class Sea
         a.Loot = loot - cut;
         if (!J.T(rogue.Yearly.Get("smuggle" + J.S(cp.Id))))
         {
-            rogue.Yearly.Set("smuggle" + J.S(cp.Id), s.Year);
+            rogue.Yearly.Set("smuggle" + J.S(cp.Id), s.DynYear);
             s.Log("sea", $"{Tr.Ek(rogue.Name, "in")} kaçakçıları {Tr.Ek(cp.Name, "in")} ganimetini limanlarında satmaya başladı.", civ: rogue.Id, tile: cp.Tile, major: true, cause: "Korsanlar Haydut gemilerine dokunmuyor");
         }
         s.Metric("smuggled", cut);
@@ -834,10 +845,10 @@ public static class Sea
         var ss = s.CivSettlements(c);
         var my = Ports(s, c);
         if (my.Count == 0) return;
-        bool hit = (c.Yearly.Get("pirateHit") ?? -9) >= s.Year - 1;
+        bool hit = (c.Yearly.Get("pirateHit") ?? -9) >= s.DynYear - 1;
         var cands = J.Filter(
             J.Map(J.Filter(s.W.Camps, x => x.Alive && x.Kind == "pirate"), x => (X: x, D: J.MinOf(ss, st => s.G.Dist(st.Tile, x.Tile)))),
-            o => o.D <= 40 && (hit || (o.D <= 14 && s.Day - o.X.Founded > 3 * Sim.YEAR)));
+            o => o.D <= 40 && (hit || (o.D <= 14 && s.Day - o.X.Founded > 3 * Sim.OLD_YEAR)));
         var cove = J.At(J.Sort(cands, (a, b) => a.D - b.D), 0).X;
         if (cove == null) return;
         double soldiers = Math.Floor(J.Reduce(ss, (a, x) => a + x.Soldiers, 0.0) * 0.6);
@@ -854,7 +865,7 @@ public static class Sea
         if (Combat.PowerOf(side) < Heroes.CampPower(s, cove) * 1.15) return;
         var pop = Agents.DrawSoldiers(s, c, soldiers);
         foreach (var h in heroes) h.State = "army";
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = 0.6, Heroes = J.Map(heroes, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cove.Id, Purpose = "expedition", Hull = route.Hull.Id, Galleys = J.T(gal) ? gal : (double?)null });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = route.Path, Step = 0, Progress = 0, Speed = Pace.EXPEDITION, Heroes = J.Map(heroes, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cove.Id, Purpose = "expedition", Hull = route.Hull.Id, Galleys = J.T(gal) ? gal : (double?)null });
         s.Metric("pirateHunt");
         s.Log("sea", $"{c.Name} korsan avına çıktı: {J.S(soldiers)} asker{(J.T(gal) ? $", {J.S(gal)} kadırga" : "")}{(heroes.Count > 0 ? $" ve {string.Join(", ", J.Map(heroes, h => h.Name))}" : "")} ile {Tr.Ek(cove.Name, "a")} yelken açtı.", civ: c.Id, tile: route.Hull.Port, major: true, cause: hit ? "Korsanlar gemilerimizi ve kıyılarımızı vuruyor" : $"{cove.Name} kıyılarımıza fazla yakın");
     }

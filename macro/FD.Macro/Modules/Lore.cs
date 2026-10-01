@@ -12,7 +12,7 @@ namespace FD.Macro;
 public static class Lore
 {
     /// <summary>tam ad, yaşayan ya da son bu kadar gün içinde ölmüş bir kahramanınkiyle aynı olamaz (10 yıl)</summary>
-    public const int NAME_MEMORY = 10 * Sim.YEAR;
+    public const int NAME_MEMORY = 10 * Sim.OLD_YEAR;
     /// <summary>kilometre taşı tavanı; taşınca en eski küçük taş (kamp, ilan, savunma...) atılır</summary>
     public const int MAX_DEEDS = 80;
     /// <summary>soyundan gelinebilecek ata: efsane ya da en az efsanelik ününün yarısı</summary>
@@ -104,8 +104,12 @@ public static class Lore
     private static readonly string[] ORD = { "sıfırıncı", "birinci", "ikinci", "üçüncü", "dördüncü", "beşinci", "altıncı", "yedinci", "sekizinci", "dokuzuncu", "onuncu" };
     private static readonly string[] NUMW = { "hiç", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz", "on" };
 
-    /// <summary>"3. yılın 41. gününde" (Faz 1b-3: mevsimler kalktı; geçici biçim, takvim sonraki adımda)</summary>
-    public static string DateTr(double day) => $"{J.S(Math.Floor(day / Sim.YEAR) + 1)}. yılın {J.S(day % Sim.YEAR + 1)}. gününde";
+    /// <summary>"12. yılın 3. ayının 7. gününde" (Faz 1b-5 takvimi: 40 günlük yıl, 10 günlük ay; gün 0 = 1. yılın 1. ayının 1. günü)</summary>
+    public static string DateTr(double day)
+    {
+        var (y, m, d) = Sim.Calendar(day);
+        return $"{y}. yılın {m}. ayının {d}. gününde";
+    }
 
     /// <summary>seviye sıra sayısı: 6 → "altıncı"</summary>
     public static string Ord(int lv) => lv >= 0 && lv <= 10 ? ORD[lv] : $"{lv}.";

@@ -16,13 +16,13 @@ public static class Dragon
     public const double RANGE = 26;
     /// <summary>hanların ejderha ilanı asacağı en uzak mesafe</summary>
     public const double INN_RANGE = 30;
-    /// <summary>inde ve akında alınan yaralar günde en büyük canının bu kadarı kapanır</summary>
-    public const double HEAL = 0.005;
+    /// <summary>inde ve akında alınan yaralar günde en büyük canının bu kadarı kapanır (Faz 1b-5: eski günde 0,005)</summary>
+    public const double HEAL = 0.005 * Sim.PACE;
     /// <summary>ejderha hazinesiyle büyür (yaşlanıp semirir): uyandıktan sonra kaçırdığı (haraç ve akın) her GROW_GOLD altın +1 can
     /// (en çok +GROW_HP); her BREATH_GOLD altın nefesine +1 zar (en çok +BREATH_MAX). Faz 1 C3: haraç tavanlandı, hazineler küçüldü
     /// (dünya başına ~150 bin → ~15 bin altın); büyüme eğrisi korunsun diye 20 → 1,5 ve 4000 → 750 (uykudan kalan hazine sayılmaz).</summary>
     public const double GROW_GOLD = 1.5, GROW_HP = 3000, BREATH_GOLD = 750, BREATH_MAX = 6;
-    /// <summary>haraç: hazinenin payı; ejderha her yıl biraz daha açgözlü olur (yılda +%2, en çok %30)</summary>
+    /// <summary>haraç: hazinenin payı; ejderha her haraçta biraz daha açgözlü olur (+%2, en çok %30; Faz 1b-5: haraç eski yılda bir = 30 gün)</summary>
     public const double TRIBUTE = 0.12;
     /// <summary>Faz 1 C3: haracın tavanı: TRIBUTE_CAP + nüfus × TRIBUTE_POP altın</summary>
     public const double TRIBUTE_CAP = 100, TRIBUTE_POP = 0.6;
@@ -34,8 +34,8 @@ public static class Dragon
     /// <summary>akında ejderha canının bu payını yitirirse yarım işle inine çekilir (püskürtülür). Ejderha kolay altın arar: üç turda
     /// canının %5'ini alan bir savunma onu caydırır (akınların ~%5'i; tipik akında %1'ini bile yitirmez).</summary>
     public const double DRIVEN = 0.05;
-    /// <summary>ittifak ordularının inde birbirini bekleyeceği en uzun süre (gün; sıradan kampta 16)</summary>
-    public const double MUSTER = 40;
+    /// <summary>ittifak ordularının inde birbirini bekleyeceği en uzun süre (gün; sıradan kampta 4; eski 40)</summary>
+    public const double MUSTER = 40 / Sim.PACE;
     /// <summary>kahraman grubu ejderhaya karşı bu kat güç ister (ilan ve av)</summary>
     public const double HERO_NEED = 1.4;
     /// <summary>ejderhanın dehşeti: karşısındakilerin moral eşiği bu kadar düşer (daha çabuk bozguna uğrarlar)</summary>
@@ -137,12 +137,12 @@ public static class Dragon
     }
 
     // ------------------------------------------------------------ günlük
-    /// <summary>Günlük (Storyteller.Tick'ten): uyanış, yaraların kapanması, yılda bir haraç ve ilanlar, ayda bir ittifak, sefer
+    /// <summary>Günlük (Storyteller.Tick'ten): uyanış, yaraların kapanması, 30 günde bir haraç ve ilanlar, 7,5 günde bir ittifak, sefer
     /// takvimi, akınlar (canı %60'ın altındaysa inde bekler).</summary>
     public static void Tick(Sim s)
     {
         var w = s.W;
-        w.Dragon ??= new DragonState { WakeDay = s.Rng.Int(17 * Sim.YEAR, 22 * Sim.YEAR - 1) };
+        w.Dragon ??= new DragonState { WakeDay = s.Rng.Int(17 * Sim.OLD_YEAR, 22 * Sim.OLD_YEAR - 1) };   // Faz 1b-5: eski 17–22. yıllar
         var d = w.Dragon;
         if (d.Camp < 0) { if (s.Day >= d.WakeDay) Wake(s, d); return; }
         var cp = CampOf(s);
@@ -154,13 +154,14 @@ public static class Dragon
             && !J.Some(w.Agents, b => !J.T(b.Dead) && !J.T(b.Returning) && b.Kind == "army" && b.Purpose == "expedition" && b.To == cp.Id && d.Alliance.Contains(b.Civ)))
             d.Alliance.Clear();
         double since = s.Day - d.WakeDay;
-        if (since % Sim.YEAR == 60) { Demand(s, d, cp); Bounties(s, d, cp); }
-        if (since % 30 == 15) ConsiderAlliance(s, d, cp);
+        // Faz 1b-5: haraç eski yılın karşılığında bir (30 gün, uyanıştan 15 gün sonra başlar); ittifak eski ayda bir (7,5 gün)
+        if (since % Sim.OLD_YEAR == 60 / Sim.PACE) { Demand(s, d, cp); Bounties(s, d, cp); }
+        if (Sim.Tick((int)since, 30 / Sim.PACE, 15 / Sim.PACE)) ConsiderAlliance(s, d, cp);
         Marches(s, d, cp);
         if (s.Day >= d.NextRaid)
         {
             if (d.Hp >= d.MaxHp * 0.6) Raid(s, d, cp, null, null);
-            else d.NextRaid = s.Day + 15;   // yaralı ejderha inde yaralarını yalar
+            else d.NextRaid = s.Day + 15 / Sim.PACE;   // yaralı ejderha inde yaralarını yalar
         }
     }
 
@@ -179,7 +180,7 @@ public static class Dragon
     {
         var w = s.W;
         int t = LairTile(s);
-        if (t < 0) { d.WakeDay = s.Day + 30; return; }   // uygun dağ yoksa bir ay sonra yeniden
+        if (t < 0) { d.WakeDay = s.Day + 30 / Sim.PACE; return; }   // uygun dağ yoksa bir hafta sonra yeniden
         string name = s.Rng.Pick(NAMES);
         var cp = WorldGen.MakeCamp(s.Id(), "dragon", t, $"{name} İni", s.Day, s.Rng);
         cp.Count = 1; cp.Boss = true; cp.HadBoss = true; cp.Captain = name;
@@ -188,7 +189,7 @@ public static class Dragon
         w.Camps.Add(cp); w.Tiles[t].Camp = cp.Id; w.Tiles[t].Owner = -1;
         double hp = WakeHp(s, t);
         d.Camp = cp.Id; d.Name = name; d.BaseHp = hp; d.MaxHp = hp; d.Hp = hp; d.WakeDay = s.Day;
-        d.NextRaid = s.Day + s.Rng.Int(25, 60);
+        d.NextRaid = s.Day + s.Rng.Int(6, 15);   // Faz 1b-5: eski 25–60 gün
         s.Metric("dragonWake");
         var near = Nearest(s, t);
         string where = near != null ? $"{Tr.Ek(near.Name, "in")} {Dir(s, near.Tile, t)} dağlarda" : "uzak dağlarda";
@@ -277,7 +278,7 @@ public static class Dragon
         return s.Rng.Weighted(cands, x =>
         {
             var c = w.Civs[x.Civ];
-            double refused = (d.Refused.Get(c.Id) ?? -1) == s.Year ? 2 : 1;
+            double refused = (d.Refused.Get(c.Id) ?? -1) == s.DynYear ? 2 : 1;
             double ally = d.Alliance.Contains(c.Id) ? 1.5 : 1;
             return (1 + Math.Sqrt(JsMath.Max(0, s.St(c, "gold"))) / 10) * (1 + s.Pop(x) / 60) * refused * ally / (1 + x.Soldiers * 0.08) / (1 + s.G.Dist(x.Tile, cp.Tile) / 12.0);
         });
@@ -309,11 +310,11 @@ public static class Dragon
     public static bool Raid(Sim s, DragonState d, Camp cp, Settlement forced, string why)
     {
         var w = s.W;
-        d.NextRaid = s.Day + s.Rng.Int(70, 130);
+        d.NextRaid = s.Day + s.Rng.Int(18, 33);   // Faz 1b-5: eski 70–130 gün
         var st = forced ?? PickTarget(s, d, cp);
         if (st == null) return false;
         var c = w.Civs[st.Civ];
-        bool refused = (d.Refused.Get(c.Id) ?? -1) == s.Year;
+        bool refused = (d.Refused.Get(c.Id) ?? -1) == s.DynYear;
         var def = Defenders(s, st);
         var dr = Side(s, cp, "B");
         var dragon = dr[0];
@@ -375,7 +376,7 @@ public static class Dragon
         for (int k = 0; k < exts.Count && k < burnN; k++)
         {
             var t = w.Tiles[exts[k]];
-            t.Ext.Burned = s.Day + s.Rng.Int(60, 120); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;
+            t.Ext.Burned = s.Day + s.Rng.Int(15, 30); t.Ext.BurnedAt = s.Day; t.Ext.Workers = 0;   // Faz 1b-5: eski 60–120 gün
             s.Metric("extBurned");
             if (t.Ext.Kind == "farm") fields++; else other++;
         }
@@ -434,15 +435,15 @@ public static class Dragon
     }
 
     /// <summary>
-    /// Yılda bir (uyanışından 60 gün sonra ve her yıl): menzildeki medeniyetlerden haraç ister (hazinenin %12'si, her yıl +%2, en
-    /// çok %30; en az 40 altın; Faz 1 C3: en çok TRIBUTE_CAP + nüfus × TRIBUTE_POP). Ödeyen bir yıl dokunulmaz kalır. Karar: korku (ejderhanın gücü / çıkarabileceği ordunun gücü),
+    /// 30 günde bir (eski yılın karşılığı; uyanışından 15 gün sonra başlar): menzildeki medeniyetlerden haraç ister (hazinenin %12'si, her haraçta +%2, en
+    /// çok %30; en az 40 altın; Faz 1 C3: en çok TRIBUTE_CAP + nüfus × TRIBUTE_POP). Ödeyen 30 gün (üç ay) dokunulmaz kalır. Karar: korku (ejderhanın gücü / çıkarabileceği ordunun gücü),
     /// yediği akınlar ve tabiatı (düzenciler pazarlığa yatkın, iyiler değil); paladinler hiç ödemez, ittifak üyeleri ödemez,
     /// altını yetmeyen ödeyemez.
     /// </summary>
     private static void Demand(Sim s, DragonState d, Camp cp)
     {
         var w = s.W;
-        double years = Math.Floor((s.Day - d.WakeDay) / Sim.YEAR);
+        double years = Math.Floor((s.Day - d.WakeDay) / Sim.OLD_YEAR);   // Faz 1b-5: her haraçta +%2 (eski yıl)
         double share = JsMath.Min(0.3, TRIBUTE + 0.02 * years);
         var dragon = Side(s, cp, "B");
         var paid = new List<string>();
@@ -463,14 +464,14 @@ public static class Dragon
             {
                 s.Add(c, "gold", -tribute);
                 cp.Loot += tribute;
-                d.Paid.Set(c.Id, s.Day + Sim.YEAR);
+                d.Paid.Set(c.Id, s.Day + Sim.OLD_YEAR);
                 d.Tributes += tribute;
                 paid.Add($"{c.Name} {J.S(tribute)} altın");
                 s.Metric("dragonTribute"); s.Metric("dragonTributeGold", tribute);
             }
             else
             {
-                d.Refused.Set(c.Id, s.Year);
+                d.Refused.Set(c.Id, s.DynYear);
                 refused.Add(c.Name);
                 s.Metric("dragonRefused");
             }
@@ -480,12 +481,12 @@ public static class Dragon
             : paid.Count > 0 ? $"Ejderha {d.Name} haraç istedi; {Lore.JoinVe(paid)} ödedi."
             : $"Ejderha {d.Name} haraç istedi; {Lore.JoinVe(refused)} boyun eğmedi.";
         s.Log("dragon", text, tile: cp.Tile, major: true,
-            cause: paid.Count > 0 ? "Haraç bir yıllık aman getirir; reddedenler ejderhanın öfkesini üstüne çeker" : "Kılıç haraçtan ucuz sayıldı; ejderhanın öfkesi kapıda");
+            cause: paid.Count > 0 ? "Haraç üç aylık aman getirir; reddedenler ejderhanın öfkesini üstüne çeker" : "Kılıç haraçtan ucuz sayıldı; ejderhanın öfkesi kapıda");
     }
 
-    /// <summary>Yılda bir: menzildeki hanlar panolarına büyük ejderha ilanı asar (en az 150 altını olan han, altınının yarısı, en çok
+    /// <summary>Haraçla birlikte (30 günde bir): menzildeki hanlar panolarına büyük ejderha ilanı asar (en az 150 altını olan han, altınının yarısı, en çok
     /// 500); haracı reddeden zengin medeniyetler (en az BOUNTY_GOLD altın) de en yakın hana kendi ödüllerini koyar (hazinenin
-    /// BOUNTY_SHARE payı, en az 100, en çok BOUNTY_MAX): ejderha başına birkaç düzine altınlık ilan asılmaz. İlanlar 3 yıl açık kalır.</summary>
+    /// BOUNTY_SHARE payı, en az 100, en çok BOUNTY_MAX): ejderha başına birkaç düzine altınlık ilan asılmaz. İlanlar Heroes.QUEST_DAYS gün açık kalır.</summary>
     private static void Bounties(Sim s, DragonState d, Camp cp)
     {
         var w = s.W;
@@ -497,7 +498,7 @@ public static class Dragon
             if (J.Some(w.Quests, q => q.Open && q.Camp == cp.Id && q.Civ == -1 && q.Inn == inn.Id)) continue;
             double bounty = JsMath.Round(JsMath.Min(inn.Gold * 0.5, 500));
             inn.Gold -= bounty;
-            w.Quests.Add(new Quest { Id = s.Id(), Civ = -1, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn.Id, Expires = s.Day + 3 * Sim.YEAR });
+            w.Quests.Add(new Quest { Id = s.Id(), Civ = -1, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn.Id, Expires = s.Day + Heroes.QUEST_DAYS });
             s.Metric("innQuest"); s.Metric("dragonBounty");
             InnLife.InnEvent(s, inn, $"Panoya ejderha ilanı asıldı: {d.Name} ({J.S(bounty)} altın)");
             s.Log("quest", $"Hancı {inn.Keeper}, {Inns.InnName(inn)} panosuna ejderha ilanı astı: \"{d.Name} öldürülsün, ödül {J.S(bounty)} altın.\"", tile: inn.Tile, major: true,
@@ -507,14 +508,14 @@ public static class Dragon
         for (int i = 0; i < civs.Count; i++)
         {
             var c = civs[i];
-            if (!c.Alive || (d.Refused.Get(c.Id) ?? -1) != s.Year || s.St(c, "gold") < BOUNTY_GOLD) continue;
+            if (!c.Alive || (d.Refused.Get(c.Id) ?? -1) != s.DynYear || s.St(c, "gold") < BOUNTY_GOLD) continue;
             if (J.Some(w.Quests, q => q.Open && q.Camp == cp.Id && q.Civ == c.Id)) continue;
             var cap = s.Capital(c);
             if (cap == null) continue;
             var inn = J.At(J.Sort(J.Filter(w.Inns, x => x.Alive), (a, b) => J.Or(s.G.Dist(a.Tile, cp.Tile) - s.G.Dist(b.Tile, cp.Tile), a.Id - b.Id)), 0);
             double bounty = JsMath.Round(JsMath.Min(JsMath.Max(100, s.St(c, "gold") * BOUNTY_SHARE), BOUNTY_MAX));
             s.Add(c, "gold", -bounty);
-            w.Quests.Add(new Quest { Id = s.Id(), Civ = c.Id, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn != null && s.G.Dist(inn.Tile, cp.Tile) <= INN_RANGE ? inn.Id : null, Expires = s.Day + 3 * Sim.YEAR });
+            w.Quests.Add(new Quest { Id = s.Id(), Civ = c.Id, Camp = cp.Id, Bounty = bounty, Posted = s.Day, TakenBy = new List<int>(), Open = true, Inn = inn != null && s.G.Dist(inn.Tile, cp.Tile) <= INN_RANGE ? inn.Id : null, Expires = s.Day + Heroes.QUEST_DAYS });
             s.Metric("questPosted"); s.Metric("dragonBounty");
             s.Log("quest", $"{c.Name}, ejderha {Tr.Ek(d.Name, "in")} başına {J.S(bounty)} altın ödül koydu.", civ: c.Id, tile: cap.Tile, major: true, cause: "Haraç yerine kılıç: ejderhayı öldürene servet");
         }
@@ -555,15 +556,15 @@ public static class Dragon
             var cap = s.Capital(c);
             var path = s.Path(cap.Tile, cp.Tile);
             if (path == null) continue;
-            var probe = new Agent { Id = -1, Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 0.6, To = cp.Id, Purpose = "expedition" };
+            var probe = new Agent { Id = -1, Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.EXPEDITION, To = cp.Id, Purpose = "expedition" };
             go.Add(c); eta.Add(Agents.EtaDays(s, probe));
         }
         if (go.Count == 0) return;
-        double gather = s.Day + J.MaxOf(eta, x => x) + 5;
-        for (int i = 0; i < go.Count; i++) { double day = JsMath.Max(s.Day, Math.Floor(gather - eta[i])); d.Marches.Add(new DragonMarch { Civ = go[i].Id, Day = day, Until = day + 30 }); }
+        double gather = s.Day + J.MaxOf(eta, x => x) + 1;
+        for (int i = 0; i < go.Count; i++) { double day = JsMath.Max(s.Day, Math.Floor(gather - eta[i])); d.Marches.Add(new DragonMarch { Civ = go[i].Id, Day = day, Until = day + 30 / Sim.PACE }); }
         d.Alliance = J.Map(go, c => c.Id);
         d.AllianceTries++;
-        d.NextAlliance = s.Day + 2 * Sim.YEAR;
+        d.NextAlliance = s.Day + 2 * Sim.OLD_YEAR;
         if (go.Count > 1) foreach (var x in go) foreach (var y in go) if (!ReferenceEquals(x, y)) s.SetMod(x.Id, y.Id, "dragonpact", "Ejderhaya karşı ittifak", 15, 0.01, false);
         s.Metric("dragonAlliance");
         string names = Lore.JoinVe(J.Map(go, c => c.Name));
@@ -588,8 +589,8 @@ public static class Dragon
         return d.Marches.Count > 0 || J.Some(mine, b => !Agents.AtTarget(b));
     }
 
-    /// <summary>ittifak ordusunun inde öbür üyeleri bekleyeceği en uzun süre (gün)</summary>
-    public const double GATHER = 90;
+    /// <summary>ittifak ordusunun inde öbür üyeleri bekleyeceği en uzun süre (gün; eski 90)</summary>
+    public const double GATHER = 90 / Sim.PACE;
 
     /// <summary>İki grup aynı ejderha ittifakının ejderhanın inine giden ordularıysa dosttur (Agents.Friendly): ortak düşmana karşı
     /// aralarındaki soğukluk ya da kahramanlarının hizası onları ayırmaz.</summary>
@@ -614,7 +615,7 @@ public static class Dragon
             if (s.Day < m.Day) continue;
             var c = w.Civs[m.Civ];
             // başka bir seferdeki ordu dönene dek (en çok 30 gün) bekler
-            if (c.Alive && s.Day < m.Until && J.Some(w.Agents, a => !J.T(a.Dead) && a.Civ == c.Id && a.Purpose == "expedition")) { m.Day = s.Day + 5; continue; }
+            if (c.Alive && s.Day < m.Until && J.Some(w.Agents, a => !J.T(a.Dead) && a.Civ == c.Id && a.Purpose == "expedition")) { m.Day = s.Day + 1; continue; }
             d.Marches.RemoveAt(i); i--;
             if (!c.Alive) continue;
             // ittifaka ordu gönderemeyen üye kronikte anılır (müttefikleri inde boşuna bekler ya da yalnız girer)
@@ -630,7 +631,7 @@ public static class Dragon
             if (soldiers < 3 && home.Count == 0) { Fail("Savaşlar ve akınlar ordusunu eritmişti"); continue; }
             var pop = Agents.DrawSoldiers(s, c, soldiers);
             foreach (var h in home) h.State = "army";
-            w.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = 0.6, Heroes = J.Map(home, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cp.Id, Purpose = "expedition" });
+            w.Agents.Add(new Agent { Id = s.Id(), Kind = "army", Civ = c.Id, Path = path, Step = 0, Progress = 0, Speed = Pace.EXPEDITION, Heroes = J.Map(home, h => h.Id), Troops = soldiers, Pop = pop, From = cap.Id, To = cp.Id, Purpose = "expedition" });
             s.Metric("dragonMarch");
             s.Log("quest", $"{c.Name}{(home.Count > 0 ? $", {Lore.JoinVe(J.Map(home, h => h.Name))} önderliğinde" : "")} {J.S(soldiers)} askerle ejderha {Tr.Ek(d.Name, "a")} karşı yola çıktı.", civ: c.Id, tile: cap.Tile, cause: "Ejderhaya karşı ittifak");
         }
@@ -667,8 +668,8 @@ public static class Dragon
         var d = s.W.Dragon;
         var dragon = J.Find(mons, m => m.Breath != null);
         if (dragon != null) d.Hp = JsMath.Max(1, dragon.Hp);
-        if (d.Alliance.Count > 0) d.NextAlliance = JsMath.Max(d.NextAlliance, s.Day + 4 * Sim.YEAR);   // yenilgi ittifakın belini kırdı
-        d.NextRaid = JsMath.Min(d.NextRaid, s.Day + s.Rng.Int(15, 40));
+        if (d.Alliance.Count > 0) d.NextAlliance = JsMath.Max(d.NextAlliance, s.Day + 4 * Sim.OLD_YEAR);   // yenilgi ittifakın belini kırdı
+        d.NextRaid = JsMath.Min(d.NextRaid, s.Day + s.Rng.Int(4, 10));   // Faz 1b-5: eski 15–40 gün
         s.Metric("dragonRepelled");
         s.Log("dragon", $"{who}, ejderha {Tr.Ek(d.Name, "in")} ininde ağır bir yenilgiye uğradı.", tile: cp.Tile, civ: civ, battle: b.Id, major: true,
             cause: $"{(b.Replay?.End == "rout" ? "Ejderhanın dehşeti safları dağıttı" : "Ejderhanın alevleri safları biçti")}; canı {J.S(JsMath.Round(d.Hp))}/{J.S(d.MaxHp)}{(qs.Count > 0 ? $"; ilan {string.Join("/", J.Map(qs, q => J.S(q.Bounty)))} altına çıktı" : "")}");

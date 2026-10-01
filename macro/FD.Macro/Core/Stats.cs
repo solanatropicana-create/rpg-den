@@ -17,7 +17,7 @@ using System.Text;
 // Toplayıcı simülasyonu yalnızca okur: RNG, yol önbelleği ya da dünya durumu değişmez (Sim.Capital/CivSettlements
 // gibi yan etkisiz yardımcılar dışında Sim çağrılmaz). Durum statik değil, örnekte tutulur; dünyalar paralel ölçülebilir.
 //
-// Yıl tanımı: 1 yıl = Sim.YEAR (120) gün; y. yıl = (y-1)*120+1 ... y*120. günler (60 yıl = 7200 adım).
+// Yıl tanımı: 1 yıl = Sim.YEAR (40) gün; y. yıl = (y-1)*40+1 ... y*40. günler (60 yıl = 2400 adım; Faz 1b-5 takvimi).
 // Akış ölçüleri (Flow) yıl içindeki toplam, stok ölçüleri (Stock) yıl sonu değeri, ortalamalar (Mean) yıl içi ortalama ya da orandır.
 
 namespace FD.Macro;
@@ -107,6 +107,35 @@ public sealed class V3Log
     /// <summary>gün d'de (1 tabanlı) yaşayan yerleşim</summary>
     public int Setl(int d) => TierDaily[0][d - 1] + TierDaily[1][d - 1] + TierDaily[2][d - 1] + TierDaily[3][d - 1];
     public int Days => TierDaily[0].Count;
+}
+
+// ------------------------------------------------------------ Faz 1b-5: v3 süre tablosu kayıtları
+/// <summary>Bir süre kaydı: başlangıç ve bitiş günü (bitiş -1: koşu sonunda sürüyor ya da hiç olmadı), tür ve ilgili kimlik.</summary>
+public sealed class DurSpan { public int Start, End = -1, Id = -1; public string Kind; public int Days => End >= 0 ? End - Start : -1; }
+
+/// <summary>Faz 1b-5: yol haritası v3'ün süre tablosu için kayıtlar (bkz. <see cref="WorldStats"/>).</summary>
+public sealed class DurLog
+{
+    /// <summary>han kurulumu: hancının yola çıktığı gün → hanın kapılarını açtığı gün (Kind: "new" | "rebuild")</summary>
+    public readonly List<DurSpan> InnSetup = new();
+    /// <summary>temizlenen kara kampı (goblin, hobgoblin, bugbear, trol): temizlendiği gün → <see cref="WorldStats.CAMP_VILLAGE_R"/> fersah
+    /// yakınına <see cref="WorldStats.CAMP_VILLAGE_DAYS"/> gün içinde kurulan ilk yerleşimin günü (-1: yok; Id = kamp)</summary>
+    public readonly List<DurSpan> CampVillage = new();
+    /// <summary>kahraman doğumu: gün (Start), yer (Id: han ya da yerleşim), Kind: "inn" (han) | "tavern" (yerleşimin tavernası)</summary>
+    public readonly List<DurSpan> Births = new();
+    /// <summary>efsaneye yükseliş: doğum → efsane günü</summary>
+    public readonly List<DurSpan> Legends = new();
+    /// <summary>ilan ömrü: asıldığı gün → kapandığı gün (Kind: done | expired | closed | abandoned)</summary>
+    public readonly List<DurSpan> Quests = new();
+    /// <summary>salgın: başladığı gün → bittiği gün (Id = yerleşim)</summary>
+    public readonly List<DurSpan> Plagues = new();
+    /// <summary>yanan ev: yandığı gün → onarıldığı gün (ilk yanan ilk onarılır)</summary>
+    public readonly List<DurSpan> Repairs = new();
+    /// <summary>yerleşim projesi: başladığı gün → bittiği gün (Kind: yapının türü — "palisade", "stonewall", "castle", "lighthouse",
+    /// "house"…; atölye, çıkarma yapısı, yükseltme ve gemi için "workshop" | "extract" | "upgrade" | "ship")</summary>
+    public readonly List<DurSpan> Builds = new();
+    /// <summary>açık han-günleri ve tavernalı yerleşim-günleri (doğum oranı için)</summary>
+    public double InnDays, TavernDays;
 }
 
 /// <summary>Koşu sonunda medeniyet özeti.</summary>
@@ -361,10 +390,23 @@ public sealed class WorldStats
     // ------------------------------------------------------------ izleyiciler
     private sealed class HeroT { public string State; public bool Legend, Initial; public int Level; }
     private sealed class CivT { public bool Alive; public int Cap = -1, MaxSettlements; }
-    private sealed class SetlT { public bool Alive, Starving, Plague; public int Civ, Tier; public double Burned, Houses, Pop; }   // Faz 1b-4: açlık, salgın, yanma
+    private sealed class SetlT { public bool Alive, Starving, Plague; public int Civ, Tier; public double Burned, Houses, Pop; public int PlagueStart = -1; }   // Faz 1b-4: açlık, salgın, yanma
 
     /// <summary>Faz 1b-4: v3 durum değişimi kayıtları (bkz. <see cref="V3Log"/>).</summary>
     public readonly V3Log V3 = new();
+    /// <summary>Faz 1b-5: v3 süre tablosu kayıtları (bkz. <see cref="DurLog"/>).</summary>
+    public readonly DurLog Dur = new();
+    /// <summary>temizlenen kampın yakınına kurulan yerleşim "kamp → köy" sayılır: kamp karosuna en çok bu kadar fersah</summary>
+    public const int CAMP_VILLAGE_R = 6;
+    /// <summary>kamp → köy en çok bu kadar gün içinde sayılır (daha geç kurulan yerleşim kampın temizlenmesine bağlanmaz)</summary>
+    public const int CAMP_VILLAGE_DAYS = 60;
+    private sealed class InnT { public string Stage; public int Road = -1; public bool Rebuild; }
+    private readonly Dictionary<int, InnT> _inns = new();
+    private readonly Dictionary<int, DurSpan> _questOpen = new();
+    private readonly HashSet<int> _questDone = new();
+    private readonly Dictionary<int, Queue<int>> _burnQ = new();
+    private readonly Dictionary<int, (Project P, int Start)> _proj = new();
+    private readonly List<(DurSpan Span, int Tile)> _clearedCamps = new();
     private readonly Dictionary<War, WarSpan> _warSpan = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<War> _warsPrev = new(ReferenceEqualityComparer.Instance);
     /// <summary>hedef yerleşim → önünde karargâh kurmuş savaş ordularının en erken Muster.Since'i (dünün taraması)</summary>
@@ -412,6 +454,10 @@ public sealed class WorldStats
             _civs[c.Id] = t;
         }
         foreach (var cp in w.Camps) _camps[cp.Id] = cp.Alive;
+        // Faz 1b-5: başlangıçta var olanların süresi ölçülmez (yalnız izlenir)
+        foreach (var inn in w.Inns) _inns[inn.Id] = new InnT { Stage = inn.Stage };
+        foreach (var q in w.Quests) _questDone.Add(q.Id);
+        foreach (var st in w.Settlements) if (st.Alive && st.Project != null) _proj[st.Id] = (st.Project, -1);
         for (int i = 0; i < w.Relations.Count; i++)
             for (int j = 0; j < w.Relations[i].Count; j++)
             {
@@ -500,6 +546,7 @@ public sealed class WorldStats
                 y.V[I_BORN]++;
                 y.Inc("levelBirth", LvKey(h.Level));
                 _birthSum += h.Level; _birthN++;
+                Dur.Births.Add(new DurSpan { Start = (int)h.Born, End = (int)h.Born, Id = h.Base, Kind = h.BaseInn ? "inn" : "tavern" });   // Faz 1b-5
             }
             if (h.State != t.State)
             {
@@ -515,7 +562,11 @@ public sealed class WorldStats
                 else if (h.State == "gone") y.V[I_GONE]++;
                 t.State = h.State;
             }
-            if (h.Legend == true && !t.Legend) { t.Legend = true; y.V[I_LEGENDS]++; }
+            if (h.Legend == true && !t.Legend)
+            {
+                t.Legend = true; y.V[I_LEGENDS]++;
+                if (!t.Initial) Dur.Legends.Add(new DurSpan { Start = (int)h.Born, End = w.Day, Id = h.Id });   // Faz 1b-5: efsaneye yükseliş
+            }
             if (h.Level > t.Level) t.Level = h.Level;
             if (h.Level > MaxHeroLevel) MaxHeroLevel = h.Level;
         }
@@ -542,6 +593,7 @@ public sealed class WorldStats
         ScanCivs(day);
         ScanCamps();
         ScanV3(day);
+        ScanDurations(day);   // Faz 1b-5
         AccumulateIdle();
         AccumulateEconomy();
         if (day % YearDays == 0) CloseYear(day, false);
@@ -589,6 +641,7 @@ public sealed class WorldStats
                 V3.DragonHits.Add(new DragonHit { Day = day, Settlement = st.Id, Tier = t.Tier, TierAfter = st.Alive ? st.Tier : -1, PopBefore = t.Pop, PopAfter = st.Alive ? Sim.Pop(st) : 0 });
             if (t.Alive && !st.Alive)
             {
+                _burnQ.Remove(st.Id); _proj.Remove(st.Id); t.PlagueStart = -1;   // Faz 1b-5
                 y.V[I_ABANDONED]++; Ev("abandon", st, t.Tier, day); DragonAfter(st.Id, day, h => h.AbandonDay ??= day);
                 if ((st.PeakTier ?? 0) >= Sim.BIG_TIER) V3.CoreLost.Add(new StateEvent { Day = day, Kind = "abandon", Settlement = st.Id, Tier = t.Tier });
             }
@@ -603,7 +656,10 @@ public sealed class WorldStats
                     if (st.Tier < t.Tier) DragonAfter(st.Id, day, h => h.TierDropDay ??= day);
                 }
                 if (starving && !t.Starving) Ev("famine", st, t.Tier, day);
-                if (plague && !t.Plague) Ev("plague", st, t.Tier, day);
+                if (plague && !t.Plague) { Ev("plague", st, t.Tier, day); t.PlagueStart = day; }
+                // Faz 1b-5: salgının süresi ve yanan evlerin onarımı (ilk yanan ilk onarılır)
+                if (!plague && t.Plague && t.PlagueStart >= 0) { Dur.Plagues.Add(new DurSpan { Start = t.PlagueStart, End = day, Id = st.Id }); t.PlagueStart = -1; }
+                if (houses != t.Houses) Repairs(st.Id, t.Houses, houses, day);
                 // yakıldı/yandı: bugün BurnedAt yazıldı ya da yanık ev arttı (onarım BurnedAt'i gün − 10 yapar, yanma sayılmaz)
                 if ((burned == day && burned > t.Burned) || houses > t.Houses) Ev("burn", st, t.Tier, day);
             }
@@ -635,12 +691,61 @@ public sealed class WorldStats
     public static bool IsMidShift(string kind, int tierBefore) =>
         (kind == "tierUp" || kind == "tierDown" || kind == "abandon") && tierBefore >= 1 && tierBefore < Sim.BIG_TIER;
 
-    /// <summary>Yeni yerleşim: bir harabenin (terk edilmiş yerleşim) 2 fersah yakınındaysa yeniden yerleşim.</summary>
+    /// <summary>Yeni yerleşim: bir harabenin (terk edilmiş yerleşim) 2 fersah yakınındaysa yeniden yerleşim. Faz 1b-5: yakında
+    /// (<see cref="CAMP_VILLAGE_R"/>) temizlenmiş ve henüz köy kurulmamış bir kamp varsa kamp → köy süresi yazılır (en eski kamp).</summary>
     private void Founded(Settlement st, int day)
     {
         bool ruin = false;
         foreach (var x in Sim.W.Settlements) if (x.Id != st.Id && !x.Alive && Sim.G.Dist(x.Tile, st.Tile) <= 2) { ruin = true; break; }
         Ev(ruin ? "resettle" : "found", st, st.Tier, day);
+        foreach (var (sp, tile) in _clearedCamps)
+            if (sp.End < 0 && sp.Start <= day && day - sp.Start <= CAMP_VILLAGE_DAYS && Sim.G.Dist(tile, st.Tile) <= CAMP_VILLAGE_R) { sp.End = day; break; }
+    }
+
+    // ------------------------------------------------------------ Faz 1b-5: süre tablosu
+    /// <summary>Yanan ev sayısı değişti: artışta kuyruğa yanma günü, azalışta en eski yanan ev onarıldı.</summary>
+    private void Repairs(int id, double before, double now, int day)
+    {
+        if (!_burnQ.TryGetValue(id, out var q)) { q = new Queue<int>(); _burnQ[id] = q; }
+        for (double k = before; k < now; k++) q.Enqueue(day);
+        for (double k = now; k < before; k++) if (q.Count > 0) Dur.Repairs.Add(new DurSpan { Start = q.Dequeue(), End = day, Id = id });
+    }
+
+    /// <summary>Günlük: han kurulumu, ilanlar, projeler, han ve taverna günleri.</summary>
+    private void ScanDurations(int day)
+    {
+        var w = Sim.W;
+        foreach (var inn in w.Inns)
+        {
+            if (!_inns.TryGetValue(inn.Id, out var it)) { it = new InnT(); _inns[inn.Id] = it; }
+            if (inn.Stage != it.Stage)
+            {
+                if (inn.Stage == "road") { it.Road = day; it.Rebuild = inn.RuinedDay != null; }
+                else if (inn.Stage == "open" && it.Stage == "build" && it.Road >= 0) { Dur.InnSetup.Add(new DurSpan { Start = it.Road, End = day, Id = inn.Id, Kind = it.Rebuild ? "rebuild" : "new" }); it.Road = -1; }
+                it.Stage = inn.Stage;
+            }
+            if (inn.Alive) Dur.InnDays++;
+        }
+        foreach (var st in w.Settlements)
+        {
+            if (!st.Alive) continue;
+            if ((st.Civics.Get("tavern") ?? 0) > 0) Dur.TavernDays++;
+            var p = st.Project;
+            if (_proj.TryGetValue(st.Id, out var cur) && ReferenceEquals(cur.P, p)) continue;
+            if (cur.P != null && cur.Start >= 0) Dur.Builds.Add(new DurSpan { Start = cur.Start, End = day, Id = st.Id, Kind = cur.P.Type == "civic" ? cur.P.Kind : cur.P.Type });
+            if (p != null) _proj[st.Id] = (p, day); else _proj.Remove(st.Id);
+        }
+        foreach (var q in w.Quests)
+        {
+            if (_questDone.Contains(q.Id)) continue;
+            if (!_questOpen.TryGetValue(q.Id, out var sp)) { sp = new DurSpan { Start = (int)q.Posted, Id = q.Id }; _questOpen[q.Id] = sp; }
+            string end = q.Done != null ? "done" : q.Open ? null
+                : q.TakenBy.Count == 0 ? (q.Expires != null && day >= q.Expires.Value ? "expired" : "closed")
+                : !J.Some(w.Agents, a => a.Quest == q.Id && a.Dead != true) ? "abandoned" : null;
+            if (end == null) continue;
+            sp.End = q.Done != null ? (int)q.Done.Value : day; sp.Kind = end;
+            Dur.Quests.Add(sp); _questOpen.Remove(q.Id); _questDone.Add(q.Id);
+        }
     }
 
     /// <summary>Yerleşim el değiştirdi: fetih ya da bölünme (yeni medeniyet bugün eskisinden ayrıldı). Büyük şehirse uyarı süreleriyle kaydedilir.</summary>
@@ -766,7 +871,15 @@ public sealed class WorldStats
         foreach (var cp in Sim.W.Camps)
         {
             if (!_camps.TryGetValue(cp.Id, out bool was)) { if (cp.Alive) y.V[I_CAMPSPAWN]++; }
-            else if (was && !cp.Alive) y.V[I_CAMPCLEAR]++;
+            else if (was && !cp.Alive)
+            {
+                y.V[I_CAMPCLEAR]++;
+                if (cp.Kind != "pirate" && cp.Kind != "dragon" && cp.ClearedDay != null)   // Faz 1b-5: kamp → köy
+                {
+                    var sp = new DurSpan { Start = (int)cp.ClearedDay.Value, Id = cp.Id, Kind = cp.Kind };
+                    Dur.CampVillage.Add(sp); _clearedCamps.Add((sp, cp.Tile));
+                }
+            }
             else if (!was && cp.Alive) y.V[I_CAMPSPAWN]++;
             _camps[cp.Id] = cp.Alive;
             if (cp.Alive) alive++;
@@ -1133,6 +1246,15 @@ public sealed class WorldStats
             { "coreLost", V3.CoreLost.Select(e => (object)new List<object> { e.Day, e.Settlement, e.Tier }).ToList() },
         };
         o.Add("v3", v3);
+        // Faz 1b-5: süre tablosu kayıtları ([başlangıç, bitiş, kimlik, tür])
+        static List<object> Rows(List<DurSpan> l) => l.Select(x => (object)new List<object> { x.Start, x.End, x.Id, x.Kind }).ToList();
+        o.Add("durations", new JObj
+        {
+            { "fields", "start, end (-1: yok/sürüyor), id, kind" },
+            { "innDays", Dur.InnDays }, { "tavernDays", Dur.TavernDays },
+            { "innSetup", Rows(Dur.InnSetup) }, { "campVillage", Rows(Dur.CampVillage) }, { "births", Rows(Dur.Births) }, { "legends", Rows(Dur.Legends) },
+            { "quests", Rows(Dur.Quests) }, { "plagues", Rows(Dur.Plagues) }, { "repairs", Rows(Dur.Repairs) }, { "builds", Rows(Dur.Builds) },
+        });
         return o;
     }
 
