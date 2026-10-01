@@ -509,7 +509,7 @@ public static class InnLife
         bool war = J.Some(near, x => s.InWar(w.Civs[x.Civ]));
         bool temple = J.Some(w.Settlements, x => x.Alive && J.T(x.Civics.Get("temple")) && s.G.Dist(x.Tile, inn.Tile) <= 28);
         bool lib = J.Some(w.Settlements, x => x.Alive && J.T(x.Civics.Get("library")) && s.G.Dist(x.Tile, inn.Tile) <= 30);
-        bool bardCiv = J.Some(near, x => w.Civs[x.Civ].Cls == "bard");
+        bool bardCiv = J.Some(near, x => Orgs.HasBranch(s, x, "bards"));   // Faz 1b-6: Ozanlar Koleji şubesi (eski Ozan medeniyeti)
         int routes = J.Filter(w.Routes, r => r.Alive).Count;
         return new List<(string Kind, double W)>
         {

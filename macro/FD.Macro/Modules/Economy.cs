@@ -83,7 +83,7 @@ public static class Economy
             var d = J.Find(s.W.Deposits, x => x.Id == t.Deposit);
             rate = D.DEPOSITS[d.Kind].Rate; good = D.DEPOSITS[d.Kind].Good; richness = d.Richness;
         }
-        else if (knd == "lumber") { rate = 0.25; good = "wood"; if (c.Cls == "druid") rate *= 0.4; }
+        else if (knd == "lumber") { rate = 0.25; good = "wood"; if (Polity.OldWays(s.Settlement(t.Ext?.Settlement ?? t.Owner))) rate *= 0.5; }   // Faz 1b-6: Eski İnanç (eski Druid) ormanı korur
         else if (knd == "hunt") { rate = 0.17; good = "meat"; }
         else if (knd == "dock") { rate = 0.26; good = "fish"; }
         else if (knd == "quarry") { rate = 0.2; good = "stone"; }
@@ -231,7 +231,7 @@ public static class Economy
         double foodNeed = P * Sim.FOOD_PER_POP * PRICE_FOOD_DAYS;
         double foodHave = s.FoodTotal(c);
         double fr = JsMath.Min(6, JsMath.Max(0.15, (foodNeed + 5) / (foodHave + 5)));
-        var desires = new HashSet<string>(D.CLASSES[c.Cls].Desires);
+        var desires = new HashSet<string>(Polity.Culture(c).Desires);
         foreach (var g in D.GOOD_IDS)
         {
             if (g == "gold") { c.Price.Set("gold", 1); continue; }
@@ -659,7 +659,6 @@ public static class Economy
     }
 
     // ------------------------------------------------------------ C3: kıtlık (tek büyük olay)
-    private static readonly HashSet<string> GENEROUS = new() { "cleric", "paladin", "druid", "monk", "bard" };
 
     /// <summary>Gıda açığı olan gün: kıtlık kaydı açılır ya da sürer; açık FAMINE_DECLARE gün sürünce ve ortalama açık ihtiyacın
     /// FAMINE_SHORT payını geçince büyük olay olarak ilan edilir, komşulara yardım çağrısı gider (AID_GAP günde bir, en çok AID_ROUNDS
@@ -736,7 +735,7 @@ public static class Economy
             double surplus = s.FoodTotal(o) - s.CivPop(o) * Sim.FOOD_PER_POP * AID_KEEP;
             if (surplus < perDay * 5 / Sim.PACE) continue;   // verecek fazlası yok: kimse onu suçlamaz
             double rel = s.RelValue(o.Id, c.Id);
-            double p = 0.3 + rel / 100 + o.Align.Good * 0.3 + (GENEROUS.Contains(o.Cls) ? 0.15 : 0) - (Diplomacy.IsEvil(s, o) ? 0.25 : 0);
+            double p = 0.3 + rel / 100 + o.Align.Good * 0.3 + (Polity.Generous(o) ? 0.15 : 0) - (Diplomacy.IsEvil(s, o) ? 0.25 : 0);
             if (!s.Rng.Chance(JsMath.Max(0.05, JsMath.Min(0.95, p))))
             {
                 f.Refused.Add(o.Id);
@@ -900,7 +899,7 @@ public static class Economy
         string kind = t.Ext.Kind;
         if (kind == "lumber")
         {
-            if (c.Cls != "druid")
+            if (!Polity.OldWays(s.Settlement(t.Ext.Settlement)))   // Faz 1b-6: Eski İnanç'ın korusu kesilmez (eski Druid)
             {
                 t.Wood -= amount;
                 if (t.Wood <= 0)
@@ -1037,15 +1036,8 @@ public static class Economy
         return false;
     }
 
-    /// <summary>Sınıfa özgü yapı adları (civic 'unique'); bilinmeyen sınıf → 'Sınıf yapısı'.</summary>
-    public static readonly JsObj<string> UNIQUE_BUILDING = new JsObj<string>
-    {
-        ["paladin"] = "Yemin Tapınağı", ["cleric"] = "Tapınak Ocağı", ["druid"] = "Kutsal Koru", ["rogue"] = "Hırsızlar Loncası", ["wizard"] = "Akademi", ["barbarian"] = "Totem Direği",
-        ["bard"] = "Ozanlar Salonu", ["fighter"] = "Lejyon Kışlası", ["monk"] = "Manastır", ["ranger"] = "Korucu Locası", ["sorcerer"] = "Kan Soyu Mabedi", ["warlock"] = "Pakt Mihrabı",
-    };
-
-    /// <summary>Display name of a civic ('unique' resolves per class).</summary>
-    public static string CivicName(Civ c, string k) => k == "unique" ? UNIQUE_BUILDING[c.Cls] ?? "Sınıf yapısı" : D.CIVICS[k].Name;
+    /// <summary>Display name of a civic (Faz 1b-6: 'unique' = başkentin hükümet yapısı: saray, boy meclisi, lonca konseyi, başkatedral).</summary>
+    public static string CivicName(Civ c, string k) => k == "unique" ? Polity.SeatName(c) : D.CIVICS[k].Name;
 
     /// <summary>Picks a project for each idle settlement; an unaffordable best candidate adds its cost to c.Want.</summary>
     public static void ChooseBuilds(Sim s, Civ c)
@@ -1115,7 +1107,7 @@ public static class Economy
                     double v = y * D.LEVEL_SLOTS[lvl] * s.Price(c, good);
                     if (kind == "hunt") v += y * D.LEVEL_SLOTS[lvl] * (t.Terrain == "tundra" ? D.HIDE_TUNDRA : D.HIDE) * s.Price(c, "leather");
                     if (kind == "claypit") v -= y * D.LEVEL_SLOTS[lvl] * D.BRICK_FUEL * s.Price(c, "wood");
-                    double score = v * 9 + (D.CLASSES[c.Cls].Desires.Contains(good) ? 6 : 0);
+                    double score = v * 9 + (Polity.Culture(c).Desires.Contains(good) ? 6 : 0);
                     var cost = kind == "lumber" || kind == "hunt" ? new JsObj<double>() : D.LEVEL_COST[lvl];
                     var cand = new Cand { Score = score, Cost = cost, Work = 6 + lvl * 4, Project = new Project { Type = "extract", Kind = kind, Tile = ti, Level = lvl } };
                     var prev = bestByKind.Get(kind);
@@ -1145,7 +1137,7 @@ public static class Economy
         if (civicAvail("shipyard") && !J.T(st.Civics.Get("shipyard")) && Sea.PickPort(s, st) >= 0)
         {
             bool near = J.Some(yards, x => s.G.Dist(x.Tile, st.Tile) <= 10);
-            double sc = yards.Count == 0 ? 30 + (D.CLASSES[c.Cls].Prefer.Get("deniz") ?? 1) * 6 : J.T(st.Overseas) || (st.Tier >= 2 && !near) ? 12 : 0;
+            double sc = yards.Count == 0 ? 30 + Polity.Culture(c).Sea * 6 : J.T(st.Overseas) || (st.Tier >= 2 && !near) ? 12 : 0;
             if (sc > 0) outp.Add(new Cand { Score = sc, Cost = D.CIVICS["shipyard"].Cost, Work = D.CIVICS["shipyard"].Work, Project = new Project { Type = "civic", Kind = "shipyard" } });
         }
         if (J.T(st.Civics.Get("shipyard")) && st.Port != null)
@@ -1159,8 +1151,8 @@ public static class Economy
             if (fl.Ships < want && have < Math.Ceiling(want / n)) outp.Add(new Cand { Score = 22 + (fl.Ships == 0 ? 14 : 0) + routes * 3, Cost = D.SHIPS["hull"].Cost, Work = D.SHIPS["hull"].Work, Project = new Project { Type = "ship", Kind = "hull" } });
             if (ct >= Gate.NAVY)
             {
-                double gw = 2 + (war ? 2 : 0) + (D.CLASSES[c.Cls].Aggression >= 0.5 ? 1 : 0);
-                if (fl.Galleys < gw && (st.Galleys ?? 0) < Math.Ceiling(gw / n)) outp.Add(new Cand { Score = 20 + (war ? 16 : 0) + D.CLASSES[c.Cls].Aggression * 10, Cost = D.SHIPS["galley"].Cost, Work = D.SHIPS["galley"].Work, Project = new Project { Type = "ship", Kind = "galley" } });
+                double gw = 2 + (war ? 2 : 0) + (Polity.Aggression(c) >= 0.5 ? 1 : 0);
+                if (fl.Galleys < gw && (st.Galleys ?? 0) < Math.Ceiling(gw / n)) outp.Add(new Cand { Score = 20 + (war ? 16 : 0) + Polity.Aggression(c) * 10, Cost = D.SHIPS["galley"].Cost, Work = D.SHIPS["galley"].Work, Project = new Project { Type = "ship", Kind = "galley" } });
             }
         }
         if (slotsFree > 0)
@@ -1191,8 +1183,8 @@ public static class Economy
             }
             if (isCap) AddCivic("tavern", 45);
             if (isCap || P > 25) AddCivic("market", 30);
-            AddCivic("temple", 18 + (c.Cls == "cleric" || c.Cls == "paladin" ? 10 : 0));
-            if (isCap) AddCivic("library", 30 + (c.Cls == "wizard" ? 20 : 0));
+            AddCivic("temple", 18 + (c.Law?.Faith == "sun" ? 10 : 0) + (c.Gov == "theocracy" ? 5 : 0));   // Faz 1b-6: resmî inanç Güneş
+            if (isCap) AddCivic("library", 30 + (c.Gov == "kingdom" || c.Gov == "republic" ? 10 : 0));   // Akademi'nin himayesi
             if (s.Access(c, "gold")) AddCivic("mint", 28);
             if (isCap) AddCivic("guild", 26);
             double threat = c.Threat + (war ? 1 : 0);
@@ -1221,7 +1213,7 @@ public static class Economy
             var d = J.Find(s.W.Deposits, x => x.Id == t.Deposit);
             if (!s.DepositVisible(c, d) || d.Depleted) return outp;
             string kind = D.DEPOSITS[d.Kind].Building;
-            if (kind == "grove") { if (c.Cls == "druid" && lv1("grove")) outp.Add("grove"); return outp; }
+            if (kind == "grove") { if (Polity.OldWays(st) && lv1("grove")) outp.Add("grove"); return outp; }   // Faz 1b-6: Eski İnanç'ın yerleşimi
             if (t.Reserve <= 0 && D.DEPOSITS[d.Kind].Reserve > 0) return outp;
             if (lv1(kind)) outp.Add(kind);
             return outp;
@@ -1238,12 +1230,11 @@ public static class Economy
     public static void RecruitTick(Sim s, Civ c)
     {
         bool war = s.InWar(c);
-        var cls = D.CLASSES[c.Cls];
         double ratio = 0;
         bool training = s.CivAt(c, Gate.TRAINING);   // Faz 1b-3: Talim yerine Köy kademesi
-        bool tribal = c.Cls == "barbarian" && training;
-        bool unarmed = s.E(c, "unarmed") > 0;          // Keşiş: Yumruk Keşişleri ayrıcalığı (Kasaba)
-        if (training || tribal || unarmed) ratio = (0.07 + cls.Aggression * 0.07 + s.E(c, "warband")) * (war ? 1.8 : 1) * (c.Threat > 0.5 ? 1.3 : 1);
+        bool tribal = c.Gov == "clans" && training;   // Faz 1b-6: boy konfederasyonunun savaşçı kültürü (eski Barbar)
+        bool unarmed = s.E(c, "unarmed") > 0;
+        if (training || tribal || unarmed) ratio = (0.07 + Polity.Aggression(c) * 0.07 + s.E(c, "warband")) * (war ? 1.8 : 1) * (c.Threat > 0.5 ? 1.3 : 1);
         double deficit = 0;
         bool broke = c.Broke != null;   // C3: hazine boşken yeni asker yazılmaz
         foreach (var st in s.CivSettlements(c))

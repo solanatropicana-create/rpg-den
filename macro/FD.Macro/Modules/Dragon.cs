@@ -459,7 +459,7 @@ public static class Dragon
             double fear = pb / JsMath.Max(1, pa);
             double p = 0.1 + 0.12 * JsMath.Min(4, hits) + 0.25 * JsMath.Max(-1, JsMath.Min(2, fear - 1)) + (c.Align.Law > 0.3 ? 0.1 : 0) - (c.Align.Good > 0.3 ? 0.1 : 0)
                 + (Evil(c) ? 0.3 : 0);   // kötüler ejderhayla pazarlık eder
-            bool pays = gold >= tribute && c.Cls != "paladin" && !d.Alliance.Contains(c.Id) && s.Rng.Chance(JsMath.Max(0.05, JsMath.Min(0.85, p)));
+            bool pays = gold >= tribute && c.Gov != "theocracy" && !d.Alliance.Contains(c.Id) && s.Rng.Chance(JsMath.Max(0.05, JsMath.Min(0.85, p)));
             if (pays)
             {
                 s.Add(c, "gold", -tribute);

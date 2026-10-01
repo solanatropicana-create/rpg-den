@@ -132,6 +132,11 @@ public sealed class Settlement
     public double? Assaults;
     /// <summary>son büyük şehir hücumunun günü</summary>
     public double? LastAssault;
+    // ---- inanç (Faz 1b-6)
+    /// <summary>inanç dağılımı (sun, old, pact, none; toplam 1); null: henüz atanmadı (States.FaithTick)</summary>
+    public JsObj<double> Faith;
+    /// <summary>köleler ve hapis madenindeki mahkûmlar (nüfusun içinde; Bondage)</summary>
+    public double? Slaves, Prisoners;
 }
 
 public sealed class RelMod
@@ -198,9 +203,12 @@ public sealed class GearState
 public sealed class Civ
 {
     public int Id;
-    public string Cls;
+    /// <summary>Faz 1b-6: hükümet tipi (kingdom | clans | republic | theocracy; Polity.GOVS). Eski sınıf (Cls) kalktı.</summary>
+    public string Gov;
     public string Name;
+    /// <summary>Faz 1b-6: devletin kültürü = kuruluştaki çoğunluk ırkı (Polity.CULTURES)</summary>
     public string Race;
+    /// <summary>Faz 1b-6: hizalama yöneticiden ve yasadan hesaplanır (States.Realign)</summary>
     public Alignment Align;
     public string Color;
     public JsObj<double> Stock = new();
@@ -238,6 +246,18 @@ public sealed class Civ
     public double? Broke;
     /// <summary>son günün bütçesi (gelir ve bakım gideri, altın/gün); yapay zekâ ve gösterim için</summary>
     public CivBudget Budget;
+    // ---- devlet (Faz 1b-6; claude/devlet-orgut-spec.md §2)
+    /// <summary>ad kökü ("Güneştacı" → "Güneştacı Krallığı")</summary>
+    public string Stem;
+    /// <summary>yönetici ve varis (Person id; W.People)</summary>
+    public int? Ruler, Heir;
+    /// <summary>meşruiyet 0–100</summary>
+    public double Legit;
+    public LawState Law;
+    /// <summary>hanedan (krallık)</summary>
+    public string House;
+    /// <summary>son seçimin günü (cumhuriyet)</summary>
+    public double? Elected;
 }
 
 public sealed class HeroGoal
@@ -340,6 +360,12 @@ public sealed class Hero
     public string Killer;                // katili (yalın hâl: "Kırıkdiş Kampı'ndan bir goblin")
     // ---- altın ve ambar (Faz 1, C3)
     public double? Unpaid;               // maaşı art arda ödenmeyen mevsim (Economy.PayHeroes); null: maaşı ödeniyor
+    // ---- inanç ve örgüt (Faz 1b-6)
+    public string Faith;                 // sun | old | pact | none
+    public List<Membership> Orgs;        // örgüt üyelikleri (null: yok)
+    public int? CaptiveAt;               // esir tutulduğu yerleşim (State "captive"; Bondage)
+    public double? CaptiveUntil;         // mahkûmiyetin bittiği gün (köleliğin süresi yok)
+    public string CaptiveKind;           // slave | prison
 }
 
 /// <summary>Kahramanın kilometre taşı (destanda kullanılır).</summary>
@@ -506,6 +532,10 @@ public sealed class Camp
     /// <summary>Faz 1 B2: gizli in: yeni kurulan in ilk akınına, bir kâşifin onu görmesine ya da söylentiler yayılana (1 yıl) dek
     /// bilinmez; kahramanlar, hanlar ve medeniyetler onu hedef alamaz.</summary>
     public bool? Hidden;
+    /// <summary>Faz 1b-6: aç haydut kampı (Kind "bandit") hâlâ aç mı (yiyecek ister); ganimetle dönünce tok olur</summary>
+    public bool? Hungry;
+    /// <summary>Faz 1b-6: haydutların kaçtığı yerleşim</summary>
+    public int? Home;
 }
 
 public sealed class IsleInfo
@@ -532,6 +562,8 @@ public sealed class Quest
     public double? Failures;
     public double? Done;
     public double? Topped;
+    /// <summary>Faz 1b-6: ilanı asan örgüt (Avcılar Locası'nın ödülü; ödül örgütün kasasından); null: medeniyet ya da han</summary>
+    public int? Org;
 }
 
 public sealed class Muster
@@ -760,6 +792,14 @@ public sealed class World
     // ---- anlatıcı ve geç tehdit (Faz 1, B2): ilk günde kurulur (Storyteller.Tick)
     public StoryState Story;
     public DragonState Dragon;
+    // ---- devlet, inanç ve örgüt (Faz 1b-6)
+    /// <summary>tarih öncesinin bittiği gün (Sim.PREHISTORY_DAYS): oyunun ve ölçümün başladığı gün; örgütler bu gün kurulur</summary>
+    public int Epoch;
+    /// <summary>önemli kişiler (yöneticiler, varisler, örgüt liderleri, şube ustaları)</summary>
+    public List<Person> People = new();
+    public List<Org> Orgs = new();
+    /// <summary>dünyanın yerleşim tavanı: tarih öncesinin sonunda yaşayan yerleşim sayısı (0: tarih öncesi, yerleşilebilir alanla; Diplomacy.WorldCap)</summary>
+    public int SettleCap;
 }
 
 // ---- Faz 1, B2: anlatıcı (gerilim bütçesi, kriz ve rahatlama) ve ejderha

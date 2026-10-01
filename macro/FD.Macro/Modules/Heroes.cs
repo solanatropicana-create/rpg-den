@@ -72,7 +72,7 @@ public static class Heroes
         var civ = s.W.Civs[st.Civ];
         var locals = J.Filter(st.Pop.Keys(), r => (st.Pop.Get(r) ?? 0) > 0);
         string race = s.Rng.Chance(0.65) && locals.Count > 0 ? s.Rng.Weighted(locals, r => st.Pop.Get(r) ?? 0) : s.Rng.Pick(ANY_RACE);
-        string affinity = D.CLASSES[civ.Cls].HeroClass;
+        string affinity = Polity.HeroClass(civ);
         string cls = s.Rng.Weighted(D.HERO_CLASS_IDS, k => k == affinity ? 3 : 1);
         int level = BirthLevel(s, cls == affinity && s.E(civ, "heroLevel") > 0);
         var h = MakeHero(s, (race, cls, level, st.Tile, st.Id, false));
@@ -125,6 +125,9 @@ public static class Heroes
         string placeLoc = o.BaseInn ? Lore.Ek($"{Will.InnById(s, o.Base)?.Name ?? "Yol"} Hanı", "da") : $"{Lore.Ek(s.Settlement(o.Base)?.Name ?? "Yurt", "in")} tavernasında";
         Lore.Born(s, h, placeLoc, nm.Ancestor);
         s.W.Heroes.Add(h);
+        // Faz 1b-6: inanç (doğduğu yerin dağılımından; rahip, paladin, druid sınıfına göre) ve örgüt üyeliği (tarih öncesinden sonra)
+        h.Faith = Orgs.HeroFaith(s, h, o.BaseInn ? s.Settlement(s.W.Tiles[o.Tile].Owner) : s.Settlement(o.Base));
+        if (s.W.Orgs.Count > 0) Orgs.JoinFor(s, h, quiet: true);
         return h;
     }
 
@@ -213,7 +216,7 @@ public static class Heroes
     public static void QuestDone(Sim s, Hero h, Quest q, Camp cp)
     {
         if (h == null || h.State == "dead") return;
-        string poster = q.Civ >= 0 ? s.W.Civs[q.Civ].Name : $"{Will.InnById(s, q.Inn)?.Name ?? "Yol"} Hanı";
+        string poster = q.Org != null ? Orgs.ById(s, q.Org.Value)?.Name ?? "Avcılar Locası" : q.Civ >= 0 ? s.W.Civs[q.Civ].Name : $"{Will.InnById(s, q.Inn)?.Name ?? "Yol"} Hanı";
         Lore.Deed(s, h, "quest", $"{Lore.Ek(poster, "in")} ilanını bitirip {J.S(q.Bounty)} altın ödül aldı", cp?.Tile, poster);
         AddRenown(s, h, R_QUEST * Repeat(Count(h, "quests")), "quest");
     }
@@ -352,7 +355,7 @@ public static class Heroes
     /// <summary>Tavernadaki kahramanın bir medeniyete kiralanma bedeli (sınıf yakınlığında %25 indirim).</summary>
     public static (double Gold, double Food) HeroCost(Sim s, Civ c, Hero h)
     {
-        double aff = D.CLASSES[c.Cls].HeroClass == h.Cls ? 0.75 : 1;
+        double aff = Polity.HeroClass(c) == h.Cls ? 0.75 : 1;
         return (JsMath.Round((35 + 25 * (double)h.Level) * aff), JsMath.Round((30 + 10 * (double)h.Level) * aff));
     }
 
@@ -379,7 +382,7 @@ public static class Heroes
         double reserve = pop * Sim.FOOD_PER_POP * 25 / Sim.PACE;
         var ok = J.Filter(avail, h0 => { var k0 = HeroCost(s, c, h0); return s.St(c, "gold") >= k0.Gold && s.FoodTotal(c) - k0.Food >= reserve; });
         if (ok.Count == 0) return;
-        string aff = D.CLASSES[c.Cls].HeroClass;
+        string aff = Polity.HeroClass(c);
         var h = J.Sort(ok, (a, b) => b.Level - a.Level + (b.Cls == aff ? 1 : 0) - (a.Cls == aff ? 1 : 0))[0];
         var k = HeroCost(s, c, h);
         s.Add(c, "gold", -k.Gold);
@@ -432,7 +435,7 @@ public static class Heroes
     {
         // hedef: tehdit eden kamp ya da topraklarındaki bir yatağı işgal eden kamp
         var ss = s.CivSettlements(c);
-        bool hunt = s.E(c, "favoredHunt") > 0 || c.Cls == "ranger";
+        bool hunt = s.E(c, "favoredHunt") > 0 || Polity.HeroClass(c) == "ranger";
         var occ = J.At(J.Sort(J.Filter(s.W.Camps, x => x.Alive && !J.T(x.Hidden) && !J.T(s.W.Tiles[x.Tile].Isle) && s.W.Tiles[x.Tile].Deposit >= 0 && J.Some(ss, st => s.G.Dist(st.Tile, x.Tile) <= 9)),
             (x, y) => J.MinOf(ss, st => s.G.Dist(st.Tile, x.Tile)) - J.MinOf(ss, st => s.G.Dist(st.Tile, y.Tile))), 0);
         var tc = ThreatCamp(s, c);
@@ -493,7 +496,8 @@ public static class Heroes
         q.Open = true; q.TakenBy = new List<int>();
         q.Failures = (q.Failures ?? 0) + 1;
         double add = JsMath.Round(q.Bounty * 0.25);
-        if (q.Civ >= 0) { var c = s.W.Civs[q.Civ]; double pay = JsMath.Min(add, Math.Floor(s.St(c, "gold"))); s.Add(c, "gold", -pay); q.Bounty += pay; }
+        if (q.Org != null) { var og = Orgs.ById(s, q.Org.Value); if (og != null) { double pay = JsMath.Min(add, Math.Floor(og.Gold)); og.Gold -= pay; q.Bounty += pay; } }
+        else if (q.Civ >= 0) { var c = s.W.Civs[q.Civ]; double pay = JsMath.Min(add, Math.Floor(s.St(c, "gold"))); s.Add(c, "gold", -pay); q.Bounty += pay; }
         else { var i = Will.InnById(s, q.Inn); if (i != null) { double pay = JsMath.Min(add, Math.Floor(i.Gold)); i.Gold -= pay; q.Bounty += pay; } }
     }
 

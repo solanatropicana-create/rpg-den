@@ -33,15 +33,31 @@ public sealed partial class Sim
 
     public int PathCacheSize => _pathCache.Count;
 
-    public Sim(double seed)
+    /// <summary>Faz 1b-6: tarih öncesi (gün). Dünya üretimi coğrafya ve 4–6 devletin ilk kamplarıyla başlar; tarih öncesi aynı kurallarla
+    /// koşulur (devletler büyür, şehirler kurulur, savaşlar olur, kronik yazılır), sonunda örgütler çekirdek şehirlere kurulur
+    /// (<see cref="Orgs.Genesis"/>). Oyun ve ölçüm <see cref="World.Epoch"/>'tan başlar: dünya olgun, yerleşim sayısı oturmuş
+    /// (v3: yerleşimler kalıcı, bayrak geçici).</summary>
+    public const int PREHISTORY_DAYS = 1600;
+
+    /// <summary>Seed'den dünya: coğrafya ve devletler (WorldGen), yöneticiler (States.InitCiv), <paramref name="prehistory"/> gün tarih öncesi
+    /// (varsayılan <see cref="PREHISTORY_DAYS"/>; 0: dünya ilk kamplarla döner, örgütler hemen kurulur).</summary>
+    public Sim(double seed, int prehistory = PREHISTORY_DAYS)
     {
+        Polity.InitUnits();
         W = WorldGen.GenerateWorld(seed);
         G = new HexGrid(W.Width, W.Height);
         Rng = new Rng(JsMath.ToInt32(W.RngState) ^ unchecked((int)0x9e3779b9));
+        foreach (var c in W.Civs) States.InitCiv(this, c);
         UpdateTerritory();
         Discover();
         foreach (var c in W.Civs) RecomputeEff(c);
-        Log("world", $"Dünya uyandı. {W.Civs.Count} topluluk ilk kamplarını kurdu: {string.Join(", ", W.Civs.Select(c => $"{c.Name} ({D.RACES[c.Race].Plural}, {D.CLASSES[c.Cls].Name})"))}.", major: true);
+        States.FaithTick(this);
+        Log("world", $"Dünya uyandı. {W.Civs.Count} topluluk ilk kamplarını kurdu: {string.Join(", ", W.Civs.Select(c => $"{c.Name} ({D.RACES[c.Race].Plural}, {Polity.Gov(c).Name}; {States.RulerTitle(this, c)})"))}.", major: true);
+        for (int d = 0; d < prehistory; d++) Step();
+        W.Epoch = W.Day;
+        foreach (var st in W.Settlements) if (st.Alive) W.SettleCap++;
+        W.SettleCap = Math.Max(W.SettleCap, 8);
+        Orgs.Genesis(this);
     }
 
     private Sim() { }
@@ -413,15 +429,16 @@ public sealed partial class Sim
         Cp?.Invoke("repair");
         foreach (var c in w.Civs) if (c.Alive && Every(CIV_AI_DAYS, c.Id * 0.75)) CivAI(c);
         if (Every(TERRITORY_DAYS)) { UpdateTerritory(); Cp?.Invoke("territory"); Diplomacy.RelationsTick(this); Cp?.Invoke("relations"); }
-        if (Every(WORLD_DAYS)) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); }
+        if (Every(WORLD_DAYS)) { Discover(); Cp?.Invoke("discover"); Diplomacy.WorldTick(this); Cp?.Invoke("world"); Events.DisastersTick(this); Cp?.Invoke("disasters"); States.Tick(this); Cp?.Invoke("states"); Bondage.Tick(this); Patrol.BanditTick(this); Cp?.Invoke("bondage"); }
         Events.PlagueTick(this); Cp?.Invoke("plague");   // Faz 1b-5: salgın günlük işler (5–10 gün)
-        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) Classes.ClassYearly(this, c); Cp?.Invoke("yearly"); }   // takvim yılı: yıllık bayramlar
+        if (w.Day % YEAR == 0) { foreach (var c in w.Civs) if (c.Alive) States.Yearly(this, c); Orgs.Yearly(this); Cp?.Invoke("yearly"); }   // takvim yılı: yıllık bayramlar (Faz 1b-6: tipin olayı; örgütlerinki Orgs)
         Monsters.CampsTick(this); Cp?.Invoke("camps");
         Storyteller.Tick(this); Cp?.Invoke("story");   // Faz 1 B2: anlatıcı (gerilim, kriz, rahatlama) ve ejderha
         Heroes.TavernsTick(this); Cp?.Invoke("taverns");
         Inns.InnsTick(this); Cp?.Invoke("inns");
         Heroes.HeroesTick(this); Cp?.Invoke("heroes");   // Faz 1b-5: her gün (eskiden 5 eski günde bir)
         Agents.AgentsTick(this); Cp?.Invoke("agents");
+        Patrol.Tick(this); Orgs.Tick(this); Cp?.Invoke("orgs");   // Faz 1b-6: devriye, örgüt kararları
         Sea.SeaTick(this); Cp?.Invoke("sea");
         Agents.RoutesTick(this); Cp?.Invoke("routes");
         Agents.RoadsTick(this); Cp?.Invoke("roads");

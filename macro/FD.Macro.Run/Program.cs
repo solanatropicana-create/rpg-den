@@ -79,6 +79,7 @@ public static class Program
             case "selftest": ModeSelfTest(); return 0;
             case "bench": ModeBench(Seed(a, 1), a.Length > 2 ? Day(a, 2) : 1800); return 0;
             case "stats": return StatsMode.Run(a, Out);
+            case "world": ModeWorld(Seed(a, 1), a.Length > 2 ? Day(a, 2) : 0); return 0;
             default:
                 throw new UsageException("usage: FD.Macro.Run hash <seed> <days> | cps <seed> <day> | dump <seed> <day> [label] | rng <seed> <day> | selftest | bench <seed> [days]\n"
                     + "       FD.Macro.Run " + StatsMode.Usage);
@@ -226,6 +227,44 @@ public static class Program
         sim.Rng.Trace = null;
     }
 
+    /// <summary>Faz 1b-6: dünyanın siyasi özeti (tarih öncesinden sonra ve <paramref name="days"/> gün sonra): devletler, yöneticiler,
+    /// büyük şehirler, inanç, örgütler, sayaçlar.</summary>
+    private static void ModeWorld(double seed, int days)
+    {
+        var sim = new Sim(seed);
+        WorldSummary(sim, "tarih öncesinin sonu");
+        if (days <= 0) return;
+        for (int d = 0; d < days; d++) sim.Step();
+        WorldSummary(sim, $"{days} gün sonra");
+        var m = sim.W.Metrics;
+        Out.WriteLine("sayaçlar: " + string.Join(", ", J.Map(J.Filter(m.Keys(), k => !k.StartsWith("ev_")), k => $"{k}={JsMath.Str(m.Get(k) ?? 0)}")));
+    }
+
+    private static void WorldSummary(Sim s, string title)
+    {
+        var w = s.W;
+        Out.WriteLine($"== {title}: gün {w.Day} ({s.DateStr()}), epoch {w.Epoch}, yerleşilebilir anakara {Diplomacy.HabitableTiles(s)}, dünya tavanı {Diplomacy.WorldCap(s)}");
+        int alive = J.Filter(w.Settlements, x => x.Alive).Count, big = J.Filter(w.Settlements, x => x.Alive && Sim.IsBig(x)).Count;
+        double wpop = 0, slaves = 0, pris = 0;
+        foreach (var st in w.Settlements) if (st.Alive) { wpop += s.Pop(st); slaves += st.Slaves ?? 0; pris += st.Prisoners ?? 0; }
+        Out.WriteLine($"yerleşim {alive}, büyük şehir {big}, kamp {J.Filter(w.Camps, c => c.Alive && c.Kind != "bandit").Count}, aç haydut kampı {J.Filter(w.Camps, c => c.Alive && c.Kind == "bandit").Count}, kahraman {J.Filter(w.Heroes, h => h.State != "dead" && h.State != "gone").Count} (esir {J.Filter(w.Heroes, h => h.State == "captive").Count}), nüfus {wpop}, köle {slaves}, mahkûm {pris}");
+        foreach (var c in w.Civs)
+        {
+            if (!c.Alive) continue;
+            var ss = s.CivSettlements(c);
+            double sun = 0, old = 0, pact = 0, pop = 0;
+            foreach (var st in ss) { double p = s.Pop(st); pop += p; sun += p * (st.Faith?.Get("sun") ?? 0); old += p * (st.Faith?.Get("old") ?? 0); pact += p * (st.Faith?.Get("pact") ?? 0); }
+            Out.WriteLine($"  {c.Name} [{c.Gov}/{c.Race}] {States.RulerTitle(s, c)} meşruiyet {JsMath.Round(c.Legit)} hiz {JsMath.Round(c.Align.Law * 100) / 100}/{JsMath.Round(c.Align.Good * 100) / 100} "
+                + $"yerleşim {ss.Count} nüfus {pop} kademe {s.CivTier(c)} büyük {J.Filter(ss, x => Sim.IsBig(x)).Count} inanç G{JsMath.Round(sun / JsMath.Max(1, pop) * 100)}/E{JsMath.Round(old / JsMath.Max(1, pop) * 100)}/P{JsMath.Round(pact / JsMath.Max(1, pop) * 100)} saldırganlık {JsMath.Round(Polity.Aggression(c) * 100) / 100}");
+        }
+        foreach (var o in w.Orgs)
+        {
+            int hidden = J.Filter(o.Branches, b => b.Hidden).Count;
+            int heroes = J.Filter(w.Heroes, h => h.State != "dead" && h.State != "gone" && Orgs.MemberOf(h, o) != null).Count;
+            Out.WriteLine($"  {(o.Alive ? "" : "† ")}{o.Name}: merkez {s.Settlement(o.Hq)?.Name ?? "-"}, şube {o.Branches.Count} (gizli {hidden}), üye {o.Members}, kahraman {heroes}, altın {JsMath.Round(o.Gold)}, yeniden doğuş {o.Rebirths} | {string.Join(" ", J.Map(o.Tally.Keys(), k => $"{k}={JsMath.Round(o.Tally.Get(k) ?? 0)}"))}");
+        }
+    }
+
     private static void ModeBench(double seed, int days)
     {
         var sw = Stopwatch.StartNew();
@@ -317,7 +356,7 @@ public static class Program
 /// toplayıcının salt okunurluğu); <c>--saveload N</c> Sim.Save(string)/Sim.Load(string) varsa (A2) yarıda kaydet → yükle → devam
 /// eder ve hash'leri karşılaştırır. Çıkış kodu: 0; bir dünya çökerse 3 (raporlar yine yazılır).
 /// </summary>
-internal static class StatsMode
+internal static partial class StatsMode
 {
     public const string Usage = "stats --seeds 1-16 (--years 60 | --days N) --out <dir> [--jobs N] [--runs <dir>] [--label <text>] [--verify N] [--saveload N] [--proj K]";
 
@@ -611,7 +650,7 @@ internal static class StatsMode
         public int N;
     }
 
-    private sealed class Report
+    private sealed partial class Report
     {
         private readonly Opts O;
         private readonly List<WorldRun> All, Ok;
@@ -905,6 +944,7 @@ internal static class StatsMode
             }
             EvaluateV3();
             EvaluateDurations();   // Faz 1b-5
+            EvaluatePolity();      // Faz 1b-6
         }
 
         // ------------------------------------------------------------ Faz 1b-5: v3 süre tablosu
@@ -1125,7 +1165,7 @@ internal static class StatsMode
                 Crits.Add(new Crit
                 {
                     Id = id, Name = $"Yerleşim sayısı sabit, {label}",
-                    Rule = "dünya başına yaşayan yerleşim sayısının (günlük) değişim katsayısı medyanı ≤ %10" + (id == "6b" ? " (dünya hâlâ 8 kamptan başlayıp büyüyor; dünya üretimi sonraki adım)" : ""),
+                    Rule = "dünya başına yaşayan yerleşim sayısının (günlük) değişim katsayısı medyanı ≤ %10" + (id == "6b" ? " (Faz 1b-6: dünya tarih öncesiyle olgun başlar)" : ""),
                     Pass = double.IsNaN(cv.Med) ? null : cv.Med <= 0.10,
                     Measured = $"değişim katsayısı {Pct(cv.Med)} ({Pct(cv.P10)}–{Pct(cv.P90)}); ortalama {F(mean.Med)} yerleşim, en az ve en çok ortalamanın {Pct(lo.Med)} ve {Pct(hi.Med)} kadarı",
                     Data = new JObj { { "cv", cv.Med }, { "cvP10", cv.P10 }, { "cvP90", cv.P90 }, { "mean", mean.Med }, { "minShare", lo.Med }, { "maxShare", hi.Med }, { "fromDay", w.D0 }, { "toDay", w.D1 } },
@@ -1313,7 +1353,7 @@ internal static class StatsMode
             string P(double x) => Pct(x);
             L("## v3: durum değişimi");
             L();
-            L($"Yol haritası v3: dünya büyüyerek değil, durum değiştirerek yaşar. Bütün değerler dünya başına; hücre: dünyalar arası medyan (p10–p90). \"100 günde\": pencerede sayılan / pencerenin günü × 100; \"yerleşim başına\": yaşayan yerleşim-günlerine bölünür. Büyük şehir = Şehir kademesi (kademe {Sim.BIG_TIER}, nüfus ≥ 100; histerezisle ≥ 85). Isınma: koşunun ilk üçte biri ({WarmDays} gün). Dünya hâlâ 8 kamptan başlayıp ilk on yıllarda büyüyor (dünya üretimi sonraki adım); bu yüzden bütün koşunun değerleri ayrıca verilmiştir.");
+            L($"Yol haritası v3: dünya büyüyerek değil, durum değiştirerek yaşar. Bütün değerler dünya başına; hücre: dünyalar arası medyan (p10–p90). \"100 günde\": pencerede sayılan / pencerenin günü × 100; \"yerleşim başına\": yaşayan yerleşim-günlerine bölünür. Büyük şehir = Şehir kademesi (kademe {Sim.BIG_TIER}, nüfus ≥ 100; histerezisle ≥ 85). Isınma: koşunun ilk üçte biri ({WarmDays} gün). Faz 1b-6'dan beri dünya tarih öncesiyle ({Sim.PREHISTORY_DAYS} gün) olgun başlar, ölçüm tarih öncesinin sonundan başlar; ısınma penceresi önceki ölçümlerle karşılaştırma için tutuldu.");
             if (O.Proj != 1) L($"†: gelecek zaman ölçeğine bağlı. Yol haritası v3'ün hedefleri yeni takvimdedir (1 yıl = 40 gün; eski {YEAR} günlük yıl ≈ 30 gün): bugünkü ölçekte ölçülen oranlar ×{F(O.Proj)}, süreler ÷{F(O.Proj)} ile yansıtılır (`--proj`). Yeni takvime geçince yansıtma 1 olur.");
             L();
             L("| Ölçü | " + string.Join(" | ", wins.Select(w => w.Name)) + (O.Proj != 1 ? $" | yeni takvimde (×{F(O.Proj)} / ÷{F(O.Proj)}, ısınmadan sonra)" : "") + " |");
@@ -1694,6 +1734,7 @@ internal static class StatsMode
             L();
             V3Md(sb);
             DurMd(sb);   // Faz 1b-5
+            PolityMd(sb);   // Faz 1b-6
             L("## Eski analizdeki sorunlar");
             L();
             L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");

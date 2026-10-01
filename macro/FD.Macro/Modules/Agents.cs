@@ -79,7 +79,7 @@ public static class Agents
         if (vsMonsters && s.E(c, "foresee") > 0) ac += 2;
         // B1: başkenti düşen medeniyetin halkı yeni başkentte kenetlenir (Diplomacy.RALLY_DAYS boyunca)
         if (!vsMonsters && s.Day - (c.CapitalLostDay ?? -99999) < Diplomacy.RALLY_DAYS && s.Capital(c)?.Id == st.Id) ac += Diplomacy.RALLY_AC;
-        if (c.Cls == "druid" && J.Some(s.G.Neighbors(st.Tile), nb => s.W.Tiles[nb].Terrain == "forest" || s.W.Tiles[nb].Terrain == "oldforest")) ac += 2;
+        if (Polity.OldWays(st) && J.Some(s.G.Neighbors(st.Tile), nb => s.W.Tiles[nb].Terrain == "forest" || s.W.Tiles[nb].Terrain == "oldforest")) ac += 2;   // Faz 1b-6: Eski İnanç'ın ormanı (eski Druid)
         foreach (var x in cs) x.Ac += ac;
         foreach (var h in s.CivHeroes(c)) if (h.State == "home" && h.Pos == st.Tile) cs.Add(Combat.HeroCombatant(h, side));
         return cs;
@@ -388,7 +388,7 @@ public static class Agents
             return true;
         }
         var used = new HashSet<string>(J.Map(w.Settlements, x => x.Name));
-        string name = J.Find(D.CLASSES[c.Cls].Towns, n => !used.Contains(n)) ?? TownName(s, t, used);
+        string name = J.Find(Polity.Culture(c).Towns, n => !used.Contains(n)) ?? TownName(s, t, used);
         var st = WorldGen.MakeSettlement(s.Id(), c.Id, name, t, a.Pop ?? new JsObj<double>(), s.Day);
         if (a.Landing != null) st.Overseas = true;
         w.Settlements.Add(st);
@@ -546,7 +546,7 @@ public static class Agents
     {
         if (a.Monster == "pirate") Sea.PirateSmuggle(s, a);
         var cp = J.Find(s.W.Camps, x => x.Id == a.From);
-        if (cp != null && cp.Alive) { cp.Count = JsMath.Min(18, cp.Count + (a.Troops ?? 0)); if (J.T(a.Boss)) cp.Boss = true; cp.Loot += a.Loot ?? 0; }
+        if (cp != null && cp.Alive) { cp.Count = JsMath.Min(18, cp.Count + (a.Troops ?? 0)); if (J.T(a.Boss)) cp.Boss = true; cp.Loot += a.Loot ?? 0; if (cp.Kind == "bandit" && (a.Loot ?? 0) > 0) cp.Hungry = null; }   // Faz 1b-6: ganimetle dönen haydut tok
     }
 
     /// <summary>Faz 1 C3: yağmalanan kasabanın hazine payından (nüfus payı) canavarların götürdüğü oran; tahıl ambarından (kasabanın
@@ -938,10 +938,12 @@ public static class Agents
                     s.Metric("questDone");
                     if (q.Civ < 0) s.Metric("innQuestDone");
                     var payer = q.Civ >= 0 ? w.Civs[q.Civ] : null;
+                    var porg = q.Org != null ? Orgs.ById(s, q.Org.Value) : null;   // Faz 1b-6: Avcılar Locası'nın ilanı
+                    if (porg != null) porg.Tally.Add("bountyPaid", 1);
                     double each = Math.Floor((q.Bounty + part * 0.5) / Math.Max(1, hs.Count));
                     foreach (int id in hs) { var h = s.Hero(id); h.Gold += each; if (q.Civ >= 0) h.Rep.Set(q.Civ, (h.Rep.Get(q.Civ) ?? 0) + 1); Heroes.QuestDone(s, h, q, cp); }
                     if (payer != null) { s.Add(payer, "gold", JsMath.Round(part * 0.5)); if (!helped.Contains(payer)) helped.Add(payer); }
-                    if (!joint && cp.Kind != "dragon") s.Log("lair", $"{who}, {Tr.Ek(cp.Name, "i")} yerle bir etti! {(payer != null ? payer.Name : "Hancı")} ödülü ödedi.", tile: cp.Tile, civ: payer?.Id, battle: b.Id, cause: $"İlan: {J.S(q.Bounty)} altın; {J.S(loot)} değerinde ganimet", major: true);
+                    if (!joint && cp.Kind != "dragon") s.Log("lair", $"{who}, {Tr.Ek(cp.Name, "i")} yerle bir etti! {(payer != null ? payer.Name : porg != null ? porg.Name : "Hancı")} ödülü ödedi.", tile: cp.Tile, civ: payer?.Id, battle: b.Id, cause: $"İlan: {J.S(q.Bounty)} altın; {J.S(loot)} değerinde ganimet", major: true);
                 }
                 else if (acv != null)
                 {
@@ -983,7 +985,8 @@ public static class Agents
             foreach (var oq in w.Quests) if (oq.Camp == cp.Id && oq.Open)
                 {
                     oq.Open = false;
-                    if (oq.Civ >= 0) s.Add(w.Civs[oq.Civ], "gold", oq.Bounty); else { var inn = J.Find(w.Inns, x => x.Id == oq.Inn); if (inn != null) inn.Gold += oq.Bounty; }
+                    if (oq.Org != null) { var og = Orgs.ById(s, oq.Org.Value); if (og != null) og.Gold += oq.Bounty; }
+                    else if (oq.Civ >= 0) s.Add(w.Civs[oq.Civ], "gold", oq.Bounty); else { var inn = J.Find(w.Inns, x => x.Id == oq.Inn); if (inn != null) inn.Gold += oq.Bounty; }
                 }
             if (cp.Kind == "dragon") Dragon.SlainAtLair(s, cp, band, side, mons, b, loot);   // Faz 1 B2: ün, efsane, kronik
         }
@@ -1171,7 +1174,7 @@ public static class Agents
             bool hungry = att.Famine != null && att.Famine.Declared;
             if (hungry) loot = FamineLoot(s, att, dfc, loot);   // Faz 1 C3: aç akıncılar ambarı boşaltır
             s.Log("war", $"{att.Name} akıncıları {Tr.Ek(st.Name, "i")} yağmaladı: {loot}.", civ: att.Id, tile: st.Tile, battle: b.Id, major: true,
-                cause: hungry ? "Kıtlık: aç akıncılar komşunun ambarını boşalttı" : $"{D.CLASSES[att.Cls].Feature}: yağma ekonomisi");   // Faz 1 C3
+                cause: hungry ? "Kıtlık: aç akıncılar komşunun ambarını boşalttı" : $"{(att.Gov == "clans" ? "Akın geleneği" : "Savaşçı soylar")}: yağma ekonomisi");   // Faz 1 C3
         }
         else
         {

@@ -17,7 +17,7 @@ public static class Inns
     /// doluyken (INN_POOL'a dek), ün ve iş talebiyle (Heroes.Demand) çarpılır. Eskiden 5 eski günde 0,03 / 0,012 (yeni günde ~0,024 / 0,01:
     /// han başına ~150 günde bir). Havuz artık dönüşür (Heroes.INN_STAY: yabancı ~40 gün kalıp yoluna devam eder); boşalan yer çabuk dolar.
     /// İş talebi yarı ağırlıkla sayılır (0,5 + 0,5 × talep): han yol üstündedir, kampsız bölgede de yolcu uğrar.</summary>
-    public const double INN_SPAWN_EMPTY = 0.3, INN_SPAWN = 0.15;
+    public const double INN_SPAWN_EMPTY = 0.42, INN_SPAWN = 0.23;   // Faz 1b-6: 0,3 / 0,15 (v3: han başına 10–20 günde bir doğum)
     /// <summary>açık artırmanın süresi (gün; eski bir yıl) ve kahraman seferdeyse uzatma (eski 20 gün)</summary>
     public const double AUCTION_DAYS = Sim.OLD_YEAR, AUCTION_WAIT = 20 / Sim.PACE;
     /// <summary>hanı basan medeniyetin hanlardan kahraman kiralayamadığı süre (takvim yılı; eski 5 yıl)</summary>
@@ -28,7 +28,7 @@ public static class Inns
 
     /// <summary>Yuvası bu han olan, bağımsız ve hayattaki (emekli olmayan) kahramanlar.</summary>
     public static List<Hero> InnPool(Sim s, Inn inn) =>
-        J.Filter(s.W.Heroes, h => h.BaseInn && h.Base == inn.Id && h.Civ == -1 && h.State != "dead" && h.State != "gone" && h.State != "retired");
+        J.Filter(s.W.Heroes, h => h.BaseInn && h.Base == inn.Id && h.Civ == -1 && h.State != "dead" && h.State != "gone" && h.State != "retired" && h.State != "captive");
 
     /// <summary>Medeniyetin handan sözleşmeyle tuttuğu (hayattaki) kahramanlar.</summary>
     public static List<Hero> InnHeroesOf(Sim s, Civ c) =>
@@ -91,7 +91,8 @@ public static class Inns
             if (q.Open && q.Expires != null && s.Day >= q.Expires.Value)
             {
                 q.Open = false;
-                if (q.Civ >= 0) s.Add(w.Civs[q.Civ], "gold", q.Bounty); else { var inn = Will.InnById(s, q.Inn); if (inn != null) InnLife.InnIncome(s, inn, q.Bounty, $"İlanın süresi doldu; {J.S(q.Bounty)} altın ödül kasaya döndü"); }
+                if (q.Org != null) { var og = Orgs.ById(s, q.Org.Value); if (og != null) og.Gold += q.Bounty; }
+                else if (q.Civ >= 0) s.Add(w.Civs[q.Civ], "gold", q.Bounty); else { var inn = Will.InnById(s, q.Inn); if (inn != null) InnLife.InnIncome(s, inn, q.Bounty, $"İlanın süresi doldu; {J.S(q.Bounty)} altın ödül kasaya döndü"); }
                 s.Metric("questExpired");
             }
         }
@@ -109,14 +110,14 @@ public static class Inns
         if (cap == null) return;
         int already = J.Filter(s.W.Heroes, h0 => h0.Civ == -1 && h0.State != "dead" && h0.State != "gone" && h0.Auction != null && J.Some(h0.Auction.Bids, b => b.Civ == c.Id)).Count;
         if (already >= MAX_INN_HEROES - InnHeroesOf(s, c).Count) return;
-        string heroClass = D.CLASSES[c.Cls].HeroClass;
+        string heroClass = Polity.HeroClass(c);
         var cands = J.Sort(J.Filter(J.Filter(s.W.Heroes, h0 => h0.Civ == -1 && h0.Auction != null && h0.BaseInn && (h0.State == "tavern" || h0.State == "quest" || h0.State == "traveling") && Will.HeroWillServe(c, h0) && !J.Some(h0.Auction.Bids, b => b.Civ == c.Id)),
                 h0 => { var i = Will.InnById(s, h0.Base); return i != null && i.Alive && s.G.Dist(i.Tile, cap.Tile) <= 30; }),
             (a, b) => J.Or(J.Or(b.Level - a.Level, (b.Cls == heroClass ? 1 : 0) - (a.Cls == heroClass ? 1 : 0)), a.Id - b.Id));
         var h = J.At(cands, 0);
         if (h == null) return;
         double K = Heroes.HeroBaseCost(h);
-        double need = (c.Threat > 0.35 || war ? 3 : 2) + (D.CLASSES[c.Cls].HeroClass == h.Cls ? 0.3 : 0);
+        double need = (c.Threat > 0.35 || war ? 3 : 2) + (Polity.HeroClass(c) == h.Cls ? 0.3 : 0);
         double max = JsMath.Min(gold * 0.6, K * need);
         // Math.max(0, ...bids.map(effBid))
         var tops = new List<double> { 0 };

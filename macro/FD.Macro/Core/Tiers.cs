@@ -134,32 +134,38 @@ public sealed partial class Sim
         return o >= 0 ? Settlement(o)?.Tier ?? -1 : -1;
     }
 
-    /// <summary>Etkiler: sınıf tabanı + medeniyet kademesiyle açılan sınıf ayrıcalıkları (ClassDef.Perks) + kademe etkileri
-    /// (<see cref="TIER_EFF"/>). Kademe değişince (UpdateTerritory) yeniden hesaplanır.</summary>
+    /// <summary>Etkiler (Faz 1b-6: sınıf tabanı yerine): hükümet tipi (Polity.GovDef.Eff) + kültür (CultureDef.Eff) + kademe etkileri
+    /// (<see cref="TIER_EFF"/>) + Kutsal Sefer (Şehir kademesindeki kutsal devlet; eski paladin ayrıcalığı). Kademe ya da yönetici
+    /// değişince yeniden hesaplanır.</summary>
     public void RecomputeEff(Civ c)
     {
-        var cls = D.CLASSES[c.Cls];
         var e = new JsObj<double>();
         void AddE(JsObj<double> x)
         {
             if (x == null) return;
             foreach (var kv in x) e.Set(kv.Key, (e.Get(kv.Key) ?? 0) + kv.Value);
         }
-        AddE(cls.Base);
+        AddE(Polity.Gov(c).Eff);
+        AddE(Polity.Culture(c).Eff);
         int tier = CivTier(c);
-        if (cls.Perks != null) foreach (var p in cls.Perks) if (p.Tier <= tier) AddE(p.Eff);
         for (int t = 1; t <= tier && t < TIER_EFF.Length; t++) AddE(TIER_EFF[t]);
+        if (c.Align != null && Polity.Holy(c) && tier >= BIG_TIER) e.Set("crusade", 1);
+        if (States.PactBound(States.Ruler(this, c))) e.Set("pact", 1);   // yönetici gizlice Pakt'a bağlı: devlet kötü (eski Paktçı)
         c.Eff = e;
     }
 
-    /// <summary>Medeniyetin kademesiyle açılmış özel birlikleri (ayrıcalık sırasıyla, tekrarsız).</summary>
+    /// <summary>Faz 1b-6: devletin birlikleri (spec: generic milis, asker, okçu, şövalye + kültür birimi): Köy'den okçu ve tipin birimi
+    /// (boylarda Akıncı), Kasaba'dan kültür birimi, Şehir'den şövalye (at ister; boylar hariç). Örgüt birlikleri kiralanır (Orgs).</summary>
     public List<string> CivUnits(Civ c)
     {
         var o = new List<string>();
-        var perks = D.CLASSES[c.Cls].Perks;
-        if (perks == null) return o;
         int tier = CivTier(c);
-        foreach (var p in perks) if (p.Unit != null && p.Tier <= tier && !o.Contains(p.Unit)) o.Add(p.Unit);
+        if (tier >= 1) o.Add("archer");
+        var gu = Polity.Gov(c).Unit;
+        if (gu != null && tier >= 1 && !o.Contains(gu)) o.Add(gu);
+        var cu = Polity.Culture(c).Unit;
+        if (cu != null && tier >= 2 && !o.Contains(cu)) o.Add(cu);
+        if (tier >= BIG_TIER && c.Gov != "clans") o.Add("knight");
         return o;
     }
 

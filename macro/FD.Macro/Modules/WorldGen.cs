@@ -183,15 +183,17 @@ public static class WorldGen
             }
         }
 
-        // Medeniyet seçimi
-        var pool = J.Filter(D.CLASSES.Keys(), c => D.CLASSES[c].Implemented);
+        // Faz 1b-6: devletler (spec §8: 4–6 devlet, tipler seed'e göre). Kültürler (ana ırklar) karışık sırayla seçilir; dört hükümet
+        // tipinin her biri en az bir kez, kültüre en yatkın devlete verilir, kalanlar kültürün yatkınlığına göre (bir tipten en çok iki).
+        var pool = new List<string>(Polity.MAIN_RACES);
         rng.Shuffle(pool);
-        double count = 7 + rng.Int(0, 2);
+        double count = 4 + rng.Int(0, 2);
         var chosen = J.Slice(pool, 0, J.I(count));
+        var govs = AssignGovs(rng, chosen);
         var starts = new List<int>();
-        foreach (string cls in chosen)
+        foreach (string race in chosen)
         {
-            var like = D.CLASSES[cls].TerrainLike;
+            var like = Polity.CultureOf(race).TerrainLike;
             int best = -1; double bs = double.NegativeInfinity;
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -280,13 +282,13 @@ public static class WorldGen
         // garantiler
         for (int k = 0; k < chosen.Count; k++)
         {
-            string cls = chosen[k];
+            string race = chosen[k];
             int s = starts[k];
             place("fertile", s, 1, 2);
             place("clay", s, 2, 3);
-            if (cls == "cleric") place("copper", s, 4, 8);
-            if (cls == "barbarian") place("horses", s, 3, 7);
-            if (cls == "rogue") place("salt", s, 4, 8);
+            if (race == "dwarf") place("copper", s, 4, 8);
+            if (race == "halforc") place("horses", s, 3, 7);
+            if (race == "halfling") place("salt", s, 4, 8);
         }
         foreach (string kind in D.DEPOSITS.Keys())
         {
@@ -315,8 +317,8 @@ public static class WorldGen
                 deposits.Add(d);
             }
         }
-        // Druid'e kadim orman garantisi
-        int di = chosen.IndexOf("druid");
+        // Elflere kadim orman garantisi (eski Druid)
+        int di = chosen.IndexOf("elf");
         if (di >= 0 && !J.Some(deposits, d => d.Kind == "heartwood" && J.Some(d.Tiles, t => g.Dist(t, starts[di]) <= 7)))
         {
             var cands = J.Filter(g.Within(starts[di], 6), t => g.Dist(t, starts[di]) >= 3 && tiles[t].Deposit < 0 && tiles[t].Terrain != "water" && tiles[t].Terrain != "mountain");
@@ -333,9 +335,10 @@ public static class WorldGen
         var settlements = new List<Settlement>();
         for (int i = 0; i < chosen.Count; i++)
         {
-            string cls = chosen[i];
-            civs.Add(MakeCiv(i, cls, 0));
-            settlements.Add(MakeSettlement(nextId++, i, D.CLASSES[cls].Capital, starts[i], new JsObj<double> { [D.CLASSES[cls].Race] = 6 }, 0));
+            string race = chosen[i];
+            var cu = Polity.CultureOf(race);
+            civs.Add(MakeCiv(i, race, govs[i], rng.Pick(cu.Stems), 0));
+            settlements.Add(MakeSettlement(nextId++, i, cu.Capitals[0], starts[i], new JsObj<double> { [race] = 6 }, 0));
         }
 
         var camps = new List<Camp>();
@@ -397,16 +400,44 @@ public static class WorldGen
         return new Camp { Id = id, Kind = kind, Tile = tile, Name = name, Count = count, Boss = kind == "hobgoblin", HadBoss = kind == "hobgoblin", Loot = 10, GrowthAcc = 0, Alive = true, NextRaid = day + rng.Int(kind == "goblin" ? 90 : 38, 115), Founded = day };   // Faz 1b-5: eski 360 / 150–460 gün
     }
 
-    /// <summary>Sınıf tanımından yeni medeniyet: başlangıç stoku, align ve eff sınıf değerlerinin kopyası (kademe etkileri
-    /// Sim.RecomputeEff'te eklenir).</summary>
-    public static Civ MakeCiv(int id, string cls, double day)
+    /// <summary>Faz 1b-6: dört hükümet tipinin her biri bir kez, kültürü en yatkın devlete (yatkınlık × (0,5 + zar)); kalanlar kültürün
+    /// yatkınlığıyla, bir tipten en çok iki.</summary>
+    public static List<string> AssignGovs(Rng rng, List<string> races)
     {
-        var c = D.CLASSES[cls];
+        var govs = new string[races.Count];
+        var order = rng.Shuffle(new List<string>(Polity.GOV_IDS));
+        var left = new List<int>();
+        for (int i = 0; i < races.Count; i++) left.Add(i);
+        foreach (var g in order)
+        {
+            if (left.Count == 0) break;
+            int best = left[0]; double bs = double.NegativeInfinity;
+            foreach (int i in left)
+            {
+                double sc = (Polity.CultureOf(races[i]).Govs.Get(g) ?? 0.5) * (0.5 + rng.Next());
+                if (sc > bs) { bs = sc; best = i; }
+            }
+            govs[best] = g;
+            left.Remove(best);
+        }
+        foreach (int i in left)
+        {
+            var ok = J.Filter(Polity.GOV_IDS, g => J.Filter(new List<string>(govs), x => x == g).Count < 2);
+            govs[i] = rng.Weighted(ok, g => Polity.CultureOf(races[i]).Govs.Get(g) ?? 0.5);
+        }
+        return new List<string>(govs);
+    }
+
+    /// <summary>Faz 1b-6: yeni devlet (kültür ırkı, hükümet tipi, ad kökü); başlangıç stoku. Yasa, yönetici ve hizalama
+    /// States.InitCiv'de; etkiler Sim.RecomputeEff'te.</summary>
+    public static Civ MakeCiv(int id, string race, string gov, string stem, double day)
+    {
+        var cu = Polity.CultureOf(race);
         return new Civ
         {
-            Id = id, Cls = cls, Name = c.CivName, Race = c.Race, Align = new Alignment { Law = c.Align.Law, Good = c.Align.Good }, Color = c.Color,
+            Id = id, Gov = gov, Stem = stem, Name = Polity.StateName(stem, gov), Race = race, Align = new Alignment { Law = Polity.GOVS[gov].Law, Good = cu.Good }, Color = cu.Color,
             Stock = new JsObj<double> { ["grain"] = 25, ["meat"] = 10, ["wood"] = 20, ["gold"] = 5 }, Price = new JsObj<double>(), Want = new JsObj<double>(),
-            Eff = c.Base != null ? c.Base.Clone() : new JsObj<double>(), Alive = true, Founded = day, Threat = 0, LastRaidedDay = -9999, ScoutSent = false,
+            Eff = new JsObj<double>(), Alive = true, Founded = day, Threat = 0, LastRaidedDay = -9999, ScoutSent = false,
             Stats = new CivStats { PeakPop = 6, BattlesWon = 0, BattlesLost = 0, Traded = 0, Mined = new JsObj<double>(), Depleted = 0 }, LastExpand = -9999, Yearly = new JsObj<double>(), History = new List<HistPoint>(),
         };
     }

@@ -1,6 +1,6 @@
-# macro — durum (1 Ekim 2026, Faz 1b-5)
+# macro — durum (1 Ekim 2026, Faz 1b-6)
 
-`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1, C3, Faz 1b-3 (4X budaması, yol haritası v3) Faz 1b-4 (dünyanın ayarı: kamp bandı, büyük şehir, ejderha; v3 ölçüleri) ve Faz 1b-5 (zaman ölçeği: 1 gün = 30 dk, 1 yıl = 40 gün; süre tablosu) değişiklikleri vardır. Altın test 120 günlük eski takvimle yapıldı; ana hat artık TS'den ayrı bir takvimde. Godot projesine henüz bağlı değil.
+`macro/`, Fantastik Dünya'nın Godot'dan bağımsız C# dünya simülasyonudur (`FD.Macro`, .NET 8). TS simülasyonunun birebir portu `port-exact` etiketinde durur; ana hatta bunun üstüne Faz 1 dalga A, dalga B, C1, C3, Faz 1b-3 (4X budaması, yol haritası v3) Faz 1b-4 (dünyanın ayarı: kamp bandı, büyük şehir, ejderha; v3 ölçüleri) Faz 1b-5 (zaman ölçeği: 1 gün = 30 dk, 1 yıl = 40 gün; süre tablosu) ve Faz 1b-6 (devlet, inanç ve örgüt modeli: 12 sınıf-medeniyetin yerine 4–6 devlet ve 13 örgüt; esaret, devriye, aç haydutlar; tarih öncesiyle olgun dünya) değişiklikleri vardır. Altın test 120 günlük eski takvimle yapıldı; ana hat artık TS'den ayrı bir takvimde. Godot projesine henüz bağlı değil.
 
 ## Altın test (TS ↔ C#)
 
@@ -119,34 +119,48 @@
   - **Süre tablosuna göre ayarlananlar:** salgın 5–10 gün (eski 90–160), yanan evin onarımı 1–3 gün (her gün), sur 5–10 gün, kale ve fener kulesi 15–30 gün, temizlenen kampa köy 10–20 gün, han kurulumu 5–10 gün (hancı hızı), handa kahraman doğumu han başına 10–20 günde bir (yabancı yolcu, emekli öğretmen), efsaneye yükseliş 100–300 gün (genç kahramanın ünü çabuk yayılır, efsane olmamışın ünü söner), ilan ömrü 15 gün (eski 3 yıl; başarısız sefer ödülü +%25), kahraman ve han personeli maaşı haftalık (3 hafta ödenmeyen kahraman ayrılır), büyük şehir kuşatması 6 gün (eski 20), her yerleşim kuşatması ≥ 3 gün, ejderha haracı 30 günde bir.
   - Kayıt biçimi sürüm 3 (sürüm 2 açılmaz). Ölçüme v3 süre tablosu (8a–8j, `DurLog`) ve proje süreleri eklendi; `--proj` varsayılanı 1.
 
-**Son ölçüm** (`reports/f1b-5`, 16 dünya × 60 yıl = 2400 gün, Faz 1b-5 dâhil): 1–5, 5a/5b ve süre tablosu (8a–8i) geçiyor; 6b, 6e, 6f kalıyor. Seed 1, gün 2400 hash'i `8aa42b4bbe03b9ce` (ayrı süreçte `cps 1 2400` ile aynı); SaveCheck selftest 72/72. Önceki ölçüm `reports/f1b-4` (120 günlük yıl, gün 7200 hash'i `ea518c4edcbf6601`). f1b-3 v3 sütunu `reports/f1b-3-v3`.
+- **Faz 1b-6 · Devlet, inanç ve örgüt modeli** (yol haritası Faz 1b/6; `claude/devlet-orgut-spec.md`). Kod: `Core/Polity.cs` (kültür, hükümet tipi, inanç ve örgüt tanımları; yasa ve yasal durum), `Core/PolityTypes.cs` (`Person`, `LawState`, `Org`, `OrgBranch`, `Membership`), `Modules/States.cs` (yönetici, halef, meşruiyet, hizalama, inanç), `Modules/Orgs.cs` ve `OrgActions.cs` (örgütlerin kuruluşu ve makro eylemleri), `Modules/Bondage.cs` (esaret), `Modules/Patrol.cs` (devriye, aç haydutlar). `Modules/Classes.cs` silindi.
+  - **Sınıf-medeniyet → devlet** (spec §8): `Civ.Cls` kalktı. Devlet = hükümet tipi (`Civ.Gov`: krallık, boy konfederasyonu, tüccar cumhuriyeti, teokrasi) + kültür (`Civ.Race`, kuruluştaki çoğunluk ırkı) + yönetici (`Person`; krallıkta varis ve hanedan) + meşruiyet (0–100) + yasa (sertlik, kölelik, resmî inanç, inanç ve ırk hoşgörüsü, kaçakçılık cezası, rüşvet, devriye). Hizalama yöneticiden ve yasadan hesaplanır. Ad "<kök> Krallığı / Boyları / Cumhuriyeti / Teokrasisi".
+    - Kültürler eski sınıflardan: insan (paladin, keşiş), cüce (rahip, paktçı), elf (druid), buçukluk (haydut), yarı-ork (barbar), ejderdoğan (savaşçı), tiefling (kan büyücüsü); gnom ve yarı-elf azınlık. Arazi zevki, istekler, deniz yatkınlığı, kent adları kültürden; saldırganlık tip + kültür + kötü yönetici; kahraman yakınlığı tipten (krallıkta kültürden).
+    - Paladin yemini → kanunlu ve iyi krallık/teokrasi ant bozmaz (`Polity.Oathbound`); Kutsal Sefer → Şehir kademesindeki kutsal devlet ve Tarikat'ın yıllık çağrısı; Paktçı → Kara Pakt'ın yöneticiye sızması (yönetici gizlice Pakt'a bağlıysa devlet kötü, eski `pact` etkisi); Druid → Eski İnanç'ın yerleşimi (`Polity.OldWays`: koru kesilmez, kutsal koru, kadim orman, ormanda +2 AC); Haydut → cumhuriyet (pazarlık, korsan dostluğu); Rahip bayramı → teokrasinin Güneş Bayramı; diğer yıllık sınıf olayları örgütlere; sınıf yapısı → hükümet yapısı (Saray, Boy Meclisi, Lonca Konseyi, Başkatedral).
+    - Birlikler (spec: generic + kültür): asker, Köy'den okçu, Kasaba'dan kültür birimi (Mızraklı, Demir Muhafız, Uzun Yaycı, Sapancı, Akıncı, Alevnefes Muhafız, Alev Soylu), Şehir'den şövalye (at ister; boylar hariç); boyların tip birimi Akıncı. Örgüt birlikleri (Lejyoner, Kutsal Muhafız…) tanımda, savaşa henüz girmiyor.
+  - **Dünya üretimi:** 4–6 devlet; dört tipin her biri her dünyada (kültürü en yatkın devlete), kalanlar yatkınlıkla (bir tipten en çok iki). Sonra **tarih öncesi** (`Sim.PREHISTORY_DAYS` = 1600 gün): dünya aynı kurallarla olgunlaşır, kronik yazılır; sonunda örgütler kurulur (`Orgs.Genesis`: merkezler çekirdek şehirlere, başlangıç şubeleri talebe göre, kahramanlar üye olur). Oyun ve ölçüm `World.Epoch`'tan başlar (takvim yılı dünyanın yaşı: oyun 41. yılda başlar). Yerleşim tavanı: tarih öncesinde yerleşilebilir anakara / 45, sonra tarih öncesinin sonundaki sayı (`World.SettleCap`; temizlenen kamp vadisine +3 esneme); devlet tavanı `4 + 2 × başkent kademesi + min(3, nüfus/200)`. Devlet sayısı 4'ün altına düşünce ya da bir devlet ortalamanın 1,6 katını aşınca bölünme kolaylaşır.
+  - **Devlet yaşamı** (`States.Tick`, WORLD_DAYS): yönetici yaşlanır ve ölür; halef tipine göre (krallıkta varis, yoksa veraset krizi; boylarda düello ya da boy meclisi, meşruiyeti düşük reise meydan okuma; cumhuriyette konsey oyu ve 3 yılda bir seçim; teokraside tarikat). Meşruiyet barış, kıtlık, başkent kaybı, boş hazine ve resmî inancın halktaki payıyla dinlenir. Tipin çöküş yolları (veraset krizinin iç savaşa, düellonun bölünmeye dönmesi…) Faz 1b/7.
+  - **İnanç** (spec §3): her yerleşimin dağılımı (Güneş, Eski İnanç, Pakt, inançsız): ırkların eğilimi + resmî inancın çekimi (sertlikle) + hoşgörü + tapınak ve koru; yavaşça hedefe kayar. Kahramanın inancı sınıfından ya da doğduğu yerden. Resmî inançları ayrı ve biri sert iki devlet arasında "inanç çatışması".
+  - **Örgütler** (spec §4–5): Güneş Kilisesi, Güneş Tarikatı, Kara Pakt, Druid Çemberi, Avcılar Locası, Hırsızlar Loncası, Büyücü Akademisi, Paralı Bölükler, Ozanlar Koleji, Tüccarlar Loncası, Harabe Kâşifleri, Köle Avcıları, Özgürlük Ağı (korsanlar eskisi gibi korsan koyları). Merkez (landmark), şubeler (düzey 1–3; yasak yerde gizli), üyeler, kasa (aidat, himaye eden devletin katkısı, operasyonlar; tavan), lider ve şube ustaları (`Person`), örgütler arası ilişki. ~10 günde bir karar: şube açar/büyütür/kapatır (talep: nüfus, inanç, kademe, pazar, kamp, harabe…), üye toplar, bir operasyon (Kilise salgında şifa ve hacı; Tarikat devriye ve Pakt avı; Pakt ruh sözleşmesi, yöneticiye sızma, suikast; Çember bıçkıhane/maden sabotajı; Avcılar ortak panoya ödül ilanı (`Quest.Org`, ödülün çoğu devletten); Hırsızlar soygun ve kaçakçılık; Akademi eser; Bölükler savaştaki devlete paralı asker; Ozanlar haber ve ün; Tüccarlar kıtlık siparişi; Kâşifler harabe; Köle Avcıları ve Özgürlük Ağı esaret), gölge savaşı (düşman örgütle: suikast, sabotaj, ihbar), lobi (yasayı bir adım kaydırır) ve darbe (meşruiyeti düşük başkentte). Gizli şubeye devriye baskını (yakalananlar hapse ya da köleliğe). Şubesi kalmayan örgüt dağılır, 120–360 gün sonra yeniden kurulur. Yıllık olaylar (Güneş Bayramı, Koru Ayini, Ozan Şenliği, Bölük Turnuvası, Kara Ayin, Kutsal Sefer çağrısı, Yıldız Gecesi, Büyük Panayır, Büyük Pazar, Kaçış Gecesi). Kahraman üyeliği: sınıfa uygun örgüt ya da yolu (spec §5), inanç ve hizalama önkoşulu; işleri XP, ün ve örgüt içi itibar getirir, itibar ve seviyeyle rütbe (iç çember sırrı).
+  - **Esaret** (spec §6, `Bondage`): köle avcılarının yol baskını (zayıf kafileler; yalnız ve zayıf kahraman), boyların savaş esiri (fethedilen şehrin %6'sı), cumhuriyette borç esareti (ekmek yokluğu, açlık), teokraside hapis madeni (kâfir ve şüpheli ırk; gizli şube baskını). Köle ve mahkûm nüfusun içinde (`Settlement.Slaves`, `Prisoners`; yerleşimin en çok %10'u). Kurtulma: kaçış, Özgürlük Ağı, köleliği yasak fatihin azadı, cezanın bitişi; esir kahraman (`State` "captive") fidye, kaçış ya da kurtarılmayla döner.
+  - **Devriye** (spec §2, `Patrol`): devlet topraklarındaki kervan ve yalnız serbest kahraman her gün devriye sıklığıyla durdurulabilir. Krallıkta vergi memuru, boylarda haraç ya da düello, cumhuriyette ucuz rüşvet ve muhafız ücreti, teokraside sorgu (tiefling ve Pakt'a bağlı tutuklanır). Kaçak mal (cumhuriyetten ya da Hırsızlar şubesinden çıkan kervan): önce rüşvet (rüşvet kolaylığı), sonra arama (sertlik) ve el koyma.
+  - **Aç haydutlar** (spec §4): açlık ya da ekmek yokluğu çeken yerleşimden halk kaçıp yakına haydut kampı kurar (`Camp.Kind` "bandit"; kamp bandının dışında). Yiyecek verilirse dağılır ve halk döner; ganimetle dönen haydut tok olur.
+  - Kayıt biçimi sürüm 4 (sürüm 3 açılmaz). Ölçüme 9a–9f (spec §9), "Devlet, inanç ve örgüt" bölümü, `World.Epoch`'a göre günler; `world <seed> [gün]` modu (siyasi özet).
 
-| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) | f1b-3 (kademe) | f1b-4 (ayar) | f1b-5 (40 günlük yıl) |
-|---|---|---|---|---|---|---|---|
-| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ | 1,2 ✓ | 1,03 ✓ | 1,35 ✓ |
-| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) | 15/16 ✓ (130 çöküş) | 14/16 ✓ (40 çöküş) | 14/16 ✓ (73 çöküş) |
-| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ | 10,2 / 8,16 ✓ | 9 / 8,75 ✓ | 8,9 / 8,83 ✓ |
-| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ | 1,28–1,43 ✓ | 1,29–1,38 ✓ | 1,31–1,60 ✓ |
-| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ | 15/16 ✓ | 13/16 ✓ | 16/16 ✓ |
-| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ | 5,5 ✓ | 6 ✓ | 4 ✓ |
-| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ | %39 ✓ | %42 ✓ | %33 ✓ |
-| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ |
+**Son ölçüm** (`reports/f1b-6`, 16 dünya × 60 yıl = 2400 gün tarih öncesinden sonra, Faz 1b-6 dâhil): 1, 2, 4a–4c, 5a/5b, 6a/6b (yerleşim sayısı artık bütün koşuda sabit), 6g–6j, 7, süre tablosu (8a–8i) ve spec §9'un 9a, 9b, 9d, 9e, 9f'si geçiyor. Kalanlar: 6e, 6f, 9c (tipe özgü çöküş yolları, Faz 1b/7); 3 (8,98 < 9,23) ve 4d (%29 < %30) eşikte, koşudan koşuya gidip geliyor (#62). Seed 1, gün 2400 hash'i `9d69b8332edbe6f6` (ayrı süreçte `cps 1 2400` ile aynı); SaveCheck selftest 72/72. Önceki ölçüm `reports/f1b-5` (hash `8aa42b4bbe03b9ce`), `reports/f1b-4` (120 günlük yıl, gün 7200 hash'i `ea518c4edcbf6601`). f1b-3 v3 sütunu `reports/f1b-3-v3`.
+
+| # | Ölçüt | Port (başlangıç) | c1-4 | f1b-2 (C3) | f1b-3 (kademe) | f1b-4 (ayar) | f1b-5 (40 günlük yıl) | f1b-6 (devlet, örgüt) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Donma yok (41–60. yıl / 6–20. yıl büyük olay) | 0,46 ✗ | 0,97 ✓ | 0,90 ✓ | 1,2 ✓ | 1,03 ✓ | 1,35 ✓ | 1,2 ✓ |
+| 2 | Çöküş olan dünya | 1/16 ✗ | 14/16 ✓ (146 çöküş) | 14/16 ✓ (98 çöküş) | 15/16 ✓ (130 çöküş) | 14/16 ✓ (40 çöküş) | 14/16 ✓ (73 çöküş) | 16/16 ✓ (65 çöküş) |
+| 3 | Yaşayan kamp (41–60. yıl / 6–20. yıl) | 1,74 / 6,52 ✗ | 10,2 / 8,31 ✓ | 9,31 / 8,67 ✓ | 10,2 / 8,16 ✓ | 9 / 8,75 ✓ | 8,9 / 8,83 ✓ | 8,98 / 9,23 ✗ |
+| 4a | Doğuş seviyesi (on yıllar) | 2,2 → 5,0 ✗ | 1,31–1,45 ✓ | 1,32–1,50 ✓ | 1,28–1,43 ✓ | 1,29–1,38 ✓ | 1,31–1,60 ✓ | 1,53–1,58 ✓ |
+| 4b | Sv8+ olan dünya | 0/16 ✗ | 15/16 ✓ | 14/16 ✓ | 15/16 ✓ | 13/16 ✓ | 16/16 ✓ | 16/16 ✓ |
+| 4c | Dünya başına efsane (medyan) | 13 ✗ | 3 ✓ | 4 ✓ | 5,5 ✓ | 6 ✓ | 4 ✓ | 2 ✓ |
+| 4d | Ölen kahraman payı | %19 ✗ | %44 ✓ | %40 ✓ | %39 ✓ | %42 ✓ | %33 ✓ | %29 ✗ (dünya medyanı %31) |
+| 5a / 5b | Determinizm / kayıt-yükleme | ✓ / — | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ | ✓ / ✓ |
 
 v3 ölçütleri (pencere 21–60. yıl, 6b bütün koşu; † zaman ölçeğine bağlı: f1b-3/4'te eski takvimden yansıtılmış (oran ×4, süre ÷4), f1b-5'te doğrudan):
 
-| # | Ölçüt (hedef) | f1b-3 | f1b-4 | f1b-5 |
-|---|---|---|---|---|
-| 6a | Yerleşim sayısı sabit, ısınmadan sonra (değişim katsayısı ≤ %10) | %9,4 ✓ | %9,5 ✓ | %8,4 ✓ |
-| 6b | Yerleşim sayısı sabit, bütün koşu (≤ %10) | %35 ✗ | %36 ✗ | %33 ✗ |
-| 6c | El değiştirme, dünyada / 100 gün (bilgi) | 0,86 (yeni takvimde 3,5) | 0,77 (3,1) | 2,25 |
-| 6d | Durum değişimi, yerleşim başına (bilgi) | ~670 günde bir | ~675 günde bir | ~199 günde bir |
-| 6e † | Orta halka kademe değişimi (60–150 günde bir) | 1741 → 435 ✗ | 1783 → 446 ✗ | 722 ✗ |
-| 6f † | Büyük şehir el değiştirmesi (dünyada 2–4 / 100 gün) | 0,04 → 0,17 ✗ (toplam 49) | 0,02 → 0,08 ✗ (toplam 19) | 0,03 ✗ (toplam 22) |
-| 6g † | Uyarı: kuşatmanın başı → düşüş (5–10 gün) | 0 → 0 ✗ | 20 → 5 ✓ | 5 ✓ |
-| 6h † | Savaş süresi (10–40 gün) | 30 → 7,5 ✗ | 40 → 10 ✓ | 13 ✓ |
-| 6i † | Büyük şehir kuşatması (2–6 gün) | 1 → 0,25 ✗ | 21 → 5,25 ✓ | 6 ✓ (küçük yerleşim 3) |
-| 6j | Başkent kaybı, medeniyet başına en çok 3 | 7 ✗ (12 medeniyet > 3) | 2 ✓ | 3 ✓ (64 kayıp) |
-| 7 | Felaket büyük şehri düşürmez (terk yok, ejderha eşiğin altına indiremez) | ✗ (4 eski Şehir terk) | ✓ | ✓ |
+| # | Ölçüt (hedef) | f1b-3 | f1b-4 | f1b-5 | f1b-6 |
+|---|---|---|---|---|---|
+| 6a | Yerleşim sayısı sabit, ısınmadan sonra (değişim katsayısı ≤ %10) | %9,4 ✓ | %9,5 ✓ | %8,4 ✓ | %1 ✓ |
+| 6b | Yerleşim sayısı sabit, bütün koşu (≤ %10) | %35 ✗ | %36 ✗ | %33 ✗ | %1,4 ✓ |
+| 6c | El değiştirme, dünyada / 100 gün (bilgi) | 0,86 (yeni takvimde 3,5) | 0,77 (3,1) | 2,25 | 1,84 |
+| 6d | Durum değişimi, yerleşim başına (bilgi) | ~670 günde bir | ~675 günde bir | ~199 günde bir | ~202 günde bir |
+| 6e † | Orta halka kademe değişimi (60–150 günde bir) | 1741 → 435 ✗ | 1783 → 446 ✗ | 722 ✗ | 776 ✗ |
+| 6f † | Büyük şehir el değiştirmesi (dünyada 2–4 / 100 gün) | 0,04 → 0,17 ✗ (toplam 49) | 0,02 → 0,08 ✗ (toplam 19) | 0,03 ✗ (toplam 22) | 0,13 ✗ (toplam 30) |
+| 6g † | Uyarı: kuşatmanın başı → düşüş (5–10 gün) | 0 → 0 ✗ | 20 → 5 ✓ | 5 ✓ | 5 ✓ |
+| 6h † | Savaş süresi (10–40 gün) | 30 → 7,5 ✗ | 40 → 10 ✓ | 13 ✓ | 15 ✓ |
+| 6i † | Büyük şehir kuşatması (2–6 gün) | 1 → 0,25 ✗ | 21 → 5,25 ✓ | 6 ✓ (küçük yerleşim 3) | 6 ✓ (küçük 3) |
+| 6j | Başkent kaybı, medeniyet başına en çok 3 | 7 ✗ (12 medeniyet > 3) | 2 ✓ | 3 ✓ (64 kayıp) | 2 ✓ (41 kayıp) |
+| 7 | Felaket büyük şehri düşürmez (terk yok, ejderha eşiğin altına indiremez) | ✗ (4 eski Şehir terk) | ✓ | ✓ | ✓ |
 
 v3 süre tablosu (Faz 1b-5, `reports/f1b-5`; medyan, bütün dünyalar havuzlanmış):
 
@@ -162,6 +176,21 @@ v3 süre tablosu (Faz 1b-5, `reports/f1b-5`; medyan, bütün dünyalar havuzlanm
 | 8h | Efsaneye yükseliş | 100–300 gün | 263 ✓ (56–748) |
 | 8i | İlan ömrü | 10–20 gün | 15 ✓ (sabit) |
 | 8j | Maaş | haftalık | kural ○ |
+
+f1b-6'da süre tablosu: 8a 6, 8b 3, 8c 9, 8d 23, 8e 11 (temizlenen kampların %3,3'üne köy), 8f 6, 8g 19 (han doğumu Faz 1b-6'da %40 artırıldı: tarih öncesinden sonra 22,7 günde birdi), 8h 246, 8i 15 gün; hepsi ✓.
+
+Spec §9 ölçütleri (Faz 1b-6, `reports/f1b-6`; bütün koşu):
+
+| # | Ölçüt (hedef) | Ölçülen |
+|---|---|---|
+| 9a | Örgütler yaşar ya da yeniden doğar, şubeler dalgalanır (kalıcı yok olma yok; şube sayısının yıllık değişim katsayısı ≥ %10) | ✓ kalıcı yok olan 0/208, dağılma 62, yeniden kuruluş 55 (çoğu Kara Pakt); değişim katsayısı %16; dünya başına 510 şube açıldı, 406 kapandı |
+| 9b | Gölge savaşı düzenli (dünya-yıllarının ≥ %90'ında en az bir eylem) | ✓ %100; dünyada 16 / 100 gün; başarısız %56; suikast 3322, sabotaj 1702, ihbar 1265; öldürülen usta/lider 1410 |
+| 9c | Tiplerin en sık çöküş nedeni farklı | ✗ krallık: Pakt bağı ve aforoz (12; başkent fethi 10, veraset krizi 4); boylar, cumhuriyet ve teokrasi: başkent fethi. Tipe özgü çöküş yolları Faz 1b/7 |
+| 9d | Köle payı ≤ %5; Özgürlük Ağı dünyaların ≥ %75'inde etkin | ✓ köle payı medyan %0,2, en çok %3,3; esarete düşen 4490 (savaş 1996, baskın 1433, borç 1029, av 32), hapis madeni 4319; Özgürlük Ağı 16/16 dünyada 3756 köle kurtardı |
+| 9e | Devriye profili tipe göre ayrışır (durdurma ×1,5, el koyma ve rüşvet ×2) | ✓ 100 kervan-günde durdurma: teokrasi 9,4, krallık 7,2, cumhuriyet 6,4, boylar 5,1; durdurmada el koyma teokrasi %13 / cumhuriyet %3; rüşvet cumhuriyet %13 / krallık %4,8 / teokrasi %4,4; boylarda haraç ya da düello (1493), teokraside 630 kahraman tutuklaması |
+| 9f | Aç haydutlar kıtlıkla ilişkili (r ≥ 0,3) | ✓ r = 0,49; 787 kişi haydut oldu, 189 kamp, 23'ü yiyecek verilince dağıldı |
+
+Faz 1b-6, f1b-5'e karşı: dünya 4–6 devletle (eskiden 7–9 medeniyet) ve tarih öncesinden sonra olgun başlıyor: yaşayan yerleşim bütün koşu boyunca ~75 (f1b-5'te 27 → 86), Şehir ~5 (4,8–5,5), nüfus ~2300–2500 (büyümüyor), devlet ~5. Savaş dünyada 2,8 / 100 gün (3,7), on yıllar boyunca yıllık 1,7'den 1'e iniyor (#61); el değiştirme 1,84 / 100 gün; çöküş 65 (başkent kaybı 41, yok olma 24); büyük şehir el değiştirmesi 30. Yönetici değişimi 232 (konsey oyu 102, tarikat 37, veraset 35, düello 26, boy meclisi 28, veraset krizi 4), Pakt'ın sızdığı yönetici 100 (92'si ortaya çıktı), Kutsal Sefer 57, lobiyle yasa değişikliği 867, darbe girişimi 18. Örgüt şubesi dünya başına ~320 (13 örgüt), dünyada 16 gölge savaşı eylemi / 100 gün. Han doğumu 19 günde bir, efsane medyanı 2.
 
 Faz 1b-5, f1b-4'e karşı: 60 yıl artık eski ölçekte 80 yıl kapsıyor (`DynYear`), dünya daha olgun. Çöküş 40 → 73 (başkent kaybı 29 → 64), yok olma 11 → 9; savaş medyanı 13 gün (n = 1097); büyük şehre hücum 134, düşüşle bitenlerin payı %16; büyük şehir el değiştirmesi 22 (21–60. yıl). Kahraman ölüm payı %42 → %33 (diyarı terk eden ve emekli olan arttı), Sv8+ 16/16. Ekonomi ölçekle birlikte taşındı: ambar 60. yılda ~43 gün (eski ölçekte ~170, aynı), köy+ yerleşimlerin %47'sinde kent tüketiminde yokluk (çoğu alet; #23), kıtlık neredeyse yok.
 
@@ -239,7 +268,7 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 30. **Rapordaki "Altın birikiyor" satırı hâlâ "evet" diyor.** Kaba eşik: 30. yıl ≥ 10 × 1. yıl. Gerçek artış 20 → 60. yıl 2,4 kat.
 
 ### Faz 1b-3'ten kalanlar
-31. **Sınıf kimliği zayıfladı.** Sınıf ağacının savaş etkileri (saldırı/zırh/hasar artıları, bozgunsuzluk, ilk vuruş, şifa) gitti; yerine bir şey konmadı. Sihirbaz'ın mekanik özelliği kalmadı (araştırmaydı), Haydut casusluğu, Keşiş inzivası ve Rahip/Paktçı'nın alt sınıfa göre hediyeleri yok. Artık hiçbir kaynaktan gelmeyen genel etki anahtarları: `soldierAtk`, `soldierHp`, `noRout`, `firstStrike`, `enemyMorale`, `healBack`, `teleport`, `forestMove`, `blackMarket`, `warband`, `heroLevel`, `prodFood`, `prodMana`, `prodAll`, `favoredHunt` (`defAc` yalnız Şehir kademesinden). Sınıfların devlet/kurum spec'ine.
+31. **Sınıf kimliği zayıfladı.** Sınıf ağacının savaş etkileri (saldırı/zırh/hasar artıları, bozgunsuzluk, ilk vuruş, şifa) gitti; yerine bir şey konmadı. Sihirbaz'ın mekanik özelliği kalmadı (araştırmaydı), Haydut casusluğu, Keşiş inzivası ve Rahip/Paktçı'nın alt sınıfa göre hediyeleri yok. Artık hiçbir kaynaktan gelmeyen genel etki anahtarları: `soldierAtk`, `soldierHp`, `noRout`, `firstStrike`, `enemyMorale`, `healBack`, `teleport`, `forestMove`, `blackMarket`, `warband`, `heroLevel`, `prodFood`, `prodMana`, `prodAll`, `favoredHunt` (`defAc` yalnız Şehir kademesinden). Sınıfların devlet/kurum spec'ine. Faz 1b-6: sınıflar artık örgütlerde (rütbe yolları, iç çember, yıllık olaylar); devletin kimliği tip, kültür ve yöneticiden. Savaş etkilerinin yerine kültür birimleri ve tipin etkileri (boylarda yağma, teokraside kutsal darbe).
 32. **Ejderha seyrek ölüyor:** ittifak 8 → 3, ölüm 8 → 2 (16 dünya); haraç +%22. Uyanış canı en güçlü iki ordunun o günkü gücüne göre ölçülüyor; eskiden ağaç uyanıştan sonra orduları büyütüyordu, şimdi yalnız kademe (Şehir: efsun, mithril, AC +2). v3'e uygun olabilir (oyuncuya yer kalır), ama ejderha ünü 4b/4c'yi besliyordu; izlenmeli.
 33. **Kasaba yangını 2,3 kat** (202 → 458; büyük olay): taş konak ve taş sur Kasaba kademesine bağlandı, köyler ve kamplar ahşap kalıyor.
 34. **Erken yıllar hızlandı:** araştırmacı işi yok (iş gücünün ~%17'si), I. çağ yapıları baştan açık, kademe yalnız nüfusla. İlk on yılda nüfus +%44, yerleşim +%43, yaşayan kahraman 2,6 kat; 30. yıldan sonra f1b-2 düzeyinde (60. yıl nüfus −%4, yerleşim −%8).
@@ -257,7 +286,7 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 44. **Savaşların çoğu kısa:** f1b-4'te medyan 40 eski gün (yeni takvimde 10), Faz 1b-5'te 13 gün (p90 35): hedefin (10–40) alt ucuna yakın; küçük hedefli savaş ilk fetihte biter. Kutsal Sefer daha uzun (medyan 25 gün): başkente yürür, taht şehri yağmalanıp düşmez.
 45. **Bütün koşuda yerleşim sayısı sabit değil** (değişim katsayısı %36): dünya 8 kamptan başlıyor (dünya üretimi). Isınmadan sonra %9,5 (sınırda).
 46. **Çöküş azaldı** (130 → 40; 16 dünyanın 14'ünde ≥ 1; ölçüt 2'ye 12 dünya yeter): başkent kaybı 113 → 29.
-47. **Taht şehri geçici bir tanım:** başkent hâlâ "en kalabalık yerleşim" (B1); `Civ.Seat` yalnız bir gün geriye bakıyor (asker yazımı başkenti bir günlüğüne başka yere taşımasın). Eski kayıp başına −1 zayıflık yol haritasının "en fazla birkaç kez"i için konan yapay bir ayar: iki kez düşmüş taht neredeyse alınamaz. Devlet modelinde meşruiyetle değişmeli.
+47. **Taht şehri geçici bir tanım:** başkent hâlâ "en kalabalık yerleşim" (B1); `Civ.Seat` yalnız bir gün geriye bakıyor (asker yazımı başkenti bir günlüğüne başka yere taşımasın). Eski kayıp başına −1 zayıflık yol haritasının "en fazla birkaç kez"i için konan yapay bir ayar: iki kez düşmüş taht neredeyse alınamaz. Devlet modelinde meşruiyetle değişmeli. Faz 1b-6: meşruiyet var (`Civ.Legit`), ama büyük şehrin zayıflığına (CityWeakness) henüz bağlı değil (Faz 1b/7).
 48. **Çekirdek şehir tabanı** (`RemovePop`, 12 kişi): tabandaki şehirde ölen asker nüfustan düşmez, yalnız asker sayısı düşer; ordu daha az nüfus taşır.
 49. **Ejderha akınından sonraki 60 günde** 20 büyük şehir kademe düşürdü (bilgi; asker yazımı, salgın, göç). Akının kendisi düşüremiyor (ölçüt 7).
 50. **Kamp ölçütü (3) dar:** 9 ≥ 8,75. Bant 8–10, yayılma yalnız 8'in altında; erken yıllar üst sınıra dayanırsa ölçüt kalır.
@@ -266,18 +295,31 @@ C3 ekonomisi (f1b-2, c1-4'e karşı): medeniyet altın medyanı 20. yılda 325, 
 ### Faz 1b-5'ten kalanlar
 52. **Orta halka daha da durgun (6e):** Köy/Kasaba başına 722 günde bir kademe değişimi ya da terk (hedef 60–150; f1b-4'ün yansıtması 446). 60 yıl artık eski ölçekte 80 yıl; olgun dünyada nüfus kademe eşiklerinin uzağında duruyor. Yerleşim durum tablosu (Faz 1b/7) gerekir: kademe nüfustan değil durumdan (açlık, kuşatma, refah, göç) kaymalı.
 53. **Büyük şehir el değiştirmesi 0,03 / 100 gün (6f, hedef 2–4).** Dünyada 3,7 savaş / 100 gün, hedefi büyük şehir olan %12, büyük şehre hücumun %16'sı düşüşle bitiyor. Dış yoldan hedefe varılmıyor; iç düşüş (devlet tipine göre çöküş yolları, Faz 1b/7) ve devlet modelinin meşruiyeti (Faz 1b/6) gerekir. Bkz. #41, #47.
-54. **Bütün koşuda yerleşim sayısı sabit değil (6b, %33):** dünya 8 kamptan başlıyor. Devlet/örgüt spec'inin dünya üretimi (Faz 1b/6) doğrudan olgun dünyayla başlamalı.
+54. ~~**Bütün koşuda yerleşim sayısı sabit değil (6b, %33):** dünya 8 kamptan başlıyor.~~ Düzeldi (Faz 1b-6): tarih öncesi (1600 gün) ve dünyanın yerleşim tavanı; değişim katsayısı %1,4.
 55. **Süreler sabit sayılarla tutturuldu:** büyük şehir kuşatması hep 6 gün (p10 = p90), uyarı hep 5, ilan ömrü hep 15. Hedef aralıkta ama dağılım yok; durum tablosuyla (garnizon, erzak, sur) değişken olmalı.
 56. **Temizlenen kampların yalnız %5,7'sine köy kuruluyor** (60 gün içinde; kurulanların medyanı 15 gün). Dünya dolu ve yerleşim tavanında; boşalan yer çoğunlukla boş kalıyor. Fırsat düğümü döngüsü (Faz 1b/7) buraya bağlanmalı.
 57. **Sıradan inşaat 1 günde bitiyor** (ev, atölye, yükseltme, pazar…): iş ×4 hızlandı. Süre tablosu yalnız tepki inşaatını ve büyük projeleri tanımlıyor; diğerleri için hedef yok.
 58. **Kahraman ölüm payı %33'e indi** (alt sınır %30): diyarı terk eden ve emekli olan arttı (eski ölçekte 80 yıl). Doğuş seviyesi geç on yıllarda 1,6'ya çıktı (handa emekli öğretmen: +1 seviye); sınır 2.
 59. **Yaş ve kronik takvim yılıyla:** kahramanlar 40 günlük yılla yaşlanıyor (yaş tablosu `HERO_AGE` yıl cinsinden aynı); bir kahraman ömrü artık ~1–2 bin gün. Faz 2'de oyuncu ölçeğiyle teyit edilmeli.
 
+### Faz 1b-6'dan kalanlar
+60. **Tiplerin çöküş nedenleri ayrışmıyor (9c):** krallıkta en sık neden Pakt bağı ve aforoz, diğer üç tipte başkent fethi. Tipe özgü iç çöküş yolları (veraset krizinin iç savaşa ve bölünmeye dönmesi, boylarda düello ve boyların ayrılması, cumhuriyette darbe ve iflas (paralı ordunun ihaneti), teokraside mezhep bölünmesi ve Kutsal Sefer yenilgisi) Faz 1b/7'de. Bugün veraset krizi meşruiyeti 30'a düşürür, darbe girişimi yalnız meşruiyeti sarsar (−15), reis düelloda ölebilir; hiçbiri şehri ya da devleti böldürmez.
+61. **Savaş temposu on yıllar boyunca düşüyor:** yıllık başlayan savaş 1,7 → 1 (dünya medyanı). Dünya yerleşim tavanında olduğundan toprak hırsı ve sınır sürtüşmesi azalıyor, barış ve pakt modları birikiyor. Ölçüt 1 (donma) büyük olaylarla geçiyor (1,2). Devlet sayısı ~5'te kalıyor (bölünme dengesi), ama fetihle yok olan devletin yerine kurucu gelmiyor.
+62. **Ölçüt 3 ve 4d eşikte:** kamp 8,98 / 9,23 ve ölen kahraman %29 (dünya medyanı %31); üç ayar koşusunda ikisi de ✓ ile ✗ arasında gidip geldi. Kamp bandı düz (8–10), olgun dünyada erken ve geç yıllar aynı dağılımdan; Avcılar'ın ödül ilanları ve Tarikat devriyesi temizliği artırdı (bandın dibinde yavaş dolum eklendi, `Monsters.CAMP_EDGE`). Ölüm payı han doğumunun artışıyla (koşu sonunda daha çok genç kahraman) ve esaretle (esir kahraman ölmüyor) düştü.
+63. **Örgüt birlikleri savaşa girmiyor:** spec'in örgüt birlikleri (Kutsanmış Asker, Kutsal Muhafız, Şövalye, Şeytancık, Treant, Golem, Lejyoner…) tanımlı; Paralı Bölükler savaştaki devlete sıradan asker olarak kiralanıyor, Kutsal Sefer'e Tarikat birliği gelmiyor.
+64. **Üyelikten ayrılma ve atılma yok:** spec §5 "Hırsızlar ve Pakt ayrılanı avlar", aidat borcu ve görev kotası (rütbe kaybı) yazılmadı; üyelik ömür boyu. Ozanlar, Tüccarlar, Köle Avcıları ve Özgürlük Ağı'nın üye kahramanı yok (sınıf ya da yol eşlemesi yok).
+65. **Örgüt operasyonları soyut:** Avcılar'ın ödül ilanı dışında görevler ortak panoya düşmüyor (üye kahraman işi XP, ün ve itibar olarak işleniyor). Kahraman ve örgüt görevlerinin oyuncuyla ortak havuzu Faz 3'te (spec §7 laflar ve fiiller de).
+66. **Kara Pakt çok çalkantılı:** dünya başına ~3 dağılma ve yeniden kuruluş, şubesi 1–2; ruh sözleşmesi, sızma (100 yönetici, 92'si ortaya çıktı) ve suikast (17) yine de düzenli. Kutsal Sefer çağrısı her yıl (558 çağrı, 57 sefer).
+67. **Esir kahraman durumu yarım:** `State` "captive" kahraman yaşlanmıyor, iyileşmiyor; Will onu yok sayıyor. Dünya başına ~40 esir düşme (çoğu teokrasinin tutuklaması ve köle avcıları).
+68. **Devriye yalnız kervanı ve yalnız serbest kahramanı durduruyor;** öncü, göçmen, yolcu ve ordu durdurulmuyor. Kaçak mal kervanın çıktığı yerden (cumhuriyet, Hırsızlar şubesi) olasılıkla; yükte gerçek kaçak mal (Pakt kalıntısı, mana…) yok. Teokraside tutuklanan kahraman 10–30 gün zindanda (hapis madeni kahramana uygulanmıyor).
+69. **Tarih öncesi her `new Sim(seed)`'te koşuluyor** (1600 gün, dünya başına ~15 sn). `new Sim(seed, prehistory: 0)` testler için ilk kamplarla döner. Tarih öncesinin kroniği ve olayları dünyada; ölçüm `World.Epoch`'tan başlar. SaveCheck matrisi ve golden araçlar da tarih öncesini koşar.
+70. **Devlet sayısı ve ad kökleri:** kültür başına 4–5 ad kökü; bölünen devlet şehrin adıyla anılır ("Kalkanova Krallığı"). Yeni kurucular yalnız yaşayanlarda olmayan kültürden ve kendi kendine yok olan devletin yerine.
+
 ## Devam için
 
 Yol haritası v3, Faz 1b (sırayla; her adımın sonunda ölçüm raporu ve bu dosyanın güncellenmesi):
 
-1. **Faz 1b/6 · Devlet, inanç ve örgüt modeli** (`claude/devlet-orgut-spec.md`): önce veri modeli ve dünya üretimi (#54), sonra makro eylemler, sonra devriye ve esaretin makro istatistikleri. Sınıf-medeniyet → devlet ve örgüt (#31, #47).
-2. **Faz 1b/7:** yerleşim durum tablosu (#52, #55), büyük şehrin istikrarı ve devlet tipine göre çöküş yolları (#41, #53), fırsat düğümü döngüsü (#56), tepki inşaatı.
+1. ~~**Faz 1b/6 · Devlet, inanç ve örgüt modeli**~~ Bitti (Faz 1b-6, `reports/f1b-6`). Kalanlar #60–#70.
+2. **Faz 1b/7:** yerleşim durum tablosu (#52, #55), büyük şehrin istikrarı ve devlet tipine göre çöküş yolları (#41, #53, #60; meşruiyet, veraset, darbe, mezhep artık var), fırsat düğümü döngüsü (#56), tepki inşaatı.
 3. **Faz 1b/8 · Başsız ölçütler:** 2400 gün × 16 dünya; donma yok, yerleşim sayısı ~sabit ama sahiplik ve durum dalgalı, döngüler kurulup çöküyor, büyük şehir 100 günde 2–4 kez el değiştiriyor, spec §9 örgüt/devriye/esaret ölçüleri.
 4. Faz 2: #4 kronik zinciri; Godot gözlemci harita (`FD.Macro`'yu Godot projesine bağla).

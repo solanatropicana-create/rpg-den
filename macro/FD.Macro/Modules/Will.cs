@@ -74,12 +74,12 @@ public static class Will
     /// <summary>Kahramanın adı, lakabı varsa «lakap» ile.</summary>
     public static string HeroLabel(Hero h) => J.T(h.Epithet) ? $"{h.Name} «{h.Epithet}»" : h.Name;
 
-    /// <summary>kötü kahraman paladine, iyi kahraman Paktçı'ya çalışmaz; kinli olduğu medeniyete de</summary>
+    /// <summary>kötü kahraman kutsal devlete (teokrasi ya da iyi yönetici), iyi kahraman kötüye çalışmaz; kinli olduğu medeniyete de</summary>
     public static bool HeroWillServe(Civ c, Hero h)
     {
         if (h.Grudge == c.Id) return false;
         if (h.Align == "good" && c.Align.Good < -0.3) return false;
-        if (h.Align == "evil" && c.Cls == "paladin") return false;
+        if (h.Align == "evil" && (c.Gov == "theocracy" || c.Align.Good >= 0.6)) return false;
         return true;
     }
 

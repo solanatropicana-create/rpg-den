@@ -10,9 +10,9 @@ namespace FD.Macro;
 
 public static class Monsters
 {
-    private static readonly JsObj<double> CAP = new JsObj<double> { ["goblin"] = 14, ["hobgoblin"] = 10, ["bugbear"] = 4, ["pirate"] = 14, ["troll"] = 5, ["dragon"] = 1 };
+    private static readonly JsObj<double> CAP = new JsObj<double> { ["goblin"] = 14, ["hobgoblin"] = 10, ["bugbear"] = 4, ["pirate"] = 14, ["troll"] = 5, ["dragon"] = 1, ["bandit"] = 20 };
     /// <summary>kampın günlük büyümesi (Faz 1b-5: eski günde goblin 0,035 …; ×PACE)</summary>
-    private static readonly JsObj<double> GROW = new JsObj<double> { ["goblin"] = 0.035 * Sim.PACE, ["hobgoblin"] = 0.028 * Sim.PACE, ["bugbear"] = 0.008 * Sim.PACE, ["pirate"] = 0.022 * Sim.PACE, ["troll"] = 0.006 * Sim.PACE, ["dragon"] = 0 };
+    private static readonly JsObj<double> GROW = new JsObj<double> { ["goblin"] = 0.035 * Sim.PACE, ["hobgoblin"] = 0.028 * Sim.PACE, ["bugbear"] = 0.008 * Sim.PACE, ["pirate"] = 0.022 * Sim.PACE, ["troll"] = 0.006 * Sim.PACE, ["dragon"] = 0, ["bandit"] = 0 };
     /// <summary>Faz 1b-5: eski günlük olasılık p'nin yeni gündeki karşılığı (1 − (1 − p)^PACE)</summary>
     internal static double Daily(double p) => 1 - JsMath.Pow(1 - p, Sim.PACE);
 
@@ -22,9 +22,9 @@ public static class Monsters
     {
         var cs = new List<Combatant>();
         UnitStats @base = kind == "goblin" ? D.MONSTERS["goblin"] : kind == "hobgoblin" ? D.MONSTERS["hobgoblin"] : kind == "pirate" ? D.MONSTERS["pirate"]
-            : kind == "troll" ? D.MONSTERS["troll"] : kind == "dragon" ? D.MONSTERS["dragon"] : D.MONSTERS["bugbear"];
+            : kind == "troll" ? D.MONSTERS["troll"] : kind == "dragon" ? D.MONSTERS["dragon"] : kind == "bandit" ? D.MONSTERS["bandit"] : D.MONSTERS["bugbear"];
         for (int i = 0; i < n; i++) { var u = Combat.Unit(@base, side, "monster"); u.Evil = true; if (kind == "dragon") u.Boss = true; cs.Add(u); }
-        if (boss && kind != "bugbear" && kind != "troll" && kind != "dragon") { var u = Combat.Unit(kind == "goblin" ? D.MONSTERS["goblinBoss"] : kind == "pirate" ? D.MONSTERS["pirateCaptain"] : D.MONSTERS["hobCaptain"], side, "boss"); u.Evil = true; cs.Add(u); }
+        if (boss && kind != "bugbear" && kind != "troll" && kind != "dragon") { var u = Combat.Unit(kind == "goblin" ? D.MONSTERS["goblinBoss"] : kind == "pirate" ? D.MONSTERS["pirateCaptain"] : kind == "bandit" ? D.MONSTERS["banditBoss"] : D.MONSTERS["hobCaptain"], side, "boss"); u.Evil = true; cs.Add(u); }
         return cs;
     }
 
@@ -80,7 +80,7 @@ public static class Monsters
     /// <summary>Canavar türünün adı: çoğul ("Goblinler") ya da tekil ("Goblin").</summary>
     public static string MonsterName(string kind, bool plural = true) =>
         kind == "goblin" ? (plural ? "Goblinler" : "Goblin") : kind == "hobgoblin" ? (plural ? "Hobgoblinler" : "Hobgoblin") : kind == "pirate" ? (plural ? "Korsanlar" : "Korsan")
-        : kind == "troll" ? (plural ? "Troller" : "Trol") : kind == "dragon" ? "Ejderha" : (plural ? "Bugbearlar" : "Bugbear");
+        : kind == "troll" ? (plural ? "Troller" : "Trol") : kind == "dragon" ? "Ejderha" : kind == "bandit" ? (plural ? "Aç haydutlar" : "Haydut") : (plural ? "Bugbearlar" : "Bugbear");
 
     /// <summary>Kamptan akında olan (ölmemiş raid ajanlarındaki) canavar sayısı.</summary>
     public static double CampAway(Sim s, Camp c)
@@ -161,7 +161,7 @@ public static class Monsters
                 if (s.Day >= c.NextRaid && c.Count >= 5) Sea.LaunchPirates(s, c);
                 continue;
             }
-            if (s.Day >= c.NextRaid && c.Count >= (c.Kind == "goblin" ? 7 : c.Kind == "hobgoblin" ? 6 : 2)) LaunchRaid(s, c);
+            if (s.Day >= c.NextRaid && c.Count >= (c.Kind == "goblin" ? 7 : c.Kind == "hobgoblin" ? 6 : c.Kind == "bandit" ? 3 : 2)) LaunchRaid(s, c);
         }
         // bugbear ini
         if (s.DynYear >= 4 && !J.Some(alive, c => c.Kind == "bugbear") && CampRoom(s) > 0 && s.Rng.Chance(Daily(1.0 / 500)))
@@ -190,7 +190,10 @@ public static class Monsters
         var story = Storyteller.State(s);
         int land = LandCamps(alive);
         double target = CampTarget(s);
-        if (land < target && s.Day >= story.NextCampSpawn && s.Rng.Chance(Daily(JsMath.Min(0.25, (target - land) / CAMP_REFILL))))
+        // Faz 1b-6: bandın alt sınırında (tam CAMP_LOW) da yavaş yavaş yeni in gelir (CAMP_EDGE): örgütlerin ödül ilanları ve Tarikat
+        // devriyeleri kamp temizliğini artırınca geç yıllar bandın dibinde kalıyordu (ölçüt 3)
+        double rate = land < target ? JsMath.Min(0.25, (target - land) / CAMP_REFILL) : land < target + 1 ? CAMP_EDGE : 0;
+        if (rate > 0 && s.Day >= story.NextCampSpawn && s.Rng.Chance(Daily(rate)))
         {
             var nc = SpawnLair(s, LateKind(s, alive), null, true, land == 0 ? "Boşalan topraklar yeni yağmacıları çekti" : null, 12, true);
             story.NextCampSpawn = s.Day + (nc != null ? s.Rng.Int(1, 3) : 1);   // Faz 1b-5: eski 20–40 eski gün (1–3 gün); kahramanlar daha çok kamp temizliyor
@@ -207,6 +210,8 @@ public static class Monsters
     /// <summary>bandın altında eski günlük yeni in olasılığı eksik / CAMP_REFILL (en çok %25; eskiden eksik / 40, Faz 1b-4'te / 15): temizlenen
     /// in çabuk yerine gelir (Faz 1b-5: yeni günde <see cref="Daily"/>; kahramanlar daha çok kamp temizlediği için 15 → 4)</summary>
     public const double CAMP_REFILL = 4;
+    /// <summary>Faz 1b-6: kara kampı tam CAMP_LOW'dayken eski günlük yeni in olasılığı</summary>
+    public const double CAMP_EDGE = 0.01;
 
     /// <summary>bandın alt sınırı: hedef kara kampı sayısı (eskiden ⌊3 + yıl/6⌋)</summary>
     public static double CampTarget(Sim s) => CAMP_LOW;
@@ -215,7 +220,7 @@ public static class Monsters
     public static int LandCamps(List<Camp> camps)
     {
         int n = 0;
-        foreach (var c in camps) if (c.Alive && c.Kind != "pirate" && c.Kind != "dragon") n++;
+        foreach (var c in camps) if (c.Alive && c.Kind != "pirate" && c.Kind != "dragon" && c.Kind != "bandit") n++;   // Faz 1b-6: aç haydutlar bandın dışında
         return n;
     }
 

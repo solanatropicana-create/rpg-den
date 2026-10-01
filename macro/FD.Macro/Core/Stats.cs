@@ -138,11 +138,21 @@ public sealed class DurLog
     public double InnDays, TavernDays;
 }
 
+/// <summary>Faz 1b-6: koşu sonunda örgüt özeti.</summary>
+public sealed class OrgSummary
+{
+    public string Kind, Name;
+    public bool Alive, Pending;
+    public int Branches, Hidden, Rebirths;
+    public double Members, Gold;
+    public Dictionary<string, double> Tally = new();
+}
+
 /// <summary>Koşu sonunda medeniyet özeti.</summary>
 public sealed class CivSummary
 {
     public int Id, MaxSettlements, FinalSettlements, FinalTier;
-    public string Name, Cls, Race;
+    public string Name, Gov, Race;
     public double Founded, FinalPop, Gold, BattlesWon, BattlesLost, Traded;
     public double? ExtinctDay;
     /// <summary>Faz 1b-3: medeniyetin ilk kez Köy, Kasaba ve Şehir kademesine vardığı gün (sırasıyla; -1: hiç).</summary>
@@ -161,6 +171,7 @@ public sealed class WorldStats
     private const string G_ECO = "Altın ve ambar";   // Faz 1 C3
     private const string G_TIER = "Yerleşim kademesi", G_SEA = "Deniz";   // Faz 1b-3
     private const string G_V3 = "v3: durum değişimi";   // Faz 1b-4
+    private const string G_POL = "Devlet, inanç ve örgüt";   // Faz 1b-6
 
     /// <summary>Skaler ölçüler (sıra JSON ve rapor sırasıdır).</summary>
     public static readonly StatDef[] Defs =
@@ -266,6 +277,37 @@ public sealed class WorldStats
         new("plagueStarts", "Salgın başlayan yerleşim", G_V3, StatKind.Flow),
         new("burns", "Yakılan/yanan yerleşim", G_V3, StatKind.Flow),
         new("resettled", "Harabeye yeniden yerleşim", G_V3, StatKind.Flow),
+        // Faz 1b-6: devlet, inanç, örgüt, esaret, devriye, aç haydutlar (spec §9)
+        new("orgsAlive", "Yaşayan örgüt (yıl sonu)", G_POL, StatKind.Stock),
+        new("orgBranches", "Örgüt şubesi (yıl sonu)", G_POL, StatKind.Stock),
+        new("orgHidden", "Gizli şube (yıl sonu)", G_POL, StatKind.Stock),
+        new("orgMembers", "Örgüt üyesi (yıl sonu)", G_POL, StatKind.Stock),
+        new("orgOpened", "Açılan şube", G_POL, StatKind.Flow),
+        new("orgClosed", "Kapanan şube", G_POL, StatKind.Flow),
+        new("orgDissolved", "Dağılan örgüt", G_POL, StatKind.Flow),
+        new("orgReborn", "Yeniden kurulan örgüt", G_POL, StatKind.Flow),
+        new("shadowWar", "Gölge savaşı eylemi", G_POL, StatKind.Flow),
+        new("shadowKills", "Gölge savaşında öldürülen usta ya da lider", G_POL, StatKind.Flow),
+        new("orgRaids", "Gizli şubeye baskın", G_POL, StatKind.Flow),
+        new("orgLobby", "Lobiyle yasa değişikliği", G_POL, StatKind.Flow),
+        new("orgCoups", "Darbe girişimi", G_POL, StatKind.Flow),
+        new("orgQuests", "Örgüt ilanı (Avcılar)", G_POL, StatKind.Flow),
+        new("heroMemberShare", "Örgüt üyesi kahraman payı (yıl sonu)", G_POL, StatKind.Stock, true),
+        new("successions", "Yönetici değişimi", G_POL, StatKind.Flow),
+        new("successionCrises", "Veraset krizi", G_POL, StatKind.Flow),
+        new("legitMean", "Meşruiyet ortalaması (yıl sonu)", G_POL, StatKind.Stock),
+        new("pactRulers", "Pakt'a bağlı yönetici (yıl sonu)", G_POL, StatKind.Stock),
+        new("slaves", "Köle (yıl sonu)", G_POL, StatKind.Stock),
+        new("slaveShare", "Köle payı (nüfusun, yıl sonu)", G_POL, StatKind.Stock, true),
+        new("prisoners", "Hapis madeninde mahkûm (yıl sonu)", G_POL, StatKind.Stock),
+        new("enslaved", "Esarete düşen", G_POL, StatKind.Flow),
+        new("freedAll", "Kurtulan köle (Özgürlük Ağı, kaçış, azat)", G_POL, StatKind.Flow),
+        new("freedByNetwork", "Özgürlük Ağı'nın kurtardığı köle", G_POL, StatKind.Flow),
+        new("heroCaptives", "Esir kahraman (yıl sonu)", G_POL, StatKind.Stock),
+        new("banditCamps", "Aç haydut kampı (yıl sonu)", G_POL, StatKind.Stock),
+        new("banditsBorn", "Haydut olan aç halk", G_POL, StatKind.Flow),
+        new("hungryShare", "Aç ya da ekmeksiz yerleşim payı (köy+)", G_POL, StatKind.Mean, true),
+        new("patrolStops", "Devriye durdurması", G_POL, StatKind.Flow),
     };
 
     /// <summary>Anahtarlı yıllık sayımlar: (ad, Türkçe etiket, tür). Flow = yıl içi toplam, Stock = yıl sonu.</summary>
@@ -313,6 +355,7 @@ public sealed class WorldStats
     {
         ["goblin"] = "Goblin", ["hobgoblin"] = "Hobgoblin", ["bugbear"] = "Bugbear", ["pirate"] = "Korsan",
         ["troll"] = "Trol", ["dragon"] = "Ejderha",   // Faz 1 B2
+        ["bandit"] = "Aç haydut",   // Faz 1b-6
     };
 
     /// <summary>Anahtarlı sayımdaki bir anahtarın Türkçe etiketi (bilinmiyorsa anahtarın kendisi).</summary>
@@ -369,7 +412,10 @@ public sealed class WorldStats
         I_OVERSEAS = IndexOf("overseas"), I_SEAROUTES = IndexOf("seaRoutes"), I_SEATRIPS = IndexOf("seaTrips"),   // Faz 1b-3
         I_SETLAVG = IndexOf("setlAvg"), I_BIGAVG = IndexOf("bigAvg"), I_OWNER = IndexOf("ownerChanges"), I_BIGCHG = IndexOf("bigChanges"),   // Faz 1b-4
         I_BIGSIEGE = IndexOf("bigSieges"), I_BIGSACK = IndexOf("bigSacked"), I_STATECHG = IndexOf("stateChanges"), I_MIDSHIFT = IndexOf("midShifts"),
-        I_FAMSTART = IndexOf("famineStarts"), I_PLGSTART = IndexOf("plagueStarts"), I_BURNS = IndexOf("burns"), I_RESETTLED = IndexOf("resettled");
+        I_FAMSTART = IndexOf("famineStarts"), I_PLGSTART = IndexOf("plagueStarts"), I_BURNS = IndexOf("burns"), I_RESETTLED = IndexOf("resettled"),
+        I_ORGS = IndexOf("orgsAlive"), I_ORGBR = IndexOf("orgBranches"), I_ORGHID = IndexOf("orgHidden"), I_ORGMEM = IndexOf("orgMembers"),   // Faz 1b-6
+        I_HEROMEM = IndexOf("heroMemberShare"), I_LEGIT = IndexOf("legitMean"), I_PACTR = IndexOf("pactRulers"), I_SLAVES = IndexOf("slaves"),
+        I_SLAVESH = IndexOf("slaveShare"), I_PRIS = IndexOf("prisoners"), I_CAPTV = IndexOf("heroCaptives"), I_BANDC = IndexOf("banditCamps"), I_HUNGRY = IndexOf("hungryShare");
 
     // ------------------------------------------------------------ çıktı
     public Sim Sim { get; private set; }
@@ -377,6 +423,8 @@ public sealed class WorldStats
     public readonly List<YearStats> Years = new();
     public readonly List<CollapseInfo> CollapseLog = new();
     public readonly List<CivSummary> Civs = new();
+    /// <summary>Faz 1b-6: koşu sonunda örgütler (tür, yaşıyor mu, şube, üye, yeniden doğuş, sayaçlar).</summary>
+    public readonly List<OrgSummary> Orgs = new();
     /// <summary>Efsane olan kahramanlar (koşu sonunda).</summary>
     public readonly List<JObj> LegendList = new();
     public int DaysSeen { get; private set; }
@@ -390,6 +438,9 @@ public sealed class WorldStats
     // ------------------------------------------------------------ izleyiciler
     private sealed class HeroT { public string State; public bool Legend, Initial; public int Level; }
     private sealed class CivT { public bool Alive; public int Cap = -1, MaxSettlements; }
+    /// <summary>Faz 1b-6: toplayıcının bağlandığı gün (yeni dünyada tarih öncesinin sonu, W.Epoch); bütün ölçüm günleri buna göredir (gün 1 = ilk adım).</summary>
+    private readonly int _e;
+
     private sealed class SetlT { public bool Alive, Starving, Plague; public int Civ, Tier; public double Burned, Houses, Pop; public int PlagueStart = -1; }   // Faz 1b-4: açlık, salgın, yanma
 
     /// <summary>Faz 1b-4: v3 durum değişimi kayıtları (bkz. <see cref="V3Log"/>).</summary>
@@ -433,18 +484,21 @@ public sealed class WorldStats
     private YearStats _cur;
     private double _birthSum, _birthN, _deathSum, _deathN, _idle, _work, _campsSum, _campDays;
     private double _brokeN, _civDays, _lackN, _lackFoodN, _setlDays, _amele, _ameleWork;   // C3
+    private double _hungryN;   // Faz 1b-6
 
     public WorldStats(Sim sim)
     {
         Sim = sim ?? throw new ArgumentNullException(nameof(sim));
         Seed = sim.W.Seed;
         var w = sim.W;
+        // Faz 1b-6: ölçüm tarih öncesinden sonra başlar; bütün günler bağlandığı günden (W.Day; yeni dünyada W.Epoch) sayılır
+        _e = w.Day;
         // başlangıçta var olan her şey "yeni" sayılmaz
         foreach (var h in w.Heroes) _heroes[h.Id] = new HeroT { State = h.State, Legend = h.Legend == true, Initial = true, Level = h.Level };
         _heroCount = w.Heroes.Count;
         foreach (var st in w.Settlements)
         {
-            _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier, Starving = st.Starving > 0, Plague = st.Plague != null, Burned = st.BurnedAt ?? double.NegativeInfinity, Houses = st.BurnedHouses ?? 0, Pop = st.Alive ? sim.Pop(st) : 0 };
+            _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier, Starving = st.Starving > 0, Plague = st.Plague != null, Burned = (st.BurnedAt ?? double.NegativeInfinity) - _e, Houses = st.BurnedHouses ?? 0, Pop = st.Alive ? sim.Pop(st) : 0 };
             _setlById[st.Id] = st;
         }
         foreach (var c in w.Civs)
@@ -468,8 +522,8 @@ public sealed class WorldStats
         foreach (var b in w.Battles) if (b.Id > _lastBattleId) _lastBattleId = b.Id;
         foreach (var h in w.Heroes) if (h.Level > MaxHeroLevel) MaxHeroLevel = h.Level;
         _metrics0 = SnapshotMetrics(w);
-        LastDay = w.Day;
-        _cur = NewYear(w.Day + 1);
+        LastDay = w.Day - _e;
+        _cur = NewYear(LastDay + 1);
         _prevHandler = sim.OnEvent;
         var prev = _prevHandler;
         _handler = e => { prev?.Invoke(e); OnEvent(e); };
@@ -546,7 +600,7 @@ public sealed class WorldStats
                 y.V[I_BORN]++;
                 y.Inc("levelBirth", LvKey(h.Level));
                 _birthSum += h.Level; _birthN++;
-                Dur.Births.Add(new DurSpan { Start = (int)h.Born, End = (int)h.Born, Id = h.Base, Kind = h.BaseInn ? "inn" : "tavern" });   // Faz 1b-5
+                Dur.Births.Add(new DurSpan { Start = (int)h.Born - _e, End = (int)h.Born - _e, Id = h.Base, Kind = h.BaseInn ? "inn" : "tavern" });   // Faz 1b-5
             }
             if (h.State != t.State)
             {
@@ -565,7 +619,7 @@ public sealed class WorldStats
             if (h.Legend == true && !t.Legend)
             {
                 t.Legend = true; y.V[I_LEGENDS]++;
-                if (!t.Initial) Dur.Legends.Add(new DurSpan { Start = (int)h.Born, End = w.Day, Id = h.Id });   // Faz 1b-5: efsaneye yükseliş
+                if (!t.Initial) Dur.Legends.Add(new DurSpan { Start = (int)h.Born - _e, End = w.Day - _e, Id = h.Id });   // Faz 1b-5: efsaneye yükseliş
             }
             if (h.Level > t.Level) t.Level = h.Level;
             if (h.Level > MaxHeroLevel) MaxHeroLevel = h.Level;
@@ -579,7 +633,7 @@ public sealed class WorldStats
     {
         if (_detached) throw new InvalidOperationException("WorldStats: Finish() sonrası AfterStep çağrıldı");
         var w = Sim.W;
-        int day = w.Day;
+        int day = w.Day - _e;
         if (day <= LastDay) return;      // aynı gün iki kez
         if (YearOf(day) != _cur.Year) CloseYear(LastDay, true);   // gün atlandıysa yarım yılı kapat
         LastDay = day;
@@ -615,6 +669,7 @@ public sealed class WorldStats
             if (st.Tier < 1) continue;
             _setlDays++;
             if (st.Lack != null && st.Lack.Count > 0) { _lackN++; if (st.Lack.Has("bread") || st.Lack.Has("beer")) _lackFoodN++; }
+            if (st.Starving > 0 || (st.Hunger ?? 0) > 0 || (st.Lack != null && (st.Lack.Get("bread") ?? 0) >= 10)) _hungryN++;   // Faz 1b-6: aç haydutların kaynağı
         }
     }
 
@@ -622,13 +677,13 @@ public sealed class WorldStats
     {
         var y = _cur;
         var w = Sim.W;
-        int day = w.Day;
+        int day = w.Day - _e;
         int[] tiers = new int[4];
         foreach (var st in w.Settlements)
         {
             if (st.Alive) tiers[Math.Clamp(st.Tier, 0, 3)]++;
             bool starving = st.Starving > 0, plague = st.Plague != null;
-            double burned = st.BurnedAt ?? double.NegativeInfinity, houses = st.BurnedHouses ?? 0;
+            double burned = (st.BurnedAt ?? double.NegativeInfinity) - _e, houses = st.BurnedHouses ?? 0;
             if (!_setls.TryGetValue(st.Id, out var t))
             {
                 _setls[st.Id] = new SetlT { Alive = st.Alive, Civ = st.Civ, Tier = st.Tier, Starving = starving, Plague = plague, Burned = burned, Houses = houses, Pop = st.Alive ? Sim.Pop(st) : 0 };
@@ -738,12 +793,12 @@ public sealed class WorldStats
         foreach (var q in w.Quests)
         {
             if (_questDone.Contains(q.Id)) continue;
-            if (!_questOpen.TryGetValue(q.Id, out var sp)) { sp = new DurSpan { Start = (int)q.Posted, Id = q.Id }; _questOpen[q.Id] = sp; }
+            if (!_questOpen.TryGetValue(q.Id, out var sp)) { sp = new DurSpan { Start = (int)q.Posted - _e, Id = q.Id }; _questOpen[q.Id] = sp; }
             string end = q.Done != null ? "done" : q.Open ? null
-                : q.TakenBy.Count == 0 ? (q.Expires != null && day >= q.Expires.Value ? "expired" : "closed")
+                : q.TakenBy.Count == 0 ? (q.Expires != null && day >= q.Expires.Value - _e ? "expired" : "closed")
                 : !J.Some(w.Agents, a => a.Quest == q.Id && a.Dead != true) ? "abandoned" : null;
             if (end == null) continue;
-            sp.End = q.Done != null ? (int)q.Done.Value : day; sp.Kind = end;
+            sp.End = q.Done != null ? (int)q.Done.Value - _e : day; sp.Kind = end;
             Dur.Quests.Add(sp); _questOpen.Remove(q.Id); _questDone.Add(q.Id);
         }
     }
@@ -753,7 +808,7 @@ public sealed class WorldStats
     {
         var w = Sim.W;
         var nc = st.Civ >= 0 && st.Civ < w.Civs.Count ? w.Civs[st.Civ] : null;
-        bool secede = nc != null && nc.Parent == t.Civ && nc.Founded == day;
+        bool secede = nc != null && nc.Parent == t.Civ && nc.Founded - _e == day;
         Ev(secede ? "secede" : "capture", st, t.Tier, day);
         DragonAfter(st.Id, day, h => h.CaptureDay ??= day);
         if (t.Tier < Sim.BIG_TIER) return;
@@ -788,7 +843,7 @@ public sealed class WorldStats
         var tgt = Sim.Settlement(war.Target);
         var sp = new WarSpan
         {
-            Start = (int)war.Since, Attacker = war.Attacker, Defender = i == war.Attacker ? j : i, Target = war.Target, TargetTier = tgt?.Tier ?? -1,
+            Start = (int)war.Since - _e, Attacker = war.Attacker, Defender = i == war.Attacker ? j : i, Target = war.Target, TargetTier = tgt?.Tier ?? -1,
             Kind = war.Kind ?? (war.Ally != null ? "ally" : "plain"),
         };
         _warSpan[war] = sp;
@@ -799,7 +854,7 @@ public sealed class WorldStats
     private void SiegeCamp(Agent a)
     {
         if (a.Kind != "army" || a.Purpose != "war" || a.Muster == null || a.To == null || a.Dead == true || a.Returning == true) return;
-        int to = a.To.Value, since = (int)a.Muster.Since;
+        int to = a.To.Value, since = (int)a.Muster.Since - _e;
         if (!_siegeCamp.TryGetValue(to, out int old) || since < old) _siegeCamp[to] = since;
     }
 
@@ -810,7 +865,7 @@ public sealed class WorldStats
         Settlement st = null;
         foreach (var x in w.Settlements) if (x.Alive && x.Tile == b.Tile) { st = x; break; }
         if (st == null || !_setls.TryGetValue(st.Id, out var t) || !t.Alive) return;
-        int day = (int)b.Day;
+        int day = (int)b.Day - _e;
         int start = _siegeCamp.TryGetValue(st.Id, out int s0) ? Math.Min(s0, day) : day;
         string outcome = st.Civ != t.Civ ? "taken" : b.Winner == "A" ? "sacked" : "repelled";
         V3.Sieges.Add(new SiegeSpan { Start = start, Assault = day, Settlement = st.Id, Tier = t.Tier, Outcome = outcome });
@@ -870,13 +925,14 @@ public sealed class WorldStats
         int alive = 0;
         foreach (var cp in Sim.W.Camps)
         {
+            if (cp.Kind == "bandit") continue;   // Faz 1b-6: aç haydutlar kamp sayılmaz (ayrı ölçü: banditCamps)
             if (!_camps.TryGetValue(cp.Id, out bool was)) { if (cp.Alive) y.V[I_CAMPSPAWN]++; }
             else if (was && !cp.Alive)
             {
                 y.V[I_CAMPCLEAR]++;
                 if (cp.Kind != "pirate" && cp.Kind != "dragon" && cp.ClearedDay != null)   // Faz 1b-5: kamp → köy
                 {
-                    var sp = new DurSpan { Start = (int)cp.ClearedDay.Value, Id = cp.Id, Kind = cp.Kind };
+                    var sp = new DurSpan { Start = (int)cp.ClearedDay.Value - _e, Id = cp.Id, Kind = cp.Kind };
                     Dur.CampVillage.Add(sp); _clearedCamps.Add((sp, cp.Tile));
                 }
             }
@@ -891,7 +947,7 @@ public sealed class WorldStats
     private void ScanWars()
     {
         var y = _cur;
-        int day = Sim.W.Day;
+        int day = Sim.W.Day - _e;
         _warsPrev.Clear();
         foreach (var war in _warsNow) _warsPrev.Add(war);
         _warsNow.Clear();
@@ -1114,6 +1170,7 @@ public sealed class WorldStats
         // Faz 1b-4
         y.V[I_SETLAVG] = _v3Days > 0 ? _setlSum / _v3Days : double.NaN;
         y.V[I_BIGAVG] = _v3Days > 0 ? _bigSum / _v3Days : double.NaN;
+        PolityYear(y, setl, pop);
         foreach (var kv in w.Metrics)
         {
             if (PerCivMetric(kv.Key)) continue;
@@ -1125,10 +1182,72 @@ public sealed class WorldStats
         _metrics0 = SnapshotMetrics(w);
         _birthSum = _birthN = _deathSum = _deathN = _idle = _work = _campsSum = _campDays = 0;
         _brokeN = _civDays = _lackN = _lackFoodN = _setlDays = _amele = _ameleWork = 0;   // C3
+        _hungryN = 0;   // Faz 1b-6
         _setlSum = _bigSum = _v3Days = 0;   // Faz 1b-4
         _warsYear.Clear();
         foreach (var war in _warsNow) _warsYear.Add(war);
         _cur = NewYear(day + 1);
+    }
+
+    /// <summary>Faz 1b-6: devlet, örgüt, esaret, devriye ve aç haydut ölçüleri (yıl sonu stokları, sayaç farkları); örgüt türüne göre şube
+    /// (orgBranchesByKind), hükümet tipine göre devlet sayısı (govs).</summary>
+    private void PolityYear(YearStats y, int setl, double pop)
+    {
+        var s = Sim; var w = s.W;
+        int orgs = 0, br = 0, hid = 0; double mem = 0;
+        foreach (var o in w.Orgs)
+        {
+            if (o.Alive) orgs++;
+            y.Inc("orgBranchesByKind", o.Kind, o.Alive ? o.Branches.Count : 0);
+            if (!o.Alive) continue;
+            br += o.Branches.Count; mem += o.Members;
+            foreach (var b in o.Branches) if (b.Hidden) hid++;
+        }
+        y.V[I_ORGS] = orgs; y.V[I_ORGBR] = br; y.V[I_ORGHID] = hid; y.V[I_ORGMEM] = mem;
+        int hl = 0, hm = 0, captv = 0;
+        foreach (var h in w.Heroes)
+        {
+            if (h.State == "captive") captv++;
+            if (!Living(h.State)) continue;
+            hl++;
+            if (h.Orgs != null && h.Orgs.Count > 0) hm++;
+        }
+        y.V[I_HEROMEM] = hl > 0 ? hm / (double)hl : double.NaN;
+        y.V[I_CAPTV] = captv;
+        double leg = 0; int nc = 0, pact = 0;
+        foreach (var c in w.Civs)
+        {
+            if (!c.Alive) continue;
+            nc++; leg += c.Legit;
+            if (States.PactBound(States.Ruler(s, c))) pact++;
+            y.Inc("govs", c.Gov ?? "?");
+        }
+        y.V[I_LEGIT] = nc > 0 ? leg / nc : double.NaN;
+        y.V[I_PACTR] = pact;
+        double slaves = 0, pris = 0;
+        foreach (var st in w.Settlements) if (st.Alive) { slaves += st.Slaves ?? 0; pris += st.Prisoners ?? 0; }
+        y.V[I_SLAVES] = slaves; y.V[I_SLAVESH] = pop > 0 ? slaves / pop : double.NaN; y.V[I_PRIS] = pris;
+        int bandits = 0;
+        foreach (var cp in w.Camps) if (cp.Alive && cp.Kind == "bandit") bandits++;
+        y.V[I_BANDC] = bandits;
+        y.V[I_HUNGRY] = _setlDays > 0 ? _hungryN / _setlDays : double.NaN;
+        y.V[IndexOf("orgOpened")] = Delta("orgBranchOpen");
+        y.V[IndexOf("orgClosed")] = Delta("orgBranchClose");
+        y.V[IndexOf("orgDissolved")] = Delta("orgDissolve");
+        y.V[IndexOf("orgReborn")] = Delta("orgReborn");
+        y.V[IndexOf("shadowWar")] = Delta("shadowWar");
+        y.V[IndexOf("shadowKills")] = Delta("shadowKill");
+        y.V[IndexOf("orgRaids")] = Delta("orgRaid");
+        y.V[IndexOf("orgLobby")] = Delta("orgLobby");
+        y.V[IndexOf("orgCoups")] = Delta("orgCoup");
+        y.V[IndexOf("orgQuests")] = Delta("orgQuest");
+        y.V[IndexOf("successions")] = Delta("succession");
+        y.V[IndexOf("successionCrises")] = Delta("succession_crisis");
+        y.V[IndexOf("enslaved")] = Delta("enslaved");
+        y.V[IndexOf("freedAll")] = Delta("freed") + Delta("escaped") + Delta("manumitted");
+        y.V[IndexOf("freedByNetwork")] = Delta("freed");
+        y.V[IndexOf("banditsBorn")] = Delta("banditsBorn");
+        y.V[IndexOf("patrolStops")] = Delta("patrolStop");
     }
 
     /// <summary>Koşuyu bitirir: yarım kalan yılı kapatır, özetleri çıkarır ve <see cref="Sim.OnEvent"/>'ten ayrılır. Sim referansı bırakılır.</summary>
@@ -1145,8 +1264,8 @@ public sealed class WorldStats
             if (h.Legend == true)
                 LegendList.Add(new JObj
                 {
-                    { "id", h.Id }, { "name", h.Name }, { "race", h.Race }, { "cls", h.Cls }, { "level", h.Level }, { "born", h.Born },
-                    { "state", h.State }, { "deathDay", h.DeathDay }, { "kills", h.Kills }, { "civ", h.Civ },
+                    { "id", h.Id }, { "name", h.Name }, { "race", h.Race }, { "cls", h.Cls }, { "level", h.Level }, { "born", h.Born - _e },
+                    { "state", h.State }, { "deathDay", h.DeathDay - _e }, { "kills", h.Kills }, { "civ", h.Civ },
                 });
         }
         foreach (var c in w.Civs)
@@ -1159,11 +1278,17 @@ public sealed class WorldStats
             for (int k = 1; k <= 3; k++) tierDays.Add(c.Yearly?.Get("tier" + k.ToString(CultureInfo.InvariantCulture)) ?? -1);
             Civs.Add(new CivSummary
             {
-                Id = c.Id, Name = c.Name, Cls = c.Cls, Race = c.Race, Founded = c.Founded, ExtinctDay = c.ExtinctDay, Alive = c.Alive,
+                Id = c.Id, Name = c.Name, Gov = c.Gov, Race = c.Race, Founded = c.Founded - _e, ExtinctDay = c.ExtinctDay - _e, Alive = c.Alive,
                 MaxSettlements = t?.MaxSettlements ?? ss.Count, FinalSettlements = ss.Count, FinalTier = s.CivTier(c), FinalPop = pop, TierDays = tierDays,
                 Gold = s.St(c, "gold"), BattlesWon = c.Stats?.BattlesWon ?? 0, BattlesLost = c.Stats?.BattlesLost ?? 0, Traded = c.Stats?.Traded ?? 0,
             });
         }
+        foreach (var o in w.Orgs)
+            Orgs.Add(new OrgSummary
+            {
+                Kind = o.Kind, Name = o.Name, Alive = o.Alive, Pending = !o.Alive && o.RebirthDay != null, Branches = o.Branches.Count, Hidden = o.Branches.Count(b => b.Hidden), Members = o.Members, Rebirths = o.Rebirths,
+                Gold = o.Gold, Tally = new Dictionary<string, double>(o.Tally.Entries().Select(kv => new KeyValuePair<string, double>(kv.Key, kv.Value))),
+            });
         Detach();
         Finished = true;
     }
@@ -1224,12 +1349,13 @@ public sealed class WorldStats
         foreach (var c in Civs)
             civs.Add(new JObj
             {
-                { "id", c.Id }, { "name", c.Name }, { "cls", c.Cls }, { "race", c.Race }, { "alive", c.Alive }, { "founded", c.Founded }, { "extinctDay", c.ExtinctDay },
+                { "id", c.Id }, { "name", c.Name }, { "gov", c.Gov }, { "race", c.Race }, { "alive", c.Alive }, { "founded", c.Founded }, { "extinctDay", c.ExtinctDay },
                 { "maxSettlements", c.MaxSettlements }, { "settlements", c.FinalSettlements }, { "pop", c.FinalPop }, { "tier", c.FinalTier }, { "tierDays", c.TierDays },
                 { "gold", c.Gold },
                 { "battlesWon", c.BattlesWon }, { "battlesLost", c.BattlesLost }, { "traded", c.Traded },
             });
         o.Add("civs", civs);
+        o.Add("orgs", Orgs.Select(x => (object)new JObj { { "kind", x.Kind }, { "alive", x.Alive }, { "pending", x.Pending }, { "branches", x.Branches }, { "members", x.Members }, { "rebirths", x.Rebirths }, { "gold", x.Gold }, { "tally", x.Tally.OrderBy(kv => kv.Key, StringComparer.Ordinal).Aggregate(new JObj(), (j, kv) => { j.Add(kv.Key, kv.Value); return j; }) } }).ToList());
         o.Add("legendList", LegendList);
         // Faz 1b-4: v3 kayıtları (diziler: alan sırası "fields"te)
         var v3 = new JObj

@@ -603,8 +603,8 @@ public static class Sea
     /// <summary>yaşayan koylarda kullanılmayan bir korsan kaptan adı</summary>
     public static string NewCaptain(Sim s) => s.Rng.Pick(J.Filter(CAPTAINS, x => !J.Some(s.W.Camps, c => c.Alive && c.Captain == x))) ?? CAPTAINS[0];
 
-    /// <summary>korsanlar Haydut'un gemilerine dokunmaz: ganimeti onların limanlarında satarlar</summary>
-    private static bool Smugglers(Civ c) => c.Cls == "rogue";
+    /// <summary>korsanlar tüccar cumhuriyetlerinin gemilerine dokunmaz: ganimeti onların limanlarında satarlar (Faz 1b-6; eski Haydut)</summary>
+    private static bool Smugglers(Civ c) => Polity.Smugglers(c);
 
     /// <summary>Deniz ticareti canlanınca sahipsiz adalarda (yoksa ıssız kıyıda) korsan koyu kurulur</summary>
     private static void PirateCoveTick(Sim s)
