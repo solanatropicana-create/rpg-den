@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    WorldGen port check (C# side): dumps Json.Serialize(WorldGen.GenerateWorld(seed)) per line.
+    Compiles only what WorldGen needs (Core without Sim.cs, Data, Js, Modules/WorldGen.cs) straight from
+    ../../FD.Macro instead of a ProjectReference, so the check keeps working while other modules are mid-edit
+    and never races other builds for FD.Macro/obj. Same language/globalization settings as FD.Macro.
+    Usage (run / compare commands): see the header of golden/ts/worldgen_dump.ts.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>WorldGenCheck</RootNamespace>
+    <AssemblyName>WorldGenCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" Exclude="../../FD.Macro/Core/Sim.cs" />
+    <Compile Include="../../FD.Macro/Data/*.cs" />
+    <Compile Include="../../FD.Macro/Js/*.cs" />
+    <Compile Include="../../FD.Macro/Modules/WorldGen.cs" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

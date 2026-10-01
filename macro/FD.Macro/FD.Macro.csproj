@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Fantastik Dünya makro dünya simülasyonu: Godot'dan bağımsız, deterministik, seed'li. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>FD.Macro</RootNamespace>
+    <AssemblyName>FD.Macro</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

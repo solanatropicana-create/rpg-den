@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Economy / Research / Gear / Events port check (C# side). Drives only those modules' ticks day by day
+    (plus Sim core: UpdateTerritory, Discover) and dumps per-day JSON; the TS twin is golden/ts/econ_diff.ts.
+    Compiles FD.Macro sources directly (Core, Data, Js, WorldGen + the four modules under test) with
+    EconStubs.cs standing in for the other modules, so it works while other modules are mid-edit and never
+    races other builds for FD.Macro/obj. Same language/globalization settings as FD.Macro.
+    Run from macro/:
+      node golden/ts/build.mjs econ_diff && node golden/out/econ_diff.js 1 600 > /tmp/econ_ts.ndjson
+      dotnet tests/EconCheck/bin/Release/net8.0/EconCheck.dll 1 600 > /tmp/econ_cs.ndjson  (after dotnet build -c Release)
+      python3 tests/EconCheck/econ_compare.py /tmp/econ_ts.ndjson /tmp/econ_cs.ndjson
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>EconCheck</RootNamespace>
+    <AssemblyName>EconCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="EconCheck.cs" />
+    <Compile Include="EconStubs.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" />
+    <Compile Include="../../FD.Macro/Data/*.cs" />
+    <Compile Include="../../FD.Macro/Js/*.cs" />
+    <Compile Include="../../FD.Macro/Modules/WorldGen.cs" />
+    <Compile Include="../../FD.Macro/Modules/Economy.cs" />
+    <Compile Include="../../FD.Macro/Modules/Research.cs" />
+    <Compile Include="../../FD.Macro/Modules/Gear.cs" />
+    <Compile Include="../../FD.Macro/Modules/Events.cs" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

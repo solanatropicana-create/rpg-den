@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    InnLife port check (C# side). Two modes:
+      unit  <file.ndjson>   : reads TS-generated inns (golden/ts/innlife_unit.ts) and prints the pure helpers' results
+      world <seed> <days> [scen] [innTarget]
+                            : runs a hero-less world (Sim core + Economy/Research/Gear/Events/Diplomacy/Monsters/Combat/
+                              Agents + InnLife.InnLifeTick in place of Inns.InnsTick) and dumps per-day JSON; TS twin:
+                              golden/ts/innlife_world.ts. scen 1 = scripted tavern heroes + keeper-site invalidation +
+                              innIncome/innScatter/innDetour probes (no camp raids); scen 2 = scen 1 + targeted branch
+                              perturbations (see the TS header).
+    Compiles FD.Macro sources directly with InnLifeStubs.cs standing in for Heroes/Will/Inns/Sea (other agents are
+    porting them right now), so it never races other builds for FD.Macro/obj. Stand-ins throw when the hero-less
+    world reaches code they do not model (the run then stops and reports the day).
+    Run from macro/:
+      node golden/ts/build.mjs innlife_world && node golden/out/innlife_world.js 7 1500 [scen] > ts.ndjson
+      dotnet build tests/InnLifeCheck -c Release && dotnet tests/InnLifeCheck/bin/Release/net8.0/InnLifeCheck.dll world 7 1500 [scen] > cs.ndjson
+      python3 tests/InnLifeCheck/innlife_compare.py ts.ndjson cs.ndjson
+      node golden/ts/build.mjs innlife_unit && node golden/out/innlife_unit.js 5000 > unit.ndjson
+      dotnet tests/InnLifeCheck/bin/Release/net8.0/InnLifeCheck.dll unit unit.ndjson > unit_cs.ndjson
+      python3 tests/InnLifeCheck/innlife_compare.py unit.ndjson unit_cs.ndjson
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>InnLifeCheck</RootNamespace>
+    <AssemblyName>InnLifeCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="InnLifeStubs.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" />
+    <Compile Include="../../FD.Macro/Data/*.cs" />
+    <Compile Include="../../FD.Macro/Js/*.cs" />
+    <Compile Include="../../FD.Macro/Modules/WorldGen.cs" />
+    <Compile Include="../../FD.Macro/Modules/Economy.cs" />
+    <Compile Include="../../FD.Macro/Modules/Research.cs" />
+    <Compile Include="../../FD.Macro/Modules/Gear.cs" />
+    <Compile Include="../../FD.Macro/Modules/Events.cs" />
+    <Compile Include="../../FD.Macro/Modules/Diplomacy.cs" />
+    <Compile Include="../../FD.Macro/Modules/Monsters.cs" />
+    <Compile Include="../../FD.Macro/Modules/Combat.cs" />
+    <Compile Include="../../FD.Macro/Modules/Agents.cs" />
+    <Compile Include="../../FD.Macro/Modules/InnLife.cs" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

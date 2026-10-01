@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Diplomacy / Monsters port check (C# side): replays every case of golden/ts/combat_modcheck.ts on
+    Sim.FromWorld(Json.Deserialize<World>(snapshot)) and prints the post-state per case. Cases that reach a module
+    still throwing NotImplementedException are printed as skipped. Compiles all FD.Macro sources directly (own obj
+    dir, so it never races other builds for FD.Macro/obj). Run from macro/ (see golden/ts/combat_modcheck.ts):
+      node golden/ts/build.mjs combat_modcheck && node golden/out/combat_modcheck.js 1 2400 120 > /tmp/cm_ts.ndjson
+      dotnet build tests/CombatModCheck -c Release && dotnet tests/CombatModCheck/bin/Release/net8.0/CombatModCheck.dll /tmp/cm_ts.ndjson > /tmp/cm_cs.ndjson
+      python3 tests/CombatModCheck/combat_modcompare.py /tmp/cm_ts.ndjson /tmp/cm_cs.ndjson
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CombatModCheck</RootNamespace>
+    <AssemblyName>CombatModCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" />
+    <Compile Include="../../FD.Macro/Data/*.cs" />
+    <Compile Include="../../FD.Macro/Js/*.cs" />
+    <Compile Include="../../FD.Macro/Modules/*.cs" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>

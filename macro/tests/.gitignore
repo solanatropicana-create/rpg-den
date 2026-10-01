@@ -1,0 +1,4 @@
+# Generated reference vectors (regenerate with: node tests/jsvectors/gen.mjs) and build output.
+jsvectors/data/
+JsCheck/bin/
+JsCheck/obj/

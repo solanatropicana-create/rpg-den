@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Heroes / Will / Inns port check (C# side): runs the real Sim.Step() and dumps one JSON line per day, like
+    the TS twin golden/ts/heroes_sim.ts (same line format; full snapshots every <every> days).
+    Compiles FD.Macro sources directly (not a ProjectReference) so it never races other builds for FD.Macro/obj.
+    Run from macro/:
+      node golden/ts/build.mjs heroes_sim && node golden/out/heroes_sim.js 1 1000 25 0 > /tmp/h_ts.ndjson
+      dotnet build tests/HeroesCheck -c Release && dotnet tests/HeroesCheck/bin/Release/net8.0/HeroesCheck.dll 1 1000 25 0 > /tmp/h_cs.ndjson
+      python3 tests/HeroesCheck/heroes_compare.py /tmp/h_ts.ndjson /tmp/h_cs.ndjson
+    scen (4th arg): 0 plain, 1 day-0 injection (taverns, contacts, gold), 2 = 1 + daily injections forcing rare branches.
+    Unit check (direct calls incl. private helpers; TS side bundled with heroes_build.mjs, which exports them):
+      node golden/ts/heroes_build.mjs heroes_unit && node golden/out/heroes_unit.js 1 > /tmp/u_ts.ndjson
+      dotnet tests/HeroesCheck/bin/Release/net8.0/HeroesCheck.dll unit 1 > /tmp/u_cs.ndjson
+      python3 tests/HeroesCheck/heroes_compare.py /tmp/u_ts.ndjson /tmp/u_cs.ndjson
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>HeroesCheck</RootNamespace>
+    <AssemblyName>HeroesCheck</AssemblyName>
+    <LangVersion>12</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>CS1591;CS0162;CS0168;CS0219;CS8321</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Unit.cs" />
+    <Compile Include="../../FD.Macro/Core/*.cs" />
+    <Compile Include="../../FD.Macro/Data/*.cs" />
+    <Compile Include="../../FD.Macro/Js/*.cs" />
+    <Compile Include="../../FD.Macro/Modules/*.cs" />
+    <EmbeddedResource Include="../../FD.Macro/Data/data.json" LogicalName="FD.Macro.Data.data.json" />
+  </ItemGroup>
+</Project>
