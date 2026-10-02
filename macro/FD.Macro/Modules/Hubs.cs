@@ -371,6 +371,16 @@ public static class Hubs
         Begin(s, "valley", t, $"{stem} Vadisi", null, $"{cp.Name} temizlendi; vadi boşaldı", cp.Id);
     }
 
+    /// <summary>Faz 2: oyuncunun bölgesinde temizlenen kamp: verimli vadi şansa ve merkez tavanına bakmadan söylentiyle başlar
+    /// (yer ve sahip varsa); öncüler hücumda gelir, dünyada yer varsa kalıcı köy olur.</summary>
+    public static bool ForceValley(Sim s, Camp cp)
+    {
+        int t = FreeTile(s, cp.Tile) ? cp.Tile : NearFree(s, cp.Tile, 2);
+        if (t < 0) return false;
+        string stem = cp.Name.Replace(" Kampı", "").Replace(" Karakolu", "").Replace(" İni", "");
+        return Begin(s, "valley", t, $"{stem} Vadisi", null, $"{cp.Name} temizlendi; vadi boşaldı", cp.Id);
+    }
+
     private static bool Begin(Sim s, string kind, int tile, string name, int? civ, string why, int? origin)
     {
         var w = s.W;

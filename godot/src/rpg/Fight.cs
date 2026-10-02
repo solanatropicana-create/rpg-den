@@ -49,6 +49,8 @@ public sealed class Fighter
     public bool Moving;
     public float Hurt;
     public int Kills, DexMod;
+    /// <summary>D: a permanent wound was dealt in this fight (at most one per fight)</summary>
+    public string NewWound;
     public bool IsBoss => Kind == "boss";
     public bool IsPlayer => Kind == "player";
     public float Hp => (float)Cb.Hp;
@@ -65,7 +67,7 @@ public sealed class Fighter
 public sealed class FightEvent
 {
     public float T;
-    /// <summary>start | attack | spell | heal | down | dead | save | stable | up | sleep | wake | flee | rout | potion | bandage | wind | end</summary>
+    /// <summary>start | attack | spell | heal | down | dead | save | stable | up | sleep | wake | flee | rout | potion | bandage | wind | join | order | wound | end</summary>
     public string Kind;
     public Fighter A, B;
     /// <summary>short line over the head: "17+5 → 22 vs ZS 15 · isabet"</summary>
@@ -155,8 +157,31 @@ public sealed class Fight
         Emit(new FightEvent { Kind = "start", Text = why });
     }
 
+    /// <summary>A monster joins a running fight (woken in its tent, came running at the noise). Counts for morale from now on.
+    /// Not after the foes broke: they would only join the rout.</summary>
+    public Fighter Reinforce(string monster, string name, V2 pos, string kind, int lifeId, float range, string why)
+    {
+        var f = AddMonster(monster, name, FSide.Foe, pos, kind, lifeId, range);
+        _initFoes++;
+        if (FoesRouted) StartFlee(f);
+        Emit(new FightEvent { Kind = "join", A = f, Short = "katıldı!", Text = why });
+        return f;
+    }
+
+    /// <summary>A party member joins a running fight (a companion who caught up, an NPC hero passing by).</summary>
+    public Fighter ReinforceParty(Character c, M.Hero hero, V2 pos, string kind, string why)
+    {
+        var f = AddCharacter(c, hero, FSide.Party, pos, kind);
+        _initParty++;
+        Emit(new FightEvent { Kind = "join", A = f, Short = "katıldı!", Text = why });
+        return f;
+    }
+
     int Count(FSide s, Predicate<Fighter> p) { int n = 0; foreach (var f in F) if (f.Side == s && p(f)) n++; return n; }
     public IEnumerable<Fighter> Of(FSide s) { foreach (var f in F) if (f.Side == s) yield return f; }
+
+    /// <summary>a line from outside the rules (orders, the director's notes) into the log</summary>
+    public void Post(string kind, Fighter a, string text, string shortText = null) => Emit(new FightEvent { Kind = kind, A = a, Text = text, Short = shortText });
 
     void Emit(FightEvent e)
     {
@@ -524,7 +549,8 @@ public sealed class Fight
             t.Cb.Hp = 0;
             t.DeathFail += crit ? 2 : 1;
             Emit(new FightEvent { Kind = "save", A = t, Short = crit ? "✖✖" : "✖", Text = $"{t.Name} yerde yara aldı: {(crit ? "iki" : "bir")} ölüm zarı kaybı ({t.DeathFail}/3)." });
-            if (t.DeathFail >= 3) Die(t, by);
+            if (t.DeathFail >= 3) { Die(t, by); return; }
+            if (crit) MaybeWound(t, "yerdeyken yediği kritik darbe");
             return;
         }
         if (t.Cb.Hp > 0) { if (t.AnimLock <= 0.2f) { t.Anim = "Hit"; t.AnimLock = 0.35f; } return; }
@@ -562,7 +588,23 @@ public sealed class Fight
         else f.DeathFail++;
         Emit(new FightEvent { Kind = "save", A = f, Short = $"ölüm zarı {(int)d} · {f.DeathOk}✔ {f.DeathFail}✖", Text = $"{f.Name} ölüm zarı: {(int)d} ({(d >= 10 ? "başarı" : "kayıp")}) — {f.DeathOk} başarı, {f.DeathFail} kayıp." });
         if (f.DeathFail >= 3) { Die(f, null); return; }
+        if (d < 10) MaybeWound(f, d == 1 ? "doğal 1'lik ölüm zarı" : "kötü giden ölüm zarı");
         if (f.DeathOk >= 3) { f.Stable = true; Emit(new FightEvent { Kind = "stable", A = f, Short = "dengelendi", Text = $"{f.Name} dengelendi; baygın ama kanaması durdu." }); }
+    }
+
+    /// <summary>D: chance of a permanent wound after a bad death save or a critical hit while down (D&amp;D DMG lingering injuries,
+    /// simplified): one in four — a lost eye, a limp, or a deep scar (half of them). At most one per fighter per fight.</summary>
+    public const double WoundChance = 0.25;
+
+    void MaybeWound(Fighter f, string why)
+    {
+        if (f.Char == null || f.NewWound != null || f.Dead || !Rng.Chance(WoundChance)) return;
+        double r = Rng.Next();
+        string kind = r < 0.25 ? "eye" : r < 0.5 ? "limp" : "scar";
+        if (f.Char.HasWound(kind)) kind = f.Char.HasWound("scar") ? (f.Char.HasWound("limp") ? "eye" : "limp") : "scar";
+        if (f.Char.HasWound(kind)) return;
+        f.NewWound = kind;
+        Emit(new FightEvent { Kind = "wound", A = f, Short = $"kalıcı yara: {Wound.Name(kind).ToLowerInvariant()}!", Text = $"{f.Name} kalıcı bir yara aldı: {Wound.Name(kind)} ({why}).", Detail = Wound.Effect(kind) });
     }
 
     void Raise(Fighter f, int hp, Fighter by, string why)
@@ -823,7 +865,7 @@ public sealed class Fight
     }
 
     /// <summary>Copy fight results back to the characters (HP, down/dead, death saves) — call when the fight is over.</summary>
-    public void WriteBack()
+    public void WriteBack(int day = -1, string where = null)
     {
         foreach (var f in F)
         {
@@ -832,6 +874,7 @@ public sealed class Fight
             c.Hp = Math.Max(0, (int)Math.Round(f.Cb.Hp));
             c.Dead = f.Dead; c.Down = f.Down && !f.Dead; c.Stable = f.Stable; c.DeathOk = f.DeathOk; c.DeathFail = f.DeathFail;
             if (c.Down && Winner == FSide.Party) c.Stable = true;   // friends tend the fallen after a won fight
+            if (f.NewWound != null && !c.Dead) c.AddWound(f.NewWound, day, where);
         }
     }
 

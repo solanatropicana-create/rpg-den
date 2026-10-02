@@ -53,6 +53,14 @@ public partial class Dev : Node
     public int WorldTestDays;
     /// <summary>--fighttest: headless checks of the real-time d20 fight (no region needed)</summary>
     public bool FightTest;
+    /// <summary>--party=wizard,cleric: dev companions (level 2) when the party has none</summary>
+    public string PartySpec;
+    /// <summary>--fight[=seconds]: start a fight with the goblins near the player after warm-up (or at once); --pauseat=T pauses it at fight time T</summary>
+    public float? FightAt, PauseAt;
+    /// <summary>--autopause=0|1 overrides the setting (tests and shots)</summary>
+    public bool? AutoPause;
+    /// <summary>--camptest[=N]: headless: walk the player (with --party) into the goblin camp, fight N times, check the results</summary>
+    public int CampTest;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
     /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
@@ -60,7 +68,7 @@ public partial class Dev : Node
     /// <summary>--newgame=race,class[,seed[,name]]: run the boot flow headless (creation → world → save → region)</summary>
     public string NewGame;
     /// <summary>tests, shots and tools go straight to the region (Boot skips the menu)</summary>
-    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || ShotPath != null || Bench > 0 || MapDumpPath != null
+    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || ShotPath != null || Bench > 0 || MapDumpPath != null
                             || DumpModel != null || Probe != null || Follow != null || CamPos.HasValue);
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
@@ -118,6 +126,11 @@ public partial class Dev : Node
                     case "--worldtest": WorldTestDays = val == "" ? 3 : int.Parse(val, ci); break;
                     case "--play": Play = true; break;
                     case "--fighttest": FightTest = true; break;
+                    case "--party": PartySpec = val; break;
+                    case "--fight": FightAt = val == "" ? 0f : F(val); break;
+                    case "--pauseat": PauseAt = F(val); break;
+                    case "--autopause": AutoPause = val != "0"; break;
+                    case "--camptest": CampTest = val == "" ? 1 : int.Parse(val, ci); break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -239,12 +252,42 @@ public partial class Dev : Node
         if (SelfTest) CallDeferred(nameof(RunSelfTest));
         if (LifeTestDays > 0) CallDeferred(nameof(RunLifeTest));
         if (WorldTestDays > 0) CallDeferred(nameof(RunWorldTest));
+        if (AutoPause.HasValue) FD.Game.Settings.Current.AutoPause = AutoPause.Value;
+        if (region.Combat != null && PauseAt.HasValue) region.Combat.PauseAt = PauseAt;
+        if (CampTest > 0) CallDeferred(nameof(RunCampTest));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
 
     void RunLifeTest() => FD.Dev.LifeTest.Run(this, Region.Current, LifeTestDays);
     void RunWorldTest() => FD.Dev.WorldTest.Run(this, Region.Current, WorldTestDays);
+    void RunCampTest() => FD.Dev.CampTest.Run(this, Region.Current, CampTest);
+
+    /// <summary>--fight: start a fight with the goblins near the player (the camp's if none are near: they are brought over)</summary>
+    void DevFight()
+    {
+        var r = Region.Current;
+        if (r?.Combat == null || r.Combat.Active) return;
+        var pp = new System.Numerics.Vector2(r.Player.GlobalPosition.X, r.Player.GlobalPosition.Z);
+        FD.Sim.Life.Person first = null;
+        foreach (var p in r.Life.People)
+            if (p.Role == FD.Sim.Life.Role.Goblin && !p.Dead && p.Present && (first == null || System.Numerics.Vector2.Distance(p.Pos, pp) < System.Numerics.Vector2.Distance(first.Pos, pp))) first = p;
+        if (first == null) return;
+        if (System.Numerics.Vector2.Distance(first.Pos, pp) > 30f)
+        {
+            // bring the nearest few over (dev only)
+            int n = 0;
+            foreach (var p in r.Life.People)
+            {
+                if (p.Role != FD.Sim.Life.Role.Goblin || p.Dead || !p.Present || n >= 5) continue;
+                float a = n * 0.9f;
+                p.Pos = pp + new System.Numerics.Vector2(MathF.Sin(a) * 9f, -7f - MathF.Cos(a) * 4f);
+                p.Motion = FD.Sim.Life.Motion.Doing;
+                n++;
+            }
+        }
+        r.Combat.Start(first, $"{first.Name} saldırdı!");
+    }
 
     /// <summary>--follow=Name: keep the free camera (or the player) near that person, looking at them.</summary>
     void FollowPerson()
@@ -282,6 +325,7 @@ public partial class Dev : Node
     {
         if (_done || !_regionHooked) return;
         _frames++;
+        if (FightAt is float fa && _frames == Math.Max(2, (int)(fa * 30))) DevFight();
         if (Follow != null) FollowPerson();
         else if (CardFor != null && _frames == Warm - 3)
         {

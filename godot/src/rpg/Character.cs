@@ -122,6 +122,26 @@ public sealed class Character
         if (!Uses.ContainsKey("secondWind")) Uses["secondWind"] = Cls == "fighter" ? 1 : 0;
     }
 
+    /// <summary>D: a permanent wound (a scar costs a point of Charisma; the limp and the eye act through <see cref="SpeedFactor"/>
+    /// and <see cref="Attack"/>); the epithet follows the worst wound.</summary>
+    public void AddWound(string kind, int day, string where)
+    {
+        if (HasWound(kind)) return;
+        Wounds.Add(new Wound { Kind = kind, Day = day, Where = where });
+        if (kind == "scar") Stats[Rules.CHA] = Math.Max(3, Stats[Rules.CHA] - 1);
+        UpdateEpithet();
+    }
+
+    /// <summary>D: the temple heals a wound (lesser restoration); the scar's Charisma comes back.</summary>
+    public void CureWound(string kind)
+    {
+        int i = Wounds.FindIndex(w => w.Kind == kind);
+        if (i < 0) return;
+        Wounds.RemoveAt(i);
+        if (kind == "scar") Stats[Rules.CHA] += 1;
+        UpdateEpithet();
+    }
+
     /// <summary>Epithet from the worst wound (eye &gt; limp &gt; scar) unless the world already gave one.</summary>
     public void UpdateEpithet()
     {

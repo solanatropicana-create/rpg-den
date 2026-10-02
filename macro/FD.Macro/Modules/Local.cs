@@ -262,10 +262,93 @@ public static class Local
         return h;
     }
 
-    /// <summary>Gün başında (Sim.Step'ten sonra) bölgenin bakımı: kamp yaşıyorsa ilan.</summary>
+    // ------------------------------------------------------------ yerelden sime
+    /// <summary>Bölgede oynanan bir kamp savaşının sonucu (Faz 2 C/A).</summary>
+    public sealed class LocalFight
+    {
+        /// <summary>ölen sıradan goblinler (şef ayrı)</summary>
+        public int Killed;
+        public bool BossKilled, Cleared, Won, PlayerDowned;
+        /// <summary>savaşı kazanan ekipteki kahraman kayıtları (oyuncu ve simden gelen yoldaşlar)</summary>
+        public List<int> Heroes = new();
+    }
+
+    public const int SETTLERS_MIN = 10, SETTLERS_MAX = 20;
+
+    /// <summary>
+    /// Bölgede oynanan kamp savaşı sime yazılır: ölen goblinler kampın sayısından düşer, şef ölürse kamp şefsiz kalır; kamp
+    /// kırıldıysa (şef düştü ve kalanlar dağıldı) sim'de de temizlenir: ilan kapanır (ödül handa ya da muhtarda alınmak üzere
+    /// bekler), ganimet kampın sandığında kalır, köyün devletinin tehdidi azalır, oyuncunun kaydına yazılır ve 10–20 gün sonra
+    /// boşalan vadiye öncüler gelmeye başlar (verimli vadi merkezi; yer yoksa köye yerleşirler). Oyuncuya söylenecek tek satırı döndürür (ya da null).
+    /// </summary>
+    public static string LocalCampFight(Sim s, LocalFight f)
+    {
+        var w = s.W; var link = w.Region; var cp = Camp(s); var v = Village(s);
+        if (link == null || cp == null || !cp.Alive) return null;
+        var c = Civ(s);
+        cp.Count = JsMath.Max(0, cp.Count - f.Killed);
+        if (f.BossKilled) cp.Boss = false;
+        var heroes = new List<Hero>();
+        foreach (int id in f.Heroes) { var h = s.Hero(id); if (h != null) heroes.Add(h); }
+        foreach (var h in heroes) h.Kills += f.Killed + (f.BossKilled ? 1 : 0);
+        string names = heroes.Count == 0 ? "Bir yabancı" : heroes.Count == 1 ? heroes[0].Name : string.Join(", ", J.Map(heroes, h => h.Name));
+        s.Metric("localFight");
+        if (!f.Cleared)
+        {
+            if (f.Killed + (f.BossKilled ? 1 : 0) > 0)
+                s.Log("lair", $"{names} {Lore.Ek(cp.Name, "in")} goblinleriyle çarpıştı: {J.S(f.Killed + (f.BossKilled ? 1 : 0))} goblin öldü{(f.BossKilled ? ", şefleri de" : "")}.",
+                    tile: cp.Tile, civ: v?.Civ, cause: f.Won ? "Goblinler bozguna uğrayıp kampa kaçtı" : "Yabancılar yere serildi", major: false);
+            if (cp.Count <= 0 && !cp.Boss) f.Cleared = true;
+            else return null;
+        }
+        // kamp temizlendi
+        double loot = JsMath.Round(cp.Loot);
+        cp.Alive = false; cp.Count = 0; cp.ClearedDay = s.Day;
+        w.Tiles[cp.Tile].Camp = null;
+        s.Metric("campCleared"); s.Metric("localCampCleared");
+        link.CampLoot += loot;
+        string reward = null;
+        foreach (var q in w.Quests)
+        {
+            if (q.Camp != cp.Id || q.Done != null) continue;
+            bool ours = q.Open || J.Some(q.TakenBy, id => f.Heroes.Contains(id));
+            if (!ours) { q.Open = false; continue; }   // başka kahramanın ilanı boşa çıktı
+            q.Open = false; q.Done = s.Day;
+            s.Metric("questDone"); s.Metric("regionQuestDone");
+            link.Reward += q.Bounty;
+            reward = $"İlan kapandı: {J.S(q.Bounty)} altın ödül {(link.Inn >= 0 ? "handa" : "muhtarda")} seni bekliyor.";
+            if (q.Civ >= 0) foreach (var h in heroes) h.Rep.Set(q.Civ, (h.Rep.Get(q.Civ) ?? 0) + 1);
+        }
+        if (c != null) c.Threat *= 0.4;
+        foreach (var h in heroes) Will.Note(s, h, $"{Tr.Ek(cp.Name, "i")} yerle bir etti");
+        link.SettlersDay = s.Day + s.Rng.Int(SETTLERS_MIN, SETTLERS_MAX);
+        s.Log("lair", $"{names}, {Tr.Ek(cp.Name, "i")} yerle bir etti!{(v != null ? $" {v.Name} rahat bir nefes aldı." : "")}", tile: cp.Tile, civ: v?.Civ,
+            cause: f.BossKilled ? "Şefleri düşünce goblinler dağıldı" : "Kampta ayakta goblin kalmadı", major: true);
+        return reward ?? $"{cp.Name} temizlendi.";
+    }
+
+    /// <summary>Gün başında (Sim.Step'ten sonra) bölgenin bakımı: kamp yaşıyorsa ilan; temizlenen kampın vadisine vakti gelince öncüler.</summary>
     public static void DayTick(Sim s)
     {
-        if (s.W.Region == null) return;
+        var link = s.W.Region;
+        if (link == null) return;
         EnsureQuest(s);
+        if (link.SettlersDay is double sd && s.Day >= sd)
+        {
+            link.SettlersDay = null;
+            var v = Village(s); var cp = Camp(s);
+            if (cp != null && Hubs.ForceValley(s, cp)) { s.Metric("regionValley"); return; }
+            // vadiye yer yoksa öncüler köye yerleşir
+            if (v != null && v.Alive)
+            {
+                var c = Civ(s);
+                string race = c?.Race ?? "human";
+                double n = s.Rng.Int(4, 8);
+                s.AddPop(v, race, n);
+                s.Metric("regionSettlers");
+                s.Log("hub", $"{(cp != null ? Tr.Ek(cp.Name, "in") : "Goblinlerin")} boşalttığı ormana öncüler geldi; {Tr.Ek(v.Name, "a")} {J.S(n)} yeni can katıldı.",
+                    tile: v.Tile, civ: v.Civ, cause: "Goblinler gidince ormanın kıyısı güvenli oldu", major: false);
+            }
+        }
     }
 }

@@ -47,6 +47,9 @@ public partial class Region : Node3D
     /// <summary>Faz 2: the macro world and its link to this region (village, inn, camp)</summary>
     public FD.Game.Session Session { get; private set; }
     public FD.Game.Director Director { get; private set; }
+    /// <summary>Faz 2: the bodies of the party members other than the player (following the leader; the fight drives them)</summary>
+    public readonly List<Companion> Companions = new();
+    public FD.Combat.CombatDirector Combat { get; private set; }
     public readonly List<IRegionFeature> Features = new();
     public bool IsReady { get; private set; }
 
@@ -123,6 +126,19 @@ public partial class Region : Node3D
         if (pending != null && pending.HasPosition)
             Player.Teleport(new Vector2(pending.PlayerX, pending.PlayerZ), pending.PlayerYaw, Heightfield);
         FD.Game.SaveGame.Pending = null;
+        // dev: a party to try fights with (--party=wizard,cleric)
+        if (FD.Dev.Dev.Instance?.PartySpec is string ps && Session.Party.Count <= 1)
+            foreach (var cls in ps.Split(',', StringSplitOptions.RemoveEmptyEntries)) Session.Party.Add(FD.Rpg.CharacterFactory.DevCompanion(cls.Trim(), Session.NextCharId()));
+        int slot = 0;
+        foreach (var c in Session.Party)
+        {
+            if (c == Session.Player || c.Dead) continue;
+            var comp = Companion.Create(c, slot++);
+            AddChild(comp);
+            comp.Init(Player, Heightfield);
+            comp.SnapToLeader();
+            Companions.Add(comp);
+        }
 
         // people
         Census.Populate(Life, (ulong)RegionSpec.Seed + 11, FD.Game.RegionBind.Spec(Session));
@@ -136,6 +152,9 @@ public partial class Region : Node3D
         Director = new FD.Game.Director();
         AddChild(Director);
         Director.Init(Session);
+        Combat = new FD.Combat.CombatDirector();
+        AddChild(Combat);
+        Combat.Init(this);
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

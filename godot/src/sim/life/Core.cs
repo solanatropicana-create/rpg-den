@@ -156,6 +156,8 @@ public sealed class Person
     /// <summary>Faz 2 (savaş): the real-time fight drives this person (position, facing, <see cref="FightAnim"/>); LifeSim leaves them alone</summary>
     public bool InFight;
     public string FightAnim;
+    /// <summary>Faz 2: weapon shown in a fight instead of the usual tool (e.g. proc_bow for goblin archers)</summary>
+    public string FightTool;
     /// <summary>Faz 2: dead (a body on the ground; LifeSim never moves them again) — or lying unconscious (<see cref="Down"/>)</summary>
     public bool Dead, Down;
     public Role Role;

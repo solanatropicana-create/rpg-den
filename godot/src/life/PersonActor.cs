@@ -152,6 +152,7 @@ public partial class PersonActor : Node3D
             _outfitKey = key;
             if (tool == null) Body.SetOutfit(_baseOutfit);
             else { var o = new string[_baseOutfit.Length + 1]; _baseOutfit.CopyTo(o, 0); o[^1] = tool; Body.SetOutfit(o); }
+            if (Body.HandProp != null) Body.SetHandProp(null);
         }
         if (clip == "Attack" && _lastClip == "Attack" && !Body.IsPlaying()) Body.Restart();
         Body.Drive(clip, speed);
@@ -200,13 +201,16 @@ public partial class PersonActor : Node3D
         Position = new Vector3(p.Pos.X, _y, p.Pos.Y);
         string clip = p.Dead || p.Down ? "Die" : p.FightAnim ?? "Idle";
         float speed = clip == "Run" ? p.RunSpeed : clip == "Walk" ? p.WalkSpeed : 0f;
-        string tool = p.Role == Role.Goblin && !p.Dead ? (p.IsBoss ? "tool_club" : (p.Work % 3 == 0 ? "tool_spear" : "tool_club")) : null;
-        string key = tool ?? "";
+        string tool = p.Role == Role.Goblin && !p.Dead ? (p.FightTool ?? (p.IsBoss ? "tool_club" : (p.Work % 3 == 0 ? "tool_spear" : "tool_club"))) : null;
+        string hand = tool != null && tool.StartsWith("proc_") ? tool : null;
+        if (hand != null) tool = null;
+        string key = (tool ?? "") + "|" + (hand ?? "");
         if (key != _outfitKey)
         {
             _outfitKey = key;
             if (tool == null) Body.SetOutfit(_baseOutfit);
             else { var o = new string[_baseOutfit.Length + 1]; _baseOutfit.CopyTo(o, 0); o[^1] = tool; Body.SetOutfit(o); }
+            if (Body.HandProp != hand) Body.SetHandProp(hand);
         }
         if (clip == "Attack" && _lastClip == "Attack" && !Body.IsPlaying()) Body.Restart();
         if (clip != "Die" || _lastClip != "Die") Body.Drive(clip, speed, clip == "Die" ? 0.15f : 0.2f);

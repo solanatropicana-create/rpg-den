@@ -77,6 +77,55 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
   JSON (ekip, saat, oyuncunun yeri, bölge bayrakları), geçici dosyaya yazılıp yer değiştirilir. Yeni dünya yaratılınca kaydedilir;
   menüdeki "Devam et" açar.
 
+### C · Duraklatmalı gerçek zamanlı d20 savaş (bitti)
+
+- **Ortak kural** (`macro/FD.Macro/Modules/Combat.cs` → `Combat.Strike`): simdeki savaşların saldırı satırı ayrı bir işleve
+  alındı (d20 + saldırı ↔ zırh sınıfı, doğal 20 kritik — 3. seviye savaşçıda 19 — zarları ikiler, doğal 1 ıska, avantaj/
+  dezavantaj, sinsi saldırı, öfke, paladin vuruşu, korucu işareti). `ResolveBattle` ve bölgedeki savaş aynı işlevi çağırır
+  (simetri). Makro çıktısı değişmedi: `hash 1 2400` aynı (59308e383f41fe8f).
+- **Savaş çekirdeği** (`src/rpg/Fight.cs`, Godot'suz, tohumla belirlenimli): her savaşan ~3 gerçek saniyede bir davranır
+  (Çeviklikle 2,5–3,4 sn); yürüme ve menzil metre cinsinden. Sınıflar kendi kararıyla dövüşür (Kenshi gibi), emir verilmedikçe:
+  savaşçı yere düşen ya da yaralı yoldaşın başındaki düşmana koşar, yarı canda derin nefes alır; haydut bir yoldaşın dövüştüğü
+  düşmanı seçer ya da arkasına dolanır (sinsi saldırı); büyücü mesafe korur (3,5 m'den yakına gelen düşmandan geri çekilir), 3+
+  düşman kümesine Uyku, yakın kümeye Yanan Eller, şefe ve yaralılara Sihirli Füze, gerisi Ateş Oku/Buz Işını; rahip yerdekini
+  kaldırır, ağır yaralıyı iyileştirir, yoksa Kutsal Alev. Goblinler yakındakilerin en zayıfına üşüşür, okçular mesafe korur.
+  Yere düşen ekip üyesi 3 saniyede bir ölüm zarı atar (10+ başarı, 1 iki kayıp, 20 kalkar; yerdeyken yediği darbe bir kayıp,
+  kritik iki; büyük hasar doğrudan öldürür); uyuyan ya da yerdeki hedefe yakın dövüşte avantaj ve isabet kritik. Moral: goblinlerin
+  yarısı düşünce ya da şefleri düşünce bozgun — gerçekten kaçarlar; ekibin %75'i düşünce yaralı yoldaşlar kaçar (oyuncu kendiliğinden
+  kaçmaz). XP: goblin 50, şef 200, sağ kalanlara bölünür; seviye atlanınca can artar, büyücü yeni büyü öğrenir.
+- **Bölgede savaş** (`src/combat/CombatDirector.cs`): kovalayan goblin oyuncuya yetişip vurunca (`LifeSim.GoblinStrike`) savaş
+  başlar. Ekip (oyuncu + yoldaşlar) ve 30 m içindeki ya da kovalayan goblinler katılır; savaş kampın 65 m yakınındaysa kamptaki
+  bütün goblinler, çadırda uyuyanlar 3,5–10,5 sn sonra uyanıp ("gürültüye uyandı ve çadırından fırladı!"). Sonradan yetişen goblin
+  de savaşa katılır. Okçu goblinler (her dört goblinden biri) yay taşır. Savaş bedenleri sürer (oyuncu betik kipinde, `Person.InFight`);
+  kaçan goblinler ormana koşup birkaç oyun saati saklanır (kamp düştüyse bir daha dönmez), ölüler yerde kalır.
+- **Duraklatma:** Boşluk bütün sahne ağacını durdurur (canlandırma donar, saat durur); emirler duraklıyken de verilir. Savaş
+  başında bir kez kendiliğinden duraklar (ayar: `Settings.AutoPause`, `user://settings.json`; H'de ayarlar ekranı).
+- **Taktik kamera** (`TacticalCamera`): savaş başlayınca oyuncunun kamerasından yukarı süzülür (~58°, 19 m), savaşın ortasını
+  izler; WASD kaydırır (5 sn sonra yeniden izler), teker 8–42 m, sağ sürükle döndürür. Fare serbest. Bitince üçüncü şahsa dönülür.
+- **Emirler:** sol tık yoldaşı seçer (Shift ekler), sürükle kutuyla seçer, düşmana tık saldırı, yere tık yürü (sağ tık da emir);
+  Tab sıradaki; 1–5 büyüler (hedef gerekiyorsa nişan kipi: tıkla, sağ tık/Esc vazgeç; fare zaten uygun hedefteyse hemen), Q iksir
+  (fare bir yoldaştaysa ona), B sargı (yerdekini 1 canla kaldırır), F derin nefes, R geri çekil, H bekle, G serbest (kendi kararı).
+- **Görünenler** (`CombatHud`): ekibin altında halka (seçili parlak), fareyle gösterilen düşmanda kırmızı halka, baş üstünde can
+  çubuğu, yerdekinin üstünde ölüm zarları (✔○○ ✖○○), uyuyanda Zzz; her atış hedefin başının üstünde yükselir
+  (`17+5 → 22 vs ZS 15 · isabet · 6`; doğal 20 altın renkli ve büyük, ekran parlar; ıska gri; ekibe isabet kırmızımsı). Panolar:
+  ekip (can, büyü yuvaları, durum ya da emir; tıklayınca seçer), seçilinin eylemleri (düğmeler, tuşlarıyla), zar günlüğü
+  (duraklıyken her atış açılır: `d20 17 + 5 vs ZS 15; hasar zarları 6+3`), üstte savaş saati ya da DURAKLATILDI, sonunda özet
+  (zafer/yenilgi, öldürülen, kaçan, TP, seviye, ilan).
+- **Simle bağ** (`Local.LocalCampFight`): ölen goblinler kampın sayısından düşer, şef ölürse kamp şefsiz kalır. Kamp **kırıldıysa**
+  (şefi düştü ve en çok bir goblini ayakta kaldı, ya da hiç kalmadı) simde de temizlenir: ilan kapanır, ödül handa bekler
+  (`RegionLink.Reward`), ganimet kampın sandığında (`CampLoot`, F), köyün devletinin tehdidi azalır, oyuncunun günlüğüne ve
+  tarihe yazılır ("…, Kırıkdiş Kampı'nı yerle bir etti!"), **10–20 gün sonra** boşalan vadiye 4–8 yerleşimci gelir (köyün nüfusu
+  artar, tarihe yazılır). İlanı simdeki bir kahraman almışsa ödül onun değildir; ilanı boşa çıkar.
+- **Yoldaş bedeni** (`src/actors/Companion.cs`): oyuncunun ardında gevşek bir dizide yürür, geride kalınca koşar, çok uzakta kalırsa
+  yanına gelir; savaşta betik kipinde. `--party=fighter,wizard` geliştirici yoldaşları (Sv2, sınıf takımıyla). İşe alma E'de.
+- **Testler:** `--fighttest` (kural: d20 ki-kare, %5 kritik/ıska, %50 isabet; 5 ekip × 60 savaş: sınıf davranışları; belirlenim),
+  `--camptest=N` (başsız uçtan uca: oyuncu kamp patikasından yürür, goblinler görüp kovalar, savaş kendi başına biter; ölüler yerde,
+  kaçanlar gitti, kimse savaşta kalmadı, üçüncü şahsa dönüldü, TP verildi, simdeki kamp tam öldürülen kadar azaldı; kamp düştüyse
+  simde temizlendi, ilan kapandı, 10–20 gün sonra yerleşimciler geldi). Tohum 1, 2, 3, 5'te ekip (savaşçı + büyücü) kampı düşürdü
+  (14 goblin + şefli kamp dahil); tek başına Sv1 oyuncu yenildi (yenilgi akışı D'de).
+- **Kararlar:** bozgunda goblinler kampa değil kampın ötesine (ormana) kaçar; kamp, şef düşünce en çok bir goblini kaldıysa kırılmış
+  sayılır (kalanlar dağılır); yenilen ekibin ganimeti D'de.
+
 ---
 
 # Açık dünya dikey dilimi (30 Eylül 2026)

@@ -75,6 +75,23 @@ public static class CharacterFactory
         return c;
     }
 
+    /// <summary>Dev (--party=…): a level-2 mercenary of the class with the class kit (no macro record).</summary>
+    public static Character DevCompanion(string cls, int id)
+    {
+        var rnd = new Random(id * 31 + cls.Length);
+        bool female = rnd.Next(2) == 1;
+        string race = new[] { "human", "dwarf", "elf", "halforc", "halfling" }[rnd.Next(5)];
+        var h = new M.Hero { Id = 900000 + id, Name = RandomName(race, female, rnd), Race = race, Cls = cls, Level = 2, Xp = 300, Stats = new M.JsObj<double>(), Hp = 99, MaxHp = 99, Align = "neutral", Gold = 20 };
+        var pr = M.D.HERO_CLASSES.GetOr(cls, null)?.Priority;
+        int[] arr = { 15, 14, 13, 12, 10, 8 };
+        if (pr != null) for (int i = 0; i < 6; i++) h.Stats.Set(pr[i], arr[i] + Rules.RaceBonus(race, Array.IndexOf(Rules.StatIds, pr[i])));
+        var c = FromHero(h);
+        c.HeroId = null; c.Id = id; c.Look.Female = female;
+        c.Inv.Add("potion");
+        c.Recalc(true); c.Rest();
+        return c;
+    }
+
     static void Give(Character c, string id, bool equip = false)
     {
         c.Inv.Add(id);

@@ -899,6 +899,12 @@ public sealed class RegionLink
     public int? Player;
     /// <summary>oyuncunun ekibindeki kahramanlar (Hero id; State "party")</summary>
     public List<int> Party = new();
+    /// <summary>Faz 2: bölgede kazanılıp henüz alınmamış ilan ödülü (altın; handa/muhtarda ödenir)</summary>
+    public double Reward;
+    /// <summary>Faz 2: temizlenen kampın ganimeti (altın değeri; kamptaki sandıkta bulunur)</summary>
+    public double CampLoot;
+    /// <summary>Faz 2: kamp temizlenince boşalan vadiye yerleşimcilerin geleceği gün (null: yok)</summary>
+    public double? SettlersDay;
 }
 
 // ---- Faz 1, B2: anlatıcı (gerilim bütçesi, kriz ve rahatlama) ve ejderha
