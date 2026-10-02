@@ -1,11 +1,50 @@
 # Fantastik Dünya — açık dünya dikey dilimi (durum, 2 Ekim 2026, Faz 2)
 
-## Faz 2 · Oyuncu, ekip ve d20 savaş (sürüyor)
+## Faz 2 · Oyuncu, ekip ve d20 savaş (bitti)
 
 Brief: `claude/faz2-brief.md` (proje). Sıra: A simülasyon bağlantısı → B karakter yaratma → C duraklatmalı d20 savaş →
 D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano → H Demir mod kaydı → kabul testleri.
 
-### A · Simülasyon bağlantısı (bitti: A1)
+### Nasıl oynanır (Faz 2)
+
+`OYNA.bat` → başlık: **Yeni oyun (Demir mod)** → ırk, sınıf, 27 puan, ad, görünüş → dünya doğar (~20 sn) → Sessiztepe'nin
+yerinde simdeki köy. Hana yürü (yol boyunca doğuya), **panodan** kampın ilanını kopar (E), **demirciden** ucuz bir silah al,
+**handaki maceracılardan** birini kirala (kartında 1), sonra orman patikasından kampa git. Goblin yetişince savaş başlar ve bir
+kez duraklar: emir ver, Boşluk ile sürdür. Kazanırsan cesetleri ve kamp sandığını ara, hancıdan ödülü al. Kaybedersen soyulup
+uyanırsın (belki kafeste, belki bir yarayla).
+
+- **Keşif:** WASD, Shift koşu, fare kamera · **E** konuş / kartı aç (kartta **1–5** fiiller: Kirala, Söylenti sor, Ticaret,
+  Oda tut, Ödülü al, Saldır…) ve nesneler (pano, ot, ceset, sandık, kafes) · **I** envanter (kuşan, iç, sar, ver, at; kamp kur)
+  · **Tab** kontrolü sıradaki ekip üyesine geçir · **M** harita · **Esc** oyun menüsü (ayarlar, kaydet ve çık) · **F3** FPS ve
+  işlemci payları.
+- **Savaş:** **Boşluk** duraklat/sürdür · sol tık seç (Shift ekle, sürükle kutu) / düşmana saldır / yere yürü · sağ tık emir ·
+  sağ sürükle kamerayı döndür · WASD kaydır · teker yakınlaştır · **Tab** sıradaki · **1–5** büyü · **Q** iksir · **B** sargı ·
+  **F** derin nefes · **R** geri çekil · **H** bekle · **G** serbest (kendi kararı).
+- Gün 30 gerçek dakika (gece ~8 dk). Handa oda tutup uyumak geceyi atlar. Demir mod: tek kayıt, kendiliğinden; ölüm kalıcı.
+
+### Kabul (Faz 2 brief'inin ölçütleri)
+
+1. **Senaryo** (`--newgame=ırk,sınıf,tohum,ad --scenario`, başsız, oyunun kendi eylemleriyle): yeni karakter (5–15 gümüş,
+   silahsız, simde oyuncu) → panodan ilan → demirciden silah → handa yoldaş → yoldan ve patikadan kampa → savaş. Tohum 3: ZAFER
+   (3 öldü, 3 kaçtı) → 3 ceset arandı → kamp simde temizlendi, ilan tamam, sandıktan 100 gümüş → hancıdan 620 gümüş ödül → 16 gün
+   sonra "Kırıkdiş Vadisi'ne hücum başladı: çiftçiler boşalan vadiye iniyor". Tohum 1: ilanı simdeki Damakos Yemin çoktan
+   koparmıştı → ödülsüz gidildi, kamp yine düştü, ilan boşa çıktı, öncüler köye yerleşti. Tohum 5, 6, 7: YENİLGİ → soyuldu, 2,5
+   saat sonra kamp dışında uyandı; 5'te oyuncu "Topal", 6'da yoldaş "Tek Göz", 7'de yoldaş "Topal" oldu. Tohum 9: oyuncu kafese
+   kapatıldı, yoldaş soyulup atıldı. Hepsi PASS.
+2. **Zar:** her hamle başın üstünde kısa sayıyla ve zar günlüğünde; duraklayınca ayrıntı (ekran görüntüleri: savaş başı, zafer).
+   Duraklat ve emirler çalışıyor.
+3. **Simetri:** oyuncu, yoldaşlar ve simdeki kahramanlar aynı `Combat.Strike` kuralıyla dövüşür; handaki kahramanlar ilanı alıp
+   kampa yürür ve bölgede dövüşür (`--gtest`).
+4. **Dünyadan gelenler:** köyün adı, devleti, yöneticisi, nüfusu, ırkları ve işleri simden (`--worldtest`); lafta, söylentide ve
+   panoda simin olayları (`--gtest`); fiyatlar ve stok simden (`--econtest`); köyün durumu sokakta.
+5. **Kayıt:** kaydet, çık, aç: aynı yerden, aynı dünyayla (`--savetest`: 10 günlük tarih aynı, bölge birebir).
+6. **Başsız testler:** `--fighttest` (d20 düz, %5 kritik/ıska, sınıf davranışları, yara, Sv6 grupları), `--savetest`, `--lifetest`
+   (çocuk ve köpek yok, nüfus simden; festival/kıtlık/salgında da), `--camptest`, `--partytest`, `--econtest`, `--gtest`,
+   `--worldtest`, `--selftest`. Makro: `hash 1 2400` aynı (59308e383f41fe8f), SaveCheck 72/72, ölçüm `reports/f2`.
+7. **Performans:** savaşın işlemci payı ~0,15 ms/kare (14 savaşan; kural, seçim, bedenler; F3'te "savaş … ms"). 60 FPS hedefini
+   kullanıcının ekran kartında 1080p'de F3 ile ölçmek gerek (buluttaki yazılım Vulkan'ı FPS temsil etmez).
+
+### A · Simülasyon bağlantısı (bitti)
 
 - **FD.Macro Godot'ya bağlı** (`FantastikDunya.csproj` → `../macro/FD.Macro`). İkisi de hata ayıklama yapılandırmasında bile
   eniyilenmiş derlenir (`<Optimize>`): tarih öncesi (1600 gün) ~18–25 sn (eniyilemesiz ~38 sn).
@@ -270,11 +309,9 @@ işi, ihtiyaçları ve gün planı var; yaptığı her şeyin kartta okunan bir 
 
 ## Kontroller
 
-W A S D yürü (koşar adım 4 m/s) · **Shift hızlı koşu 11 m/s** (keşif için; köyden hana ~50 sn) · Ctrl yavaş yürü · Space zıpla · fare kamera · tekerlek yakınlaştır ·
-**E** önündeki kişiyle konuş / kartını aç-kapat · **M** bölge haritası · **F3** geliştirici bilgisi (FPS, köyde
-dışarıdaki kişi oranı) · Esc fareyi bırak · F11 tam ekran.
-
-Saat: **1 oyun günü = 72 gerçek dakika** (TimeScale 20). 100 m yürümek ≈ 25 oyun dakikası; köyden hana ~2 oyun saati.
+(Faz 2'nin güncel tuşları yukarıda, "Nasıl oynanır".) W A S D yürü (koşar adım 4 m/s) · **Shift hızlı koşu 11 m/s** · Ctrl
+yavaş yürü · Space zıpla · fare kamera · tekerlek yakınlaştır · **E** konuş / kart · **M** harita · **F3** geliştirici bilgisi ·
+F11 tam ekran. Saat Faz 2'den beri: 1 oyun günü = 30 gerçek dakika (TimeScale 48).
 
 ## Yaşam simülasyonu (src/sim/life — Godot'dan bağımsız C#)
 

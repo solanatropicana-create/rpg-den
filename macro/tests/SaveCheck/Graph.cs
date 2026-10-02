@@ -205,7 +205,7 @@ internal sealed class GraphCompare
 internal static class Audit
 {
     /// <summary>Sim's instance fields that are not covered by the save (anything but the known set is reported).</summary>
-    public static readonly string[] KnownSimFields = { "W", "G", "Rng", "_pathCache", "NavCache", "ShoreW", "OnEvent", "Cp" };
+    public static readonly string[] KnownSimFields = { "W", "G", "Rng", "_pathCache", "NavCache", "ShoreW", "OnEvent", "Cp", "LocalCamp" };
 
     public static List<string> UnknownSimFields() =>
         typeof(Sim).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)

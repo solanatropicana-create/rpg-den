@@ -74,6 +74,9 @@ public partial class CombatDirector : Node
     string _hint;
     float _hintT;
     public string Hint => _hintT > 0 ? _hint : null;
+    /// <summary>F3: CPU time of the fight per frame (rules, picking, moving the bodies), smoothed</summary>
+    public static double FrameMs;
+    readonly System.Diagnostics.Stopwatch _sw = new();
     /// <summary>routed goblins still running off (driven here after the fight)</summary>
     public int RunningOff => _runOff.Count;
 
@@ -467,6 +470,7 @@ public partial class CombatDirector : Node
             var to = Camera.GlobalTransform;
             Camera.GlobalTransform = _camFrom.InterpolateWith(to, k);
         }
+        _sw.Restart();
         Hover = Summary ? null : PickAt(GetViewport().GetMousePosition());
         if (!Paused && !Summary)
         {
@@ -483,6 +487,7 @@ public partial class CombatDirector : Node
         Selected.RemoveAll(f => f.Dead || f.Fled);
         if (Selected.Count == 0) { var l = Party.FirstOrDefault(f => f.IsPlayer && !f.Dead) ?? Party.FirstOrDefault(f => f.Standing); if (l != null) Selected.Add(l); }
         SyncBodies();
+        FrameMs = FrameMs * 0.95 + _sw.Elapsed.TotalMilliseconds * 0.05;
         var c = FocusPoint();
         Camera.Track(new Vector3(c.X, _r.Heightfield.Height(c.X, c.Y), c.Y));
         if (Fight.Over && !Summary) Finish();
@@ -620,6 +625,7 @@ public partial class CombatDirector : Node
         WriteMacro(o);
         if (o.GameOver) SaveGame.Delete();
         _s.SyncPlayerToMacro();
+        GD.Print($"[Combat] savaşın işlemci payı ort {FrameMs:F3} ms/kare");
         GD.Print($"[Combat] end: {(o.Won ? "zafer" : $"yenilgi ({o.Fate})")} öldürülen {o.Killed} kaçan {o.Fled} şef {o.BossKilled} kamp {(o.CampCleared ? "temizlendi" : "duruyor")} TP {o.XpEach} süre {Fight.T:F0} sn{(o.GameOver ? " — OYUN BİTTİ" : "")}");
         Hud.ShowSummary(o);
         SetPaused(Paused);   // tree pauses while the summary shows

@@ -349,7 +349,7 @@ internal static class SelfTest
     private static void Audits()
     {
         var us = Audit.UnknownSimFields();
-        Check(us.Count == 0, "Sim has no instance fields beyond W, G, Rng, _pathCache, NavCache, ShoreW, OnEvent, Cp" + (us.Count > 0 ? ": " + string.Join(", ", us) : ""));
+        Check(us.Count == 0, "Sim has no instance fields beyond W, G, Rng, _pathCache, NavCache, ShoreW, OnEvent, Cp, LocalCamp (Faz 2 hook, not saved)" + (us.Count > 0 ? ": " + string.Join(", ", us) : ""));
         var ur = Audit.UnknownRngFields();
         Check(ur.Count == 0, "Rng has no state beyond _s and Calls (+ Trace hook)" + (ur.Count > 0 ? ": " + string.Join(", ", ur) : ""));
         var mstat = Audit.MutableStatics();

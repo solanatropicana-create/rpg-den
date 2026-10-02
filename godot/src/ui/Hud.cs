@@ -322,7 +322,8 @@ public partial class Hud : CanvasLayer
             int vis = 0; foreach (var p in sim.People) if (p.Visible) vis++;
             _debug.Text = $"FPS {Engine.GetFramesPerSecond():F0} · çizim {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)} · " +
                           $"primitif {Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame) / 1000:F0}k\n" +
-                          $"köyde dışarıda {o}/{t} ({(t > 0 ? 100f * o / t : 0):F0}%) · görünür kişi {vis}/{sim.People.Count}";
+                          $"köyde dışarıda {o}/{t} ({(t > 0 ? 100f * o / t : 0):F0}%) · görünür kişi {vis}/{sim.People.Count}" +
+                          $"\nyaşam simi {LifeWorld.SimMs:F2} ms · kişiler {LifeWorld.SyncMs:F2} ms{(_region.Combat?.Active == true ? $" · savaş {FD.Combat.CombatDirector.FrameMs:F3} ms ({_region.Combat.Fight.F.Count} savaşan)" : "")} · makro gün adımı {_region.Director?.LastStepMs:F0} ms";
         }
     }
 

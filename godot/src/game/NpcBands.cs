@@ -51,7 +51,7 @@ public partial class NpcBands : Node
     public override void _ExitTree() { if (_s?.Macro != null && _s.Macro.LocalCamp == OnArrive) _s.Macro.LocalCamp = null; }
 
     /// <summary>The way in: from the inn's door to the road, west to the trail, up the trail and the goblins' footpath.</summary>
-    static List<V2> PathIn(V2 from)
+    public static List<V2> PathIn(V2 from)
     {
         var p = new List<V2> { from };
         foreach (var q in new[] { new Vector2(220, 30), new Vector2(80, 60) }) p.Add(new V2(q.X, q.Y));
@@ -75,6 +75,7 @@ public partial class NpcBands : Node
 
     bool OnArrive(List<M.Agent> agents, M.Camp cp)
     {
+        if (!cp.Alive) return false;   // the camp already fell: the sim sends them home
         var ids = agents.Select(a => a.Id).ToList();
         if (_bands.Any(b => b.Phase < 3 && b.Agents.Intersect(ids).Any())) return true;   // already on its way
         var heroes = agents.SelectMany(a => a.Heroes ?? new List<int>()).Select(id => _s.Macro.Hero(id)).Where(h => h != null && h.State != "dead").ToList();

@@ -75,6 +75,8 @@ public partial class Dev : Node
     public bool SaveTest;
     /// <summary>--mood=festival|shortage|plague|monsters: force the village's state (street scenes)</summary>
     public string Mood;
+    /// <summary>--scenario (with --newgame=…): the brief's acceptance scenario, headless</summary>
+    public bool Scenario;
     bool _saveTestStarted;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
@@ -153,6 +155,7 @@ public partial class Dev : Node
                     case "--gtest": GTest = true; break;
                     case "--savetest": SaveTest = true; break;
                     case "--mood": Mood = val; break;
+                    case "--scenario": Scenario = true; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -282,6 +285,7 @@ public partial class Dev : Node
         if (EconTest) CallDeferred(nameof(RunEconTest));
         if (GTest) CallDeferred(nameof(RunGTest));
         if (SaveTest && !_saveTestStarted) { _saveTestStarted = true; CallDeferred(nameof(RunSaveTest)); }
+        if (Scenario) CallDeferred(nameof(RunScenario));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
@@ -293,6 +297,7 @@ public partial class Dev : Node
     void RunEconTest() => FD.Dev.EconTest.Run(this, Region.Current);
     void RunGTest() => FD.Dev.GTest.Run(this, Region.Current);
     void RunSaveTest() => FD.Dev.SaveTest.Run(this, Region.Current);
+    void RunScenario() => FD.Dev.ScenarioTest.Run(this, Region.Current);
 
     void OpenPanelDev()
     {
