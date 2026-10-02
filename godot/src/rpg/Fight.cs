@@ -864,6 +864,25 @@ public sealed class Fight
         Emit(new FightEvent { Kind = "end", Text = Winner == FSide.Party ? "Savaş bitti: kazandınız." : "Savaş bitti: ekip yere serildi." });
     }
 
+    /// <summary>D: the fight is lost and the fallen lie where they are while the goblins go through their purses: those still dying keep
+    /// rolling death saves (each failure may leave a lasting wound) until they steady — a third failure is a narrow escape here, not
+    /// death (the goblins finishing them off is the director's call).</summary>
+    public void SettleFallen()
+    {
+        foreach (var f in F)
+        {
+            if (f.Side != FSide.Party || !f.Down || f.Dead || f.Stable) continue;
+            for (int k = 0; k < 12 && !f.Stable; k++)
+            {
+                double d = Rng.D20();
+                if (d == 20) { f.DeathOk = 3; f.Stable = true; Emit(new FightEvent { Kind = "stable", A = f, Text = $"{f.Name} ölüm zarı 20: kendini toparladı." }); break; }
+                if (d >= 10) f.DeathOk++; else { f.DeathFail += d == 1 ? 2 : 1; MaybeWound(f, d == 1 ? "doğal 1'lik ölüm zarı" : "kötü giden ölüm zarı"); }
+                if (f.DeathOk >= 3) { f.Stable = true; Emit(new FightEvent { Kind = "stable", A = f, Text = $"{f.Name} dengelendi." }); }
+                else if (f.DeathFail >= 3) { f.Stable = true; Emit(new FightEvent { Kind = "stable", A = f, Text = $"{f.Name} ölümün eşiğinden kıl payı döndü." }); }
+            }
+        }
+    }
+
     /// <summary>Copy fight results back to the characters (HP, down/dead, death saves) — call when the fight is over.</summary>
     public void WriteBack(int day = -1, string where = null)
     {

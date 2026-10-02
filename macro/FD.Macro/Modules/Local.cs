@@ -238,7 +238,7 @@ public static class Local
     /// handa beklemez, yaşlanıp ölmez), bağımsız (Civ −1), yuvasız. İnanç, itibar (Rep), üyelik (Orgs) ve yaralar bu kayıtta
     /// taşınır; oyuncu öldüğünde kayıt "dead" olur. Bağlı köye yeni bir yabancının geldiği yazılır.
     /// </summary>
-    public static Hero CreatePlayer(Sim s, PlayerSpec p)
+    public static Hero CreatePlayer(Sim s, PlayerSpec p, bool announce = true)
     {
         var link = s.W.Region ?? throw new InvalidOperationException("Local.CreatePlayer: bölge bağlı değil");
         var v = Village(s);
@@ -257,7 +257,7 @@ public static class Local
         link.Player = h.Id;
         s.Metric("playerBorn");
         Will.Note(s, h, $"{(v != null ? Lore.Ek(v.Name, "a") : "bölgeye")} geldi");
-        s.Log("hero", $"{(v != null ? Lore.Ek(v.Name, "a") : "Bölgeye")} kimsenin tanımadığı bir yabancı geldi: {h.Name} ({D.RACES.GetOr(h.Race, null)?.Name ?? h.Race}).",
+        if (announce) s.Log("hero", $"{(v != null ? Lore.Ek(v.Name, "a") : "Bölgeye")} kimsenin tanımadığı bir yabancı geldi: {h.Name} ({D.RACES.GetOr(h.Race, null)?.Name ?? h.Race}).",
             tile: v?.Tile, cause: "Cebinde birkaç gümüş, sırtında yol giysisi");
         return h;
     }
@@ -325,6 +325,66 @@ public static class Local
         s.Log("lair", $"{names}, {Tr.Ek(cp.Name, "i")} yerle bir etti!{(v != null ? $" {v.Name} rahat bir nefes aldı." : "")}", tile: cp.Tile, civ: v?.Civ,
             cause: f.BossKilled ? "Şefleri düşünce goblinler dağıldı" : "Kampta ayakta goblin kalmadı", major: true);
         return reward ?? $"{cp.Name} temizlendi.";
+    }
+
+    /// <summary>D: bölgede yere serilen ekibi goblinler soydu (gümüş ve eşya değeri kampın ganimetine katılır). Tarihe küçük bir olay.</summary>
+    public static void Robbed(Sim s, List<int> heroes, double silverValue, string what)
+    {
+        var cp = Camp(s); var v = Village(s);
+        if (cp != null && cp.Alive) cp.Loot += silverValue / 10.0;
+        s.Metric("localRobbed");
+        string names = Names(s, heroes);
+        foreach (int id in heroes) { var h = s.Hero(id); if (h != null) { Will.Note(s, h, $"{(cp != null ? Lore.Ek(cp.Name, "in") : "goblinlerin")} goblinlerine yenilip soyuldu"); h.Gold = JsMath.Max(0, h.Gold - silverValue / 10.0 / Math.Max(1, heroes.Count)); } }
+        s.Log("lair", $"{(cp != null ? Lore.Ek(cp.Name, "in") : "Ormanın")} goblinleri {names} yere serip soydu.", tile: cp?.Tile ?? v?.Tile, civ: v?.Civ,
+            cause: string.IsNullOrEmpty(what) ? "Baygın yolcuların keselerini boşalttılar" : $"Götürdükleri: {what}", major: false);
+    }
+
+    /// <summary>D: goblinler birini kampın kafesine kapattı.</summary>
+    public static void Captured(Sim s, int? heroId, string name)
+    {
+        var cp = Camp(s); var v = Village(s);
+        s.Metric("localCaptured");
+        var h = heroId is int id ? s.Hero(id) : null;
+        if (h != null) Will.Note(s, h, $"{(cp != null ? Lore.Ek(cp.Name, "in") : "goblinlerin")} kafesine kapatıldı");
+        s.Log("lair", $"{(cp != null ? Lore.Ek(cp.Name, "in") : "Ormanın")} goblinleri {name} adlı yolcuyu kampın kafesine kapattı.", tile: cp?.Tile ?? v?.Tile, civ: v?.Civ,
+            cause: "Fidye mi, akşam yemeği mi, belli değil", major: false);
+    }
+
+    /// <summary>D: bölgede kalıcı yara (göz, topallık, iz): kahramanın günlüğüne ve lakabına.</summary>
+    public static void Wounded(Sim s, int heroId, string woundName, string epithet)
+    {
+        var h = s.Hero(heroId); if (h == null) return;
+        Will.Note(s, h, $"kalıcı bir yara aldı: {woundName.ToLowerInvariant()}");
+        if (!string.IsNullOrEmpty(epithet)) h.Epithet = epithet;
+        s.Metric("localWound");
+    }
+
+    /// <summary>D: bölgede ölen kahraman (oyuncu, yoldaş): simde de ölür (olay, destan).</summary>
+    public static void Died(Sim s, int heroId, string foe)
+    {
+        var h = s.Hero(heroId); if (h == null || h.State == "dead") return;
+        var cp = Camp(s);
+        h.Pos = cp?.Tile ?? Village(s)?.Tile ?? h.Pos;
+        Heroes.Die(s, h, null, foe ?? cp?.Name, "local", null);
+        s.Metric("localDeath");
+    }
+
+    static string Names(Sim s, List<int> ids)
+    {
+        var n = new List<string>();
+        foreach (int id in ids) { var h = s.Hero(id); if (h != null) n.Add(Tr.Ek(h.Name, "i")); }
+        return n.Count == 0 ? "yolcuları" : string.Join(", ", n);
+    }
+
+    /// <summary>D: oyuncu öldü, ekipten biri başa geçti: simde artık o "oyuncu"dur (State "player", bağ onu gösterir).</summary>
+    public static void Promote(Sim s, Hero h)
+    {
+        var link = s.W.Region; if (link == null || h == null) return;
+        h.State = "player"; h.Civ = -1; h.Tavern = -1; h.Base = -1; h.BaseInn = false;
+        link.Player = h.Id;
+        link.Party.Remove(h.Id);
+        Will.Note(s, h, "ekibin başına geçti");
+        s.Metric("playerPromoted");
     }
 
     /// <summary>Gün başında (Sim.Step'ten sonra) bölgenin bakımı: kamp yaşıyorsa ilan; temizlenen kampın vadisine vakti gelince öncüler.</summary>

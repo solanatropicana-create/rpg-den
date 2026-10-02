@@ -61,6 +61,8 @@ public sealed class Character
     public int HiredDay = -1, PaidUntil = -1;
     // downed / dead (D)
     public bool Down, Stable, Dead;
+    /// <summary>D: locked in the goblin camp's cage</summary>
+    public bool Captive;
     public int DeathOk, DeathFail;
 
     public string FullName => string.IsNullOrEmpty(Epithet) ? Name : $"{Name} «{Epithet}»";

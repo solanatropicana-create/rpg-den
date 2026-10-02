@@ -118,6 +118,9 @@ public sealed class CampSite : IRegionFeature
 {
     Vector2 _c, _entrance;
     float _entAng;
+    /// <summary>Faz 2 D: the cage (prisoner point inside, door point outside its front bars) and its yaw</summary>
+    public static Vector2 CagePrisoner, CageDoor;
+    public static float CageYaw;
     Place _camp, _lurk;
     const float Palisade = 13f;
 
@@ -223,7 +226,13 @@ public sealed class CampSite : IRegionFeature
         Vector2 totem = _c + new Vector2(e.Y, -e.X) * 3.5f - e * 2.5f;
         kit.Place("buildings", "totem", SiteUtil.At(hf, totem), fyaw, null, 1f, 150f);
         kit.Place("buildings", "bone_pile", SiteUtil.At(hf, _c - e * 6f + new Vector2(-e.Y, e.X) * 2f), 0.6f, null, 1f, 90f);
-        kit.Place("buildings", "cage", SiteUtil.At(hf, _c + new Vector2(MathF.Cos(_entAng + 2.6f), MathF.Sin(_entAng + 2.6f)) * 9.5f), fyaw + 2.2f, null, 1f, 100f);
+        Vector2 cage = _c + new Vector2(MathF.Cos(_entAng + 2.6f), MathF.Sin(_entAng + 2.6f)) * 9.5f;
+        kit.Place("buildings", "cage", SiteUtil.At(hf, cage), fyaw + 2.2f, null, 1f, 100f);
+        CageYaw = fyaw + 2.2f;
+        var pp = PropKit.Point("buildings", "cage", "prisoner_point") ?? new Vector3(0, 0, -0.1f);
+        var dp = PropKit.Point("buildings", "cage", "door_point") ?? new Vector3(0, 0, 1.35f);
+        CagePrisoner = SiteUtil.LocalToWorld(cage, CageYaw, pp.X, pp.Z);
+        CageDoor = SiteUtil.LocalToWorld(cage, CageYaw, dp.X, dp.Z);
         foreach (float side in new[] { -1f, 1f })
             kit.Place("buildings", "goblin_banner", SiteUtil.At(hf, _entrance + new Vector2(-e.Y, e.X) * side * 3.2f + e * 0.8f), fyaw, FMath.Hex(0x6a1e1a), 1f, 150f);
         // palisade ring with a gap at the entrance

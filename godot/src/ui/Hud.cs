@@ -30,6 +30,12 @@ public partial class Hud : CanvasLayer
     ColorRect _flash;
     float _flashT, _shakeT;
     bool _debugOn;
+    /// <summary>Faz 2: other things to do with E (the cage, the board, a chest…): when nobody stands in front of the hero, the
+    /// first provider that returns something is offered.</summary>
+    public readonly List<Func<(string text, Action act)?>> Prompts = new();
+    (string text, Action act)? _extra;
+    Label _toast;
+    float _toastT;
     readonly List<(Label l, Vector2 world)> _mapLabels = new();
     const int MapPx = 600;
 
@@ -55,6 +61,15 @@ public partial class Hud : CanvasLayer
         _prompt.Position = new Vector2(-300, -110);
         _prompt.Size = new Vector2(600, 30);
         root.AddChild(_prompt);
+
+        _toast = MakeLabel(19, new Color(1f, 0.93f, 0.75f));
+        _toast.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
+        _toast.HorizontalAlignment = HorizontalAlignment.Center;
+        _toast.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _toast.Position = new Vector2(-450, -190);
+        _toast.Size = new Vector2(900, 70);
+        _toast.VerticalAlignment = VerticalAlignment.Bottom;
+        root.AddChild(_toast);
 
         _debug = MakeLabel(14, new Color(0.85f, 1f, 0.85f));
         _debug.Position = new Vector2(22, 52);
@@ -255,7 +270,12 @@ public partial class Hud : CanvasLayer
             var a = _life.ActorOf(_cardPerson);
             if (a == null || !_cardPerson.Visible || player == null || a.GlobalPosition.DistanceTo(player.GlobalPosition) > 9f) CloseCard();
         }
-        _prompt.Text = _promptPerson != null && _cardPerson != _promptPerson ? $"[E]  {_promptPerson.FullName} — {Census.RoleName(_promptPerson)}" : "";
+        _extra = null;
+        if (_promptPerson == null && player != null && player.InputEnabled && !_mapRoot.Visible)
+            foreach (var pr in Prompts) { var r = pr(); if (r != null) { _extra = r; break; } }
+        _prompt.Text = _promptPerson != null && _cardPerson != _promptPerson ? $"[E]  {_promptPerson.FullName} — {Census.RoleName(_promptPerson)}"
+            : _extra != null ? $"[E]  {_extra.Value.text}" : "";
+        if (_toastT > 0) { _toastT -= dt; _toast.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1)); if (_toastT <= 0) _toast.Text = ""; }
         if (_cardPerson != null) FillCard(_cardPerson);
 
         // map
@@ -348,6 +368,7 @@ public partial class Hud : CanvasLayer
         {
             if (_cardPerson != null && (_promptPerson == null || _promptPerson == _cardPerson)) CloseCard();
             else if (_promptPerson != null) OpenCard(_promptPerson);
+            else if (_extra != null) _extra.Value.act();
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsActionPressed("map"))
@@ -373,5 +394,8 @@ public partial class Hud : CanvasLayer
     }
 
     public void OpenCardFor(Person p) => OpenCard(p);
+
+    /// <summary>A line of feedback over the prompt (a dice check, what happened) for a few seconds.</summary>
+    public void Toast(string text, float seconds = 4f) { _toast.Text = text; _toastT = seconds; _toast.Modulate = Colors.White; }
     public void SetDebug(bool on) { _debugOn = on; _debug.Visible = on; }
 }

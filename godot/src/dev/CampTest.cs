@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using FD.Combat;
+using FD.Rpg;
 using FD.Game;
 using FD.Sim.Life;
 using FD.World;
@@ -36,7 +37,8 @@ public partial class CampTestRunner : Node
     float _t;
     bool _ok = true;
     double _camp0;
-    int _dead0, _xp0;
+    int _dead0, _xp0, _silver0;
+    double _clock0;
     FightOutcome _last;
     readonly List<string> _out = new();
 
@@ -65,6 +67,9 @@ public partial class CampTestRunner : Node
         _camp0 = s.Camp?.Count ?? 0;
         _dead0 = Region.Life.People.Count(p => p.Role == Role.Goblin && p.Dead);
         _xp0 = (int)s.Player.Xp;
+        foreach (var c in s.Party) if (c.Inv.Silver < 20) c.Inv.Silver = 20;   // something to rob
+        if (!s.Player.Inv.Has("potion")) s.Player.Inv.Add("potion");
+        _silver0 = s.Party.Sum(c => c.Inv.Silver);
         // the foot of the camp trail, facing up it
         var start = RegionSpec.CampSpurControl[0] + new Vector2(-14, 12);
         Region.Player.Teleport(start, MathF.Atan2(RegionSpec.GoblinCamp.X - start.X, RegionSpec.GoblinCamp.Y - start.Y), Region.Heightfield);
@@ -100,6 +105,7 @@ public partial class CampTestRunner : Node
                 break;
             }
             case 1: // the fight runs; Unattended closes the summary
+                if (cd.Active && !cd.Summary) _clock0 = GameClock.TotalHours;
                 if (_last != null) { _phase = 2; _t = 0; break; }
                 if (cd.Active && cd.Fight.T > 240f) { Check($"tur {_round}: savaş bitti", false, $"4 dakikada bitmedi ({cd.Fight.Log.Count} olay)"); Finish(); }
                 break;
@@ -123,6 +129,7 @@ public partial class CampTestRunner : Node
         Check($"tur {_round}: kaçanlar gitti", o.Fled == 0 || hidden >= o.Fled, $"kaçan {o.Fled}, saklanan/giden {hidden}");
         int xp = (int)s.Player.Xp - _xp0;
         Check($"tur {_round}: TP", s.Player.Dead || xp == o.XpEach || (o.XpEach == 0 && xp == 0), $"oyuncu +{xp} TP (seviye {s.Player.Level})");
+        if (!o.Won && Defeat(o)) return;
         double expect = o.CampCleared ? 0 : Math.Max(0, _camp0 - (o.Killed - (o.BossKilled ? 1 : 0)));
         Check($"tur {_round}: sim kampı", cp != null && Math.Abs(cp.Count - expect) < 0.01 && cp.Alive == !o.CampCleared && (!o.BossKilled || !cp.Boss),
             $"{cp?.Name}: {_camp0:F0} → {cp?.Count:F0} goblin (beklenen {expect:F0}), {(cp?.Alive == true ? "ayakta" : "temizlendi")}, şef {(cp?.Boss == true ? "var" : "yok")}");
@@ -151,6 +158,55 @@ public partial class CampTestRunner : Node
         }
         if (_round >= Rounds || s.Player.Dead) { Finish(); return; }
         Begin();
+    }
+
+    /// <summary>D: what happened to the fallen party (rob, cage, finished off) and what they woke to.</summary>
+    bool Defeat(FightOutcome o)
+    {
+        var s = Region.Session;
+        var pl = Region.Player;
+        var pp = new Vector2(pl.GlobalPosition.X, pl.GlobalPosition.Z);
+        var ev = s.Macro.W.Events.Where(e => e.Kind == "lair" && e.Day >= s.Macro.W.Day - 1).Select(e => e.Text).ToList();
+        foreach (var c in s.Party) if (c.Wounds.Count > 0) GD.Print($"[CampTest] yara: {c.Name}: {string.Join(", ", c.Wounds.Select(w => Wound.Name(w.Kind)))} «{c.Epithet}»");
+        switch (o.Fate)
+        {
+            case "kill":
+                Check("yenilgi: bitirdiler", o.GameOver || o.NewLeader != null, $"ekipte sağ kalan {s.Party.Count(c => !c.Dead)}, oyun {(o.GameOver ? "bitti, kayıt silindi: " + !SaveGame.Exists() : "sürüyor")}");
+                if (o.GameOver) { Finish(); return true; }
+                break;
+            case "capture":
+            {
+                bool caged = o.Captive == s.Player ? s.Player.Captive && pp.DistanceTo(CampSite.CagePrisoner) < 0.7f : o.Captive?.Captive == true;
+                Check("yenilgi: kafes", caged && ev.Any(t => t.Contains("kafes")), $"{o.Captive?.Name} kafeste, oyuncu kafesten {pp.DistanceTo(CampSite.CagePrisoner):F1} m; olay: {ev.FirstOrDefault(t => t.Contains("kafes"))}");
+                if (o.Captive == s.Player)
+                {
+                    // try the door once a game hour until it opens
+                    int tries = 0;
+                    var prompt = Region.Hud.Prompts[0];
+                    while (s.Player.Captive && tries < 40)
+                    {
+                        s.Flags["cageNextTry"] = 0;
+                        var p = prompt();
+                        if (p == null) break;
+                        p.Value.act();
+                        tries++;
+                    }
+                    var after = new Vector2(pl.GlobalPosition.X, pl.GlobalPosition.Z);
+                    Check("kafesten kaçış", !s.Player.Captive && after.DistanceTo(CampSite.CageDoor) < 1.0f, $"{tries} denemede kapı açıldı, oyuncu kapının {after.DistanceTo(CampSite.CageDoor):F1} m önünde");
+                }
+                break;
+            }
+            default:
+            {
+                int silver = s.Party.Sum(c => c.Inv.Silver);
+                float fromCamp = pp.DistanceTo(RegionSpec.GoblinCamp);
+                Check("yenilgi: soyuldular", silver == 0 && s.CampChest.Silver >= _silver0 && s.Party.All(c => c.Dead || (!c.Down && c.Hp >= 1)) && fromCamp > 55f
+                    && GameClock.TotalHours - _clock0 >= 2.0 && ev.Any(t => t.Contains("soydu")),
+                    $"kese {_silver0} → {silver} gümüş, kamp sandığında {s.CampChest.Silver} gümüş + {string.Join(", ", s.CampChest.Items.Select(i => $"{i.Count} {i.Id}"))}; uyandığı yer kamptan {fromCamp:F0} m, {GameClock.TotalHours - _clock0:F1} saat sonra; olay: {ev.FirstOrDefault(t => t.Contains("soydu"))}");
+                break;
+            }
+        }
+        return false;
     }
 
     void Finish()

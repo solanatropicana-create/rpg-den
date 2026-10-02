@@ -34,6 +34,8 @@ public sealed class Session
     public void SetNextCharId(int v) => _nextCharId = Math.Max(1, v);
     /// <summary>region facts the macro world does not hold (saved with the local state)</summary>
     public readonly Dictionary<string, double> Flags = new();
+    /// <summary>D/F: what the goblins took (and keep) in their camp's chest; found there when the camp falls</summary>
+    public Inventory CampChest = new();
 
     /// <summary>Register the created character in the macro world (hero record, State "player") and make them the party leader.</summary>
     public M.Hero AddPlayer(Character c)
@@ -52,6 +54,22 @@ public sealed class Session
         Party.Remove(c);
         Party.Insert(0, c);
         return h;
+    }
+
+    /// <summary>D: a party member takes over after the leader died: the macro world knows them as the player from now on (a hero of
+    /// the sim keeps their record; a hired mercenary gets one, quietly).</summary>
+    public void PromoteToPlayer(Character c)
+    {
+        if (c.HeroId is int id && Macro.Hero(id) is M.Hero h) { M.Local.Promote(Macro, h); return; }
+        var st = new M.JsObj<double>();
+        for (int i = 0; i < 6; i++) st.Set(Rules.StatIds[i], c.Stats[i]);
+        var nh = M.Local.CreatePlayer(Macro, new M.Local.PlayerSpec
+        {
+            Name = c.Name, Race = c.Race, Cls = c.Cls, Align = c.Align, Faith = c.Faith, Stats = st, MaxHp = c.MaxHp, Ac = c.Ac,
+            Gold = c.Inv.Silver / (double)Rules.SilverPerGold, Age = RegionBind.Ages(c.Race).adult + 6,
+        }, announce: false);
+        nh.Level = c.Level; nh.Xp = c.Xp;
+        c.HeroId = nh.Id;
     }
 
     /// <summary>Write the player's local numbers back to the macro hero record (HP, level, XP, purse, faith, wounds as epithet).</summary>

@@ -20,6 +20,11 @@ public sealed class FightOutcome
     public int Killed, Fled, PartyDown, PartyDead;
     public bool BossKilled, CampCleared, PlayerDead, AllDown;
     public int XpEach;
+    /// <summary>D: what the goblins did with the fallen party: rob | capture | kill (null after a won fight)</summary>
+    public string Fate;
+    public Character Captive;
+    public bool GameOver;
+    public Character NewLeader;
     public readonly List<string> Lines = new();
 }
 
@@ -566,7 +571,9 @@ public partial class CombatDirector : Node
     {
         Summary = true;
         Aim = null; Box = null;
-        Fight.WriteBack();
+        var cp = _s.Camp;
+        if (Fight.Winner != FSide.Party) Fight.SettleFallen();
+        Fight.WriteBack((int)_s.Macro.W.Day, cp?.Name);
         var o = Outcome = new FightOutcome { Won = Fight.Winner == FSide.Party };
         foreach (var f in Fight.F)
         {
@@ -575,15 +582,22 @@ public partial class CombatDirector : Node
         }
         var partyAll = Party.ToList();
         o.AllDown = partyAll.All(f => f.Dead || f.Down || f.Fled);
-        o.PlayerDead = _s.Player.Dead;
         o.XpEach = Fight.XpEach();
-        // goblins of this region still alive after the fight (macro count: the local ones stand for the camp)
         o.CampCleared = o.Won && CampBroken();
-        o.Lines.Add(o.Won ? $"{o.Killed} goblin öldü, {o.Fled} goblin kaçtı{(o.BossKilled ? "; şefleri düştü" : "")}." : "Ekip yere serildi.");
+        o.Lines.Add(o.Won ? $"{o.Killed} goblin öldü, {o.Fled} goblin kaçtı{(o.BossKilled ? "; şefleri düştü" : "")}."
+            : o.Killed > 0 ? $"Ekip yere serildi ({o.Killed} goblin de öldü)." : "Ekip yere serildi.");
+        // D: what the goblins do with the fallen
+        if (!o.Won) Fate(o, partyAll);
         foreach (var f in partyAll)
         {
             var c = f.Char;
-            if (c == null || c.Dead) { if (c != null) o.Lines.Add($"{c.Name} öldü."); continue; }
+            if (c == null) continue;
+            if (c.Dead) { o.Lines.Add($"{c.Name} öldü."); if (c.HeroId is int hid) M.Local.Died(_s.Macro, hid, cp?.Name); continue; }
+            if (f.NewWound != null)
+            {
+                o.Lines.Add($"{c.Name} kalıcı bir yara aldı: {Wound.Name(f.NewWound)} — {Wound.Effect(f.NewWound)} Artık «{c.Epithet}» diye anılıyor.");
+                if (c.HeroId is int hid) M.Local.Wounded(_s.Macro, hid, Wound.Name(f.NewWound), c.Epithet);
+            }
             if (f.Fled) { o.Lines.Add($"{c.Name} kaçtı."); continue; }
             if (o.XpEach > 0)
             {
@@ -592,13 +606,92 @@ public partial class CombatDirector : Node
             }
             if (o.Won && c.Down) { c.Down = false; c.Stable = false; c.Hp = Math.Max(1, c.Hp); c.DeathOk = c.DeathFail = 0; o.Lines.Add($"{c.Name} kendine geldi (1 can)."); }
         }
+        o.PlayerDead = _s.Player.Dead;
+        if (o.PlayerDead)
+        {
+            var heir = _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead && !c.Captive) ?? _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead);
+            if (heir == null) { o.GameOver = true; o.Lines.Add("Ekipten kimse kalmadı. Demir mod: bu dünya kapandı."); }
+            else { o.NewLeader = heir; o.Lines.Add($"Ekibin başına {heir.Name} geçiyor."); }
+        }
         if (o.XpEach > 0) o.Lines.Add($"Her biri {o.XpEach} TP kazandı.");
         WriteMacro(o);
+        if (o.GameOver) SaveGame.Delete();
         _s.SyncPlayerToMacro();
-        GD.Print($"[Combat] end: {(o.Won ? "zafer" : "yenilgi")} öldürülen {o.Killed} kaçan {o.Fled} şef {o.BossKilled} kamp {(o.CampCleared ? "temizlendi" : "duruyor")} TP {o.XpEach} süre {Fight.T:F0} sn");
+        GD.Print($"[Combat] end: {(o.Won ? "zafer" : $"yenilgi ({o.Fate})")} öldürülen {o.Killed} kaçan {o.Fled} şef {o.BossKilled} kamp {(o.CampCleared ? "temizlendi" : "duruyor")} TP {o.XpEach} süre {Fight.T:F0} sn{(o.GameOver ? " — OYUN BİTTİ" : "")}");
         Hud.ShowSummary(o);
         SetPaused(Paused);   // tree pauses while the summary shows
         if (Unattended) CallDeferred(nameof(Continue));
+    }
+
+    /// <summary>D: chance that the goblins finish off the fallen (rare) or drag one to their cage (sometimes); otherwise they rob them
+    /// and leave them in the forest.</summary>
+    public const double FinishOffChance = 0.08, CaptureChance = 0.22;
+
+    void Fate(FightOutcome o, List<Fighter> party)
+    {
+        var fallen = party.Where(f => f.Char != null && !f.Char.Dead && !f.Fled).ToList();
+        if (fallen.Count == 0) return;
+        var cp = _s.Camp;
+        double r = Fight.Rng.Next();
+        if (ForceFate != null) { r = ForceFate == "kill" ? 0 : ForceFate == "capture" ? FinishOffChance + 0.01 : 0.99; }
+        bool camp = cp != null && cp.Alive;
+        if (r < FinishOffChance)
+        {
+            o.Fate = "kill";
+            foreach (var f in fallen) { f.Char.Dead = true; f.Char.Down = false; }
+            o.Lines.Add("Goblinler yerde yatanların işini bitirdi.");
+            return;
+        }
+        if (r < FinishOffChance + CaptureChance && camp)
+        {
+            o.Fate = "capture";
+            var who = fallen.Count == 1 ? fallen[0] : fallen[(int)(Fight.Rng.Next() * fallen.Count) % fallen.Count];
+            o.Captive = who.Char;
+            who.Char.Captive = true;
+            o.Lines.Add($"Goblinler {who.Char.Name} adlı yolcuyu kampa sürükleyip kafese kapattı.");
+            M.Local.Captured(_s.Macro, who.Char.HeroId, who.Char.Name);
+            var rest = fallen.Where(f => f != who).ToList();
+            if (rest.Count > 0) Rob(o, rest, "Ötekileri soyup ormanın kıyısına attılar.");
+            else Rob(o, new List<Fighter> { who }, null);
+            return;
+        }
+        o.Fate = "rob";
+        Rob(o, fallen, "Goblinler baygın ekibi soyup kampın dışına attı.");
+    }
+
+    /// <summary>dev/tests: force the defeat outcome (rob | capture | kill)</summary>
+    public string ForceFate;
+
+    /// <summary>The goblins empty the purses and take what glitters: all silver, potions, trinkets and herbs; a weapon half the time,
+    /// a shield sometimes. It goes into their camp's chest (found there when the camp falls).</summary>
+    void Rob(FightOutcome o, List<Fighter> who, string line)
+    {
+        int silver = 0, value = 0;
+        var taken = new List<string>();
+        var heroes = new List<int>();
+        foreach (var f in who)
+        {
+            var c = f.Char;
+            if (c.HeroId is int hid) heroes.Add(hid);
+            silver += c.Inv.Silver; value += c.Inv.Silver;
+            _s.CampChest.Silver += c.Inv.Silver;
+            c.Inv.Silver = 0;
+            foreach (var id in new[] { "potion", "trinket", "herb" })
+            {
+                int n = c.Inv.Count(id);
+                if (n <= 0) continue;
+                c.Inv.Remove(id, n); _s.CampChest.Add(id, n);
+                value += (Items.Get(id)?.Price ?? 0) * n;
+                taken.Add($"{n} {Items.Get(id)?.Name?.ToLowerInvariant() ?? id}");
+            }
+            if (c.Weapon != null && Fight.Rng.Chance(0.5)) { var w = c.Weapon; c.Inv.Remove(w); c.Weapon = null; _s.CampChest.Add(w); value += Items.Get(w)?.Price ?? 0; taken.Add($"{c.Name}'ın {Items.Get(w)?.Name?.ToLowerInvariant()}"); }
+            if (c.Shield != null && Fight.Rng.Chance(0.4)) { var sh = c.Shield; c.Inv.Remove(sh); c.Shield = null; _s.CampChest.Add(sh); value += Items.Get(sh)?.Price ?? 0; taken.Add("bir kalkan"); }
+        }
+        if (silver > 0) taken.Insert(0, $"{Rules.Money(silver)}");
+        string what = taken.Count > 0 ? string.Join(", ", taken) : "";
+        if (line != null) o.Lines.Add(line);
+        o.Lines.Add(taken.Count > 0 ? $"Götürdükleri: {what}." : "Götürecek bir şey bulamadılar.");
+        M.Local.Robbed(_s.Macro, heroes, value, what);
     }
 
     /// <summary>The camp is broken when its chief fell and no goblin of it still stands outside the fight (the rest scatter), or when
@@ -669,6 +762,9 @@ public partial class CombatDirector : Node
         var lead = Fight.F.FirstOrDefault(f => f.IsPlayer);
         pl.Scripted = false; pl.InputEnabled = true;
         if (lead != null) pl.Teleport(lead.Pos.ToGodot(), MathF.Atan2(lead.Dir.X, lead.Dir.Y), _r.Heightfield);
+        foreach (var f in Fight.F)
+            if (f.Char != null && _bodies.TryGetValue(f, out var b) && b is Companion cb)
+                cb.GlobalPosition = new Vector3(f.Pos.X, _r.Heightfield.Height(f.Pos.X, f.Pos.Y), f.Pos.Y);
         pl.Camera.MakeCurrent();
         foreach (var comp in _r.Companions) comp.Scripted = false;
         Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -677,8 +773,86 @@ public partial class CombatDirector : Node
         var done = Fight;
         Fight = null;
         Selected.Clear(); Hover = null;
+        if (o.GameOver) { GameOver(); return; }
+        if (o.NewLeader != null) PassLeadership(o.NewLeader);
+        // the fallen are gone from the party (their bodies stay where they fell)
+        _s.Party.RemoveAll(c => c.Dead);
+        if (!o.Won) Wake(o);
+        else SaveGame.Save(_s, "savaş");
         Ended?.Invoke(o);
         GD.Print($"[Combat] closed ({done.Log.Count} olay)");
+    }
+
+    /// <summary>D: after a lost fight. Hours later, robbed: the fallen come to at 1 HP outside the camp (or where they fell, if that
+    /// was far from it); a caged player wakes behind the bars; the fled come back to the others.</summary>
+    void Wake(FightOutcome o)
+    {
+        double hours = 2.0 + (o.Fate == "capture" ? 1.5 : 0.5);
+        GameClock.SetTotalHours(GameClock.TotalHours + hours);
+        foreach (var c in _s.Party)
+        {
+            if (c.Dead) continue;
+            if (c.Down || c.Hp <= 0) { c.Down = false; c.Stable = false; c.DeathOk = c.DeathFail = 0; c.Hp = Math.Max(1, c.Hp); }
+        }
+        var pl = _r.Player;
+        var here = new Vector2(pl.GlobalPosition.X, pl.GlobalPosition.Z);
+        bool atCamp = (here - RegionSpec.GoblinCamp).Length() < 70f;
+        var away = (RegionSpec.CampSpurControl[0] - RegionSpec.GoblinCamp).Normalized();
+        var wake = atCamp ? RegionSpec.CampSpurControl[0] + away * 22f : here + new Vector2(3, 3);
+        string text;
+        if (_s.Player.Captive)
+        {
+            _r.Captivity.Cage();
+            foreach (var comp in _r.Companions) { if (comp.Char.Captive || comp.Char.Dead) continue; comp.GlobalPosition = new Vector3(wake.X, _r.Heightfield.Height(wake.X, wake.Y), wake.Y); comp.Hold = true; }
+            text = "Saatler sonra… Demir parmaklıkların ardında uyanıyorsun. Goblinlerin kafesi.\nKapıyı zorlayabilirsin (E) — ya da biri seni kurtarır.";
+        }
+        else
+        {
+            pl.Teleport(wake, MathF.Atan2(-away.X, -away.Y), _r.Heightfield);
+            foreach (var comp in _r.Companions) { comp.Hold = false; if (!comp.Char.Captive && !comp.Char.Dead) comp.SnapToLeader(); }
+            text = o.Captive != null
+                ? $"Saatler sonra… Ormanın kıyısında, başın zonklayarak uyanıyorsun. Keseler boş.\n{o.Captive.Name} yok: goblinler onu kafese kapattı."
+                : "Saatler sonra… Ormanın kıyısında, başın zonklayarak uyanıyorsun.\nKesen boş; goblinler seni soyup kampın dışına atmış.";
+        }
+        foreach (var c in _s.Party) if (!c.Dead && c.Wounds.Count > 0 && c.Wounds[^1].Day == _s.Macro.W.Day) text += $"\n{c.Name}: {Wound.Name(c.Wounds[^1].Kind).ToLowerInvariant()} — «{c.Epithet}».";
+        _r.Hud.Toast(text, 9f);
+        _s.SyncPlayerToMacro();
+        SaveGame.Save(_s, "yenilgi");
+    }
+
+    /// <summary>D: the leader died and someone of the party lives: they lead now (the world knows them as the player). The player's body
+    /// takes their look and place; their companion body becomes the fallen leader's corpse.</summary>
+    void PassLeadership(Character heir)
+    {
+        var old = _s.Player;
+        var pl = _r.Player;
+        var comp = _r.Companions.FirstOrDefault(c => c.Char == heir);
+        var oldPos = pl.GlobalPosition; float oldYaw = pl.Facing;
+        Vector3 heirPos = comp?.GlobalPosition ?? oldPos;
+        old.IsPlayer = false;
+        heir.IsPlayer = true;
+        _s.Party.Remove(heir); _s.Party.Insert(0, heir);
+        _s.Player = heir;
+        _s.PromoteToPlayer(heir);
+        pl.SetCharacter(heir);
+        pl.Teleport(new Vector2(heirPos.X, heirPos.Z), oldYaw, _r.Heightfield);
+        if (comp != null)
+        {
+            comp.Become(old);
+            comp.GlobalPosition = oldPos;
+        }
+        _r.Hud.Toast($"{old.Name} düştü. Ekibin başında artık {heir.Name} var.", 7f);
+    }
+
+    /// <summary>D: everyone is dead. Iron mode: the slot is already gone; back to the title.</summary>
+    void GameOver()
+    {
+        Session.Current = null;
+        GetTree().Paused = false;
+        Input.MouseMode = Input.MouseModeEnum.Visible;
+        GD.Print("[Combat] oyun bitti: dünya silindi");
+        if (Unattended) { Ended?.Invoke(Outcome); return; }
+        GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");
     }
 }
 

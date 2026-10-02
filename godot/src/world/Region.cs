@@ -50,6 +50,7 @@ public partial class Region : Node3D
     /// <summary>Faz 2: the bodies of the party members other than the player (following the leader; the fight drives them)</summary>
     public readonly List<Companion> Companions = new();
     public FD.Combat.CombatDirector Combat { get; private set; }
+    public FD.Game.Captivity Captivity { get; private set; }
     public readonly List<IRegionFeature> Features = new();
     public bool IsReady { get; private set; }
 
@@ -155,6 +156,11 @@ public partial class Region : Node3D
         Combat = new FD.Combat.CombatDirector();
         AddChild(Combat);
         Combat.Init(this);
+        Captivity = new FD.Game.Captivity();
+        AddChild(Captivity);
+        Captivity.Init(this);
+        if (Session.Player.Captive) Captivity.Cage();
+        foreach (var comp in Companions) comp.Hold = Session.Player.Captive;
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

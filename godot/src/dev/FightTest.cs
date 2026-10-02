@@ -86,6 +86,30 @@ public static class FightTest
             if (cls[0] == "fighter") { float ms = meleeShare / Math.Max(1, meleeSamples); extra += $", savaşçı yakın dövüşte %{ms * 100:F0}"; pass &= ms > 0.4f; }
             Check($"{comp} (Sv1+Sv2) vs 5 goblin", pass, $"{n} savaş: kazanılan {wins}, bozgun {routs}, biten {ended}, ort {secs / n:F0} sn{extra}");
         }
+        // D: permanent wounds after bad death saves / crits while down (one in four), applied to the character
+        {
+            int fights = 200, wounds = 0, bad = 0; var kinds = new Dictionary<string, int>();
+            int cha0 = 0, cha1 = 0, scars = 0; bool epithets = true;
+            for (int s = 0; s < fights; s++)
+            {
+                var fight = Make(new[] { "wizard" }, 4, s * 104729 + 7, out var lead);
+                float t = 0;
+                while (!fight.Over && t < 200f) { fight.Update(0.05f); t += 0.05f; }
+                if (fight.Winner != FSide.Party) fight.SettleFallen();
+                bad += fight.Log.Count(e => e.Kind == "wound");
+                cha0 = lead.Char.Stats[Rules.CHA];
+                fight.WriteBack(100, "Deneme Kampı");
+                if (lead.NewWound != null && !lead.Char.Dead)
+                {
+                    wounds++;
+                    kinds[lead.NewWound] = kinds.GetValueOrDefault(lead.NewWound) + 1;
+                    epithets &= lead.Char.Epithet != null && lead.Char.Wounds.Count == 1 && lead.Char.Wounds[0].Where == "Deneme Kampı";
+                    if (lead.NewWound == "scar") { scars++; cha1 += cha0 - lead.Char.Stats[Rules.CHA]; }
+                }
+            }
+            Check("kalıcı yara", wounds > 0 && epithets && cha1 == scars, $"{fights} yalnız büyücü savaşında (kaybedilenlerde yerdekiler ölüm zarlarını sürdürür) {wounds} kalıcı yara ({bad} yara olayı) ({string.Join(", ", kinds.Select(k => $"{Wound.Name(k.Key)} {k.Value}"))}); lakap ve yer yazıldı, iz Karizmayı 1 düşürdü");
+        }
+
         // determinism
         var f1 = Make(new[] { "fighter", "wizard" }, 5, 777, out _); var f2 = Make(new[] { "fighter", "wizard" }, 5, 777, out _);
         for (int i = 0; i < 2000 && !f1.Over; i++) { f1.Update(0.05f); f2.Update(0.05f); }

@@ -49,6 +49,21 @@ public partial class Companion : Node3D
 
     public void Init(Node3D leader, Heightfield hf) { _leader = leader; _hf = hf; }
 
+    /// <summary>D: this body now shows another person (a fallen leader's corpse after the leadership passed on).</summary>
+    public void Become(Character c)
+    {
+        Char = c;
+        Body?.QueueFree();
+        Body = LookKit.Body(c);
+        AddChild(Body);
+        _name.Text = c.FullName;
+        _name.Position = new Vector3(0, 2.15f * LookKit.HeightOf(c), 0);
+        _lastAnim = null;
+    }
+
+    /// <summary>D: wait where they stand (the leader is caged, or told to stay)</summary>
+    public bool Hold;
+
     /// <summary>Put the companion on the ground at its slot behind the leader (after a teleport or a load).</summary>
     public void SnapToLeader()
     {
@@ -98,12 +113,29 @@ public partial class Companion : Node3D
             _lastAnim = "Die";
             return;
         }
+        if (Char.Captive)
+        {
+            // in the goblins' cage: sits behind the bars
+            var cp = FD.World.CampSite.CagePrisoner + new Vector2(0.15f * (Slot % 2 == 0 ? 1 : -1), 0.1f * Slot);
+            GlobalPosition = new Vector3(cp.X, _hf?.Height(cp.X, cp.Y) ?? GlobalPosition.Y, cp.Y);
+            Rotation = new Vector3(0, FD.World.CampSite.CageYaw, 0);
+            if (_lastAnim != "Sit") Body.Drive(Body.HasClip("Sit") ? "Sit" : "Idle", 0, 0.3f);
+            _lastAnim = "Sit";
+            return;
+        }
         if (_leader == null) return;
+        if (Hold)
+        {
+            _speed = 0;
+            if (_lastAnim != "Idle") { Body.Drive("Idle", 0, 0.3f); _lastAnim = "Idle"; }
+            return;
+        }
         var goal = SlotPoint();
         var here = new Vector2(GlobalPosition.X, GlobalPosition.Z);
         var d = goal - here;
         float L = d.Length();
         float leaderSpeed = _leader is Player pl ? new Vector2(pl.Velocity.X, pl.Velocity.Z).Length() : 0f;
+        _lastAnim = null;
         if (L > 40f) { SnapToLeader(); return; }
         // speed to keep up: match the leader near the slot, hurry when behind
         float want = L < 0.35f ? 0f : MathF.Min(MathF.Max(leaderSpeed, 1.4f) * (L > 4f ? 1.35f : L > 1.5f ? 1.1f : 0.8f), 11f * Char.SpeedFactor + 0.5f);

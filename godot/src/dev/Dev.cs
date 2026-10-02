@@ -61,6 +61,8 @@ public partial class Dev : Node
     public bool? AutoPause;
     /// <summary>--camptest[=N]: headless: walk the player (with --party) into the goblin camp, fight N times, check the results</summary>
     public int CampTest;
+    /// <summary>--fate=rob|capture|kill: force what the goblins do after a lost fight (tests)</summary>
+    public string Fate;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
     /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
@@ -131,6 +133,7 @@ public partial class Dev : Node
                     case "--pauseat": PauseAt = F(val); break;
                     case "--autopause": AutoPause = val != "0"; break;
                     case "--camptest": CampTest = val == "" ? 1 : int.Parse(val, ci); break;
+                    case "--fate": Fate = val; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -254,6 +257,7 @@ public partial class Dev : Node
         if (WorldTestDays > 0) CallDeferred(nameof(RunWorldTest));
         if (AutoPause.HasValue) FD.Game.Settings.Current.AutoPause = AutoPause.Value;
         if (region.Combat != null && PauseAt.HasValue) region.Combat.PauseAt = PauseAt;
+        if (region.Combat != null && Fate != null) region.Combat.ForceFate = Fate;
         if (CampTest > 0) CallDeferred(nameof(RunCampTest));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();

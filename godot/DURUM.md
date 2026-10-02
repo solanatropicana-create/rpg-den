@@ -114,8 +114,9 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
 - **Simle bağ** (`Local.LocalCampFight`): ölen goblinler kampın sayısından düşer, şef ölürse kamp şefsiz kalır. Kamp **kırıldıysa**
   (şefi düştü ve en çok bir goblini ayakta kaldı, ya da hiç kalmadı) simde de temizlenir: ilan kapanır, ödül handa bekler
   (`RegionLink.Reward`), ganimet kampın sandığında (`CampLoot`, F), köyün devletinin tehdidi azalır, oyuncunun günlüğüne ve
-  tarihe yazılır ("…, Kırıkdiş Kampı'nı yerle bir etti!"), **10–20 gün sonra** boşalan vadiye 4–8 yerleşimci gelir (köyün nüfusu
-  artar, tarihe yazılır). İlanı simdeki bir kahraman almışsa ödül onun değildir; ilanı boşa çıkar.
+  tarihe yazılır ("…, Kırıkdiş Kampı'nı yerle bir etti!"), **10–20 gün sonra** boşalan vadiye öncüler gelmeye başlar: simin
+  "verimli vadi" fırsat merkezi şansa bakmadan başlar (söylenti → hücum: çevreden çiftçiler iner; dünyada yer varsa kalıcı köy olur;
+  vadiye yer yoksa öncüler köye yerleşir). İlanı simdeki bir kahraman almışsa ödül onun değildir; ilanı boşa çıkar.
 - **Yoldaş bedeni** (`src/actors/Companion.cs`): oyuncunun ardında gevşek bir dizide yürür, geride kalınca koşar, çok uzakta kalırsa
   yanına gelir; savaşta betik kipinde. `--party=fighter,wizard` geliştirici yoldaşları (Sv2, sınıf takımıyla). İşe alma E'de.
 - **Testler:** `--fighttest` (kural: d20 ki-kare, %5 kritik/ıska, %50 isabet; 5 ekip × 60 savaş: sınıf davranışları; belirlenim),
@@ -124,7 +125,35 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
   simde temizlendi, ilan kapandı, 10–20 gün sonra yerleşimciler geldi). Tohum 1, 2, 3, 5'te ekip (savaşçı + büyücü) kampı düşürdü
   (14 goblin + şefli kamp dahil); tek başına Sv1 oyuncu yenildi (yenilgi akışı D'de).
 - **Kararlar:** bozgunda goblinler kampa değil kampın ötesine (ormana) kaçar; kamp, şef düşünce en çok bir goblini kaldıysa kırılmış
-  sayılır (kalanlar dağılır); yenilen ekibin ganimeti D'de.
+  sayılır (kalanlar dağılır).
+
+### D · Bayılma, ölüm zarı, kalıcı yara (bitti)
+
+- **Bayılma:** canı 0'a düşen ekip üyesi yere düşer ve 3 saniyede bir ölüm zarı atar (C). Ayaktaki bir dost sargıyla (B) ya da iksirle
+  (Q, fare yerdekinin üstündeyken) kaldırır; rahibin Yara Sarma'sı da. Kazanılan savaştan sonra yerdekiler 1 canla kendine gelir.
+- **Kalıcı yara** (`Fight.MaybeWound`, `Character.AddWound`): kötü giden ölüm zarında (1–9) ya da yerdeyken yenen kritikte dörtte bir
+  ihtimalle — kör göz (¼: uzak saldırıda −2), topallık (¼: %20 yavaş), derin iz (½: Karizma −1); savaş başına en çok bir. Lakap
+  gelir (Tek Göz, Topal, Yaralı Yüz) ve simdeki kahraman kaydına, günlüğüne yazılır (`Local.Wounded`). Tedavi tapınakta, pahalı
+  (400 gümüş; rahibin fiili G'de; `Character.CureWound`).
+- **Kaybedilen savaş** (ekibin hepsi yerde): yerdekiler goblinler keseleri boşaltırken ölüm zarlarını sürdürür (`Fight.SettleFallen`;
+  her kayıp yine yara getirebilir; üçüncü kayıp burada ölüm değil, "ölümün eşiğinden kıl payı döndü"). Sonra goblinlerin kararı
+  (`CombatDirector.Fate`): **%70 soyar**: bütün gümüş, iksirler, ıvır zıvır ve otlar, yarı yarıya silah, %40 kalkan → kampın sandığına
+  (`Session.CampChest`, kayıtta; kamp düşünce orada bulunur), simde kampın ganimeti büyür, tarihe "…goblinleri X'i yere serip soydu"
+  (`Local.Robbed`); **%22 esir alır** (kamp ayaktaysa): biri (yalnızsa oyuncu) kampın kafesine, ötekiler soyulup atılır
+  (`Local.Captured`); **%8 bitirir**: yerdekiler ölür. Ekip 2,5–4 oyun saati sonra 1 canla, kamptan ~70 m uzakta, patikanın başında
+  uyanır (savaş kamptan uzaktaysa düştüğü yerde); ekranda ne olduğunu, kimin kafeste olduğunu ve yeni yaraları söyleyen satır.
+- **Kafes** (`src/game/Captivity.cs`): kafesteki oyuncu parmaklıkların ardında tutulur; saatte bir kapıyı zorlayabilir (E): d20 + Güç
+  ya da Çeviklik (haydut yeterliliğini ekler) ≥ ZD 15. Kafesteki yoldaşın kapısını ayaktaki bir ekip üyesi dışarıdan açar (E). Oyuncu
+  kafesteyken yoldaşlar uyandıkları yerde bekler. HUD'a genel E istemi eklendi (`Hud.Prompts`, `Hud.Toast`).
+- **Ölüm:** ölen ekip üyesi simde de ölür (`Local.Died` → `Heroes.Die`: olay, destan); bedeni düştüğü yerde kalır, ekipten çıkar.
+  Oyuncu ölür ama ekipten biri yaşarsa **başa o geçer** (`Session.PromoteToPlayer`, `Local.Promote`: simde artık o "oyuncu";
+  kiralık askere sessizce kayıt açılır); oyuncunun bedeni onun görünüşünü alır, yoldaş bedeni eski liderin cesedi olur. **Herkes
+  ölürse** Demir mod: kayıt silinir, başlık ekranına dönülür.
+- **Testler:** `--fighttest`'e kalıcı yara ölçütü (200 yalnız büyücü savaşında 65 yara: iz 37, göz 16, topallık 12; lakap, yer ve
+  Karizma doğru). `--camptest --fate=rob|capture|kill`: soyulma (kese boş, sandıkta, 72 m ötede, 2,5 saat sonra, tarihte), kafes
+  (oyuncu kafeste, olay, kapı zorlanıp çıkıldı), bitirme (kimse kalmadı, kayıt silindi). Tohum 3'te soyulan oyuncu "Yaralı Yüz" oldu.
+- **Kararlar:** kaybedilen savaşta ölüm zarlarının üçüncü kaybı öldürmez (brief: kaybeden bayılır, soyulur, uyanır; goblinler nadiren
+  bitirir); kafes için zaman sınırı yok (kaçış her saat denenebilir).
 
 ---
 

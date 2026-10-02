@@ -24,6 +24,8 @@ public sealed class LocalState
     public string SavedAt, Reason;
     /// <summary>region facts the macro world does not hold (looted chests, the cage, bodies…)</summary>
     public Dictionary<string, double> Flags = new();
+    /// <summary>the goblin camp's chest (stolen goods)</summary>
+    public Inventory CampChest = new();
 }
 
 /// <summary>
@@ -65,7 +67,7 @@ public static class SaveGame
         {
             Seed = s.Seed, BaseLocalDay = s.BaseLocalDay, BaseMacroDay = s.BaseMacroDay, ClockHours = GameClock.TotalHours,
             Party = new List<Character>(s.Party), NextCharId = s.PeekNextCharId(), SavedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
-            Flags = new Dictionary<string, double>(s.Flags),
+            Flags = new Dictionary<string, double>(s.Flags), CampChest = s.CampChest,
         };
         var pl = Region.Current?.Player;
         if (pl != null)
@@ -112,6 +114,7 @@ public static class SaveGame
         if (s.Player != null) s.Player.IsPlayer = true;
         s.SetNextCharId(st.NextCharId);
         foreach (var kv in st.Flags) s.Flags[kv.Key] = kv.Value;
+        s.CampChest = st.CampChest ?? new Inventory();
         GameClock.SetTotalHours(st.ClockHours);
         Pending = st;
         Session.Current = s;
