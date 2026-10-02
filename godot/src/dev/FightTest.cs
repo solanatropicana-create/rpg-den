@@ -108,6 +108,52 @@ public static class FightTest
             Check($"3 × {comp} Sv6 vs 7 goblin", wins >= n * 0.8, $"{n} savaş: kazanılan {wins}, ort {secs / n:F0} sn");
         }
 
+        // Tur 1 C: stances and running off (no buttons: the stance and a "go there" are all the player gives)
+        {
+            int n = 60, esc = 0, caught = 0, fleeEsc = 0, fleeSwings = 0, passiveSwings = 0, holdMoved = 0, bookOk = 0, offOk = 0;
+            for (int s = 0; s < n; s++)
+            {
+                // a right click far away a second in: they run; caught ones turn and fight
+                var fight = Make(new[] { "fighter", "cleric" }, 4, s * 9001 + 5, out var lead);
+                float t = 0; bool ordered = false;
+                while (!fight.Over && t < 120f)
+                {
+                    fight.Update(0.05f); t += 0.05f;
+                    if (!ordered && t > 1f) { ordered = true; foreach (var f in fight.Of(FSide.Party)) { f.Order = "move"; f.OrderPoint = f.Pos + new V2(0, 90f); } }
+                }
+                if (fight.Escaped) esc++;
+                if (s < 2) GD.Print($"[FightTest] kaçış örneği {s}: bitti {fight.Over} t {t:F0} kazanan {fight.Winner} kaçış {fight.Escaped}; ekip {string.Join(", ", fight.Of(FSide.Party).Select(f => $"{f.Name} ({f.Pos.X:F0},{f.Pos.Y:F0}) {f.Order} {(f.Down ? "yerde" : "")}"))}; düşman {string.Join(", ", fight.Of(FSide.Foe).Select(f => $"({f.Pos.X:F0},{f.Pos.Y:F0}){(f.Standing ? "" : "x")}"))}; son: {fight.Log.LastOrDefault()?.Text}");
+                caught += fight.Log.Count(e => e.Kind == "caught") > 0 ? 1 : 0;
+                // stance Kaç from the start: nobody of the party strikes, they get away
+                var fk = Make(new[] { "fighter", "cleric" }, 4, s * 9001 + 6, out _);
+                foreach (var f in fk.Of(FSide.Party)) f.Char.Stance = Stances.Flee;
+                t = 0; while (!fk.Over && t < 120f) { fk.Update(0.05f); t += 0.05f; }
+                if (fk.Escaped) fleeEsc++;
+                fleeSwings += fk.Log.Count(e => e.A?.Side == FSide.Party && e.Kind is "attack" or "spell");
+                // a passive cleric never strikes; a holding fighter never steps
+                var fp = Make(new[] { "fighter", "cleric" }, 3, s * 9001 + 7, out var l3);
+                var cl = fp.Of(FSide.Party).First(f => f.Char.Cls == "cleric"); cl.Char.Stance = Stances.Passive;
+                l3.Char.Stance = Stances.Hold;
+                var p0 = l3.Pos;
+                t = 0; while (!fp.Over && t < 120f) { fp.Update(0.05f); t += 0.05f; }
+                passiveSwings += fp.Log.Count(e => e.A == cl && e.Kind is "attack" or "spell");
+                if (V2.Distance(l3.Pos, p0) > 1.0f) holdMoved++;
+                // the book: firebolt first → only firebolts; sleep switched off → never sleep
+                var fb = Make(new[] { "wizard", "fighter" }, 5, s * 9001 + 8, out var wz);
+                wz.Char.SpellOrder = new List<string> { "firebolt" };
+                t = 0; while (!fb.Over && t < 120f) { fb.Update(0.05f); t += 0.05f; }
+                if (fb.Log.Where(e => e.A == wz && e.Kind == "spell").All(e => e.Short == null || e.Short.StartsWith("Ateş Oku"))) bookOk++;
+                var fo = Make(new[] { "wizard", "fighter" }, 5, s * 9001 + 9, out var wz2);
+                wz2.Char.SpellOff = new List<string> { "sleep" };
+                t = 0; while (!fo.Over && t < 120f) { fo.Update(0.05f); t += 0.05f; }
+                if (!fo.Log.Any(e => e.A == wz2 && e.Kind == "sleep")) offOk++;
+            }
+            Check("Tur 1: yere sağ tıkla kaçış", esc >= n * 0.6, $"{n} savaşta {esc} kaçış ({caught} savaşta biri yakalanıp dövüştü)");
+            Check("Tur 1: Kaç duruşu", fleeEsc >= n * 0.8 && fleeSwings == 0, $"{fleeEsc}/{n} kurtuldu, ekibin vuruşu {fleeSwings}");
+            Check("Tur 1: Pasif ve Yerini koru", passiveSwings == 0 && holdMoved <= n / 20, $"pasifin vuruşu {passiveSwings}, yerinden 1 m'den çok kayan {holdMoved}/{n}");
+            Check("Tur 1: büyü kitabı sırası", bookOk == n && offOk == n, $"Ateş Oku başta: {bookOk}/{n} yalnız Ateş Oku; Uyku kapalı: {offOk}/{n} hiç uyutmadı");
+        }
+
         // D: permanent wounds after bad death saves / crits while down (one in four), applied to the character
         {
             int fights = 200, wounds = 0, bad = 0; var kinds = new Dictionary<string, int>();

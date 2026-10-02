@@ -53,13 +53,13 @@ public static class GameInput
     {
         if (_done) return;
         _done = true;
-        Add("move_forward", Key.W, Key.Up);
-        Add("move_back", Key.S, Key.Down);
-        Add("move_left", Key.A, Key.Left);
-        Add("move_right", Key.D, Key.Right);
-        Add("jump", Key.Space);
+        // Tur 1 A: WASD walks the selected character (arrow keys pan the camera); Space pauses (no jumping); Alt+drag turns the camera
+        Add("move_forward", Key.W);
+        Add("move_back", Key.S);
+        Add("move_left", Key.A);
+        Add("move_right", Key.D);
         Add("sprint", Key.Shift);
-        Add("walk", Key.Ctrl, Key.Alt);
+        Add("walk", Key.Ctrl);
         Add("release_mouse", Key.Escape);
         Add("toggle_fullscreen", Key.F11);
         InputMap.ActionAddEvent("toggle_fullscreen", new InputEventKey { PhysicalKeycode = Key.Enter, AltPressed = true });

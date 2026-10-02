@@ -20,7 +20,8 @@ namespace FD.Game;
 /// </summary>
 public partial class PartyManager : Node
 {
-    public const int MaxCompanions = 2, WeekDays = 5;
+    /// <summary>Tur 1: a party of four (the player and three)</summary>
+    public const int MaxCompanions = 3, WeekDays = 5;
     Region _r;
     Session _s;
 
@@ -154,13 +155,28 @@ public partial class PartyManager : Node
                 Leave(c, "yolları ayrıldı", c.Align == "good" ? "Senin yaptıklarına ortak olamam." : "Senin gibi bir azizle yol yürünmez.");
     }
 
-    // ------------------------------------------------------------------------------------------------ Tab: who is controlled
-    public override void _UnhandledInput(InputEvent e)
+    // ------------------------------------------------------------------------------------------------ who is controlled (Tur 1: the selection — Commander)
+    /// <summary>Tur 1 A: the body of the player takes this party member (selecting someone makes them the one WASD walks).</summary>
+    public bool SwitchTo(Character next)
     {
-        if (e is not InputEventKey k || !k.Pressed || k.Echo || k.PhysicalKeycode != Key.Tab) return;
-        if (_r.Combat?.Active == true || !_r.Player.InputEnabled) return;
-        SwitchControl(k.ShiftPressed ? -1 : 1);
-        GetViewport().SetInputAsHandled();
+        var cur = _r.Player.Character;
+        if (next == null || next == cur || next.Dead || next.Down) return false;
+        var body = _r.Companions.FirstOrDefault(x => x.Char == next);
+        if (body == null) return false;
+        var pl = _r.Player;
+        var pPos = pl.GlobalPosition; float pYaw = pl.Facing;
+        var cPos = body.GlobalPosition; float cYaw = body.Rotation.Y;
+        bool waiting = body.Waiting;
+        pl.CancelGoTo();
+        pl.SetCharacter(next);
+        pl.Teleport(new Vector2(cPos.X, cPos.Z), cYaw, _r.Heightfield);
+        body.Become(cur);
+        body.GlobalPosition = pPos;
+        body.Rotation = new Vector3(0, pYaw, 0);
+        body.Waiting = false;
+        _s.Controlled = next;
+        foreach (var comp in _r.Companions) comp.Hold = next.Captive;
+        return true;
     }
 
     /// <summary>The player's body takes the next party member (their look, place and facing); that member's companion body takes the

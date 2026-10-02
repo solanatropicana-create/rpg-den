@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Godot;
 using FD.Actors;
@@ -11,8 +12,11 @@ using FD.World;
 namespace FD.UI;
 
 /// <summary>
-/// Minimal RPG HUD: clock and place name, the E prompt for the person in front of the hero, the person card
-/// (who, doing what, why, next, needs, recent log), the region map (M), a hit flash, and a debug overlay (F3).
+/// The HUD, the same in and out of a fight (Tur 1): the clock, place and weather with the time controls (⏸ 1× 2× 3×, clickable),
+/// PAUSED when paused, the party bar (bottom left: everyone's health, stance buttons, wait/follow, click to select), the person
+/// card (left click on someone; a right click talks: the card's buttons are what can be done with them), the E prompt for what is
+/// right in front of the controlled character (a shortcut, never needed), the region map (M), what a finished fight left (a short
+/// report), a hit flash and the debug overlay (F3).
 /// </summary>
 public partial class Hud : CanvasLayer
 {
@@ -39,7 +43,16 @@ public partial class Hud : CanvasLayer
     /// <summary>Faz 2 E/G: what can be done with the person whose card is open (Kirala, Söylenti sor, Ticaret, Saldır…), keys 1–5.</summary>
     public readonly List<Func<Person, IEnumerable<(string label, Action act)>>> Verbs = new();
     readonly List<(string label, Action act)> _verbs = new();
-    Label _cardVerbs, _party;
+    VBoxContainer _cardVerbs;
+    string _verbKey;
+    Label _pauseBanner, _clockSub;
+    HBoxContainer _speedRow;
+    readonly Button[] _speedBtn = new Button[4];
+    PartyBar _partyBar;
+    PanelContainer _report;
+    VBoxContainer _reportBody;
+    float _reportT;
+    bool _cardTalk;
     readonly List<(Label l, Vector2 world)> _mapLabels = new();
     const int MapPx = 600;
 
@@ -56,8 +69,32 @@ public partial class Hud : CanvasLayer
         AddChild(root);
 
         _clock = MakeLabel(20, new Color(1, 0.96f, 0.88f));
-        _clock.Position = new Vector2(22, 16);
+        _clock.Position = new Vector2(22, 12);
         root.AddChild(_clock);
+        _clockSub = MakeLabel(14, new Color(0.78f, 0.75f, 0.68f));
+        _clockSub.Position = new Vector2(22, 40);
+        root.AddChild(_clockSub);
+        // Tur 1 C: time controls (Space, + / − or these)
+        _speedRow = new HBoxContainer { Position = new Vector2(22, 62) };
+        _speedRow.AddThemeConstantOverride("separation", 4);
+        root.AddChild(_speedRow);
+        string[] names = { "⏸", "1×", "2×", "3×" };
+        for (int i = 0; i < 4; i++)
+        {
+            int n = i;
+            var b = FD.UI.Ui.Button(names[i], () => { var c = FD.Game.Commander.Instance; if (c == null) return; if (n == 0) c.TogglePause(); else { if (c.IsPaused) c.SetPaused(false); c.SetSpeed(n); } }, 14, toggle: true);
+            b.CustomMinimumSize = new Vector2(40, 26);
+            b.TooltipText = n == 0 ? "Duraklat / sürdür (Boşluk)" : $"Hız {n}× (+ / −)";
+            _speedRow.AddChild(b);
+            _speedBtn[i] = b;
+        }
+        _pauseBanner = MakeLabel(24, new Color(1f, 0.92f, 0.62f));
+        _pauseBanner.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+        _pauseBanner.HorizontalAlignment = HorizontalAlignment.Center;
+        _pauseBanner.Position = new Vector2(-300, 12); _pauseBanner.Size = new Vector2(600, 32);
+        _pauseBanner.Text = "⏸  DURAKLATILDI  —  Boşluk: sürdür";
+        _pauseBanner.Visible = false;
+        root.AddChild(_pauseBanner);
 
         _prompt = MakeLabel(20, new Color(1, 0.97f, 0.9f));
         _prompt.SetAnchorsPreset(Control.LayoutPreset.CenterBottom);
@@ -76,18 +113,16 @@ public partial class Hud : CanvasLayer
         root.AddChild(_toast);
 
         _debug = MakeLabel(14, new Color(0.85f, 1f, 0.85f));
-        _debug.Position = new Vector2(22, 52);
+        _debug.Position = new Vector2(22, 96);
         _debug.Visible = false;
         root.AddChild(_debug);
 
         BuildCard(root);
         BuildMap(root);
-        _party = MakeLabel(15, new Color(0.9f, 0.92f, 0.85f));
-        _party.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-        _party.GrowVertical = Control.GrowDirection.Begin;
-        _party.Position = new Vector2(22, -22);
-        _party.VerticalAlignment = VerticalAlignment.Bottom;
-        root.AddChild(_party);
+        _partyBar = new PartyBar { Name = "PartyBar" };
+        root.AddChild(_partyBar);
+        _partyBar.Init(region);
+        BuildReport(root);
 
         _flash = new ColorRect { Color = new Color(0.8f, 0.05f, 0.02f, 0f), MouseFilter = Control.MouseFilterEnum.Ignore };
         _flash.SetAnchorsPreset(Control.LayoutPreset.FullRect);
@@ -95,7 +130,7 @@ public partial class Hud : CanvasLayer
 
         life.Struck += g =>
         {
-            _flashT = 0.35f; _shakeT = 0.3f;
+            _flashT = 0.35f; if (GameCamera.Instance != null) GameCamera.Instance.Shake = 0.3f;
             var a = life.ActorOf(g);
             if (a != null && H.Hash(g.Id, (int)(life.Sim.Now * 3)) < 0.35f) a.Say(new[] { "Hıyaaah!", "Al sana!", "Grraah!" }[(int)(H.Hash(g.Id, 9, (int)life.Sim.Now) * 3)], 1.6f);
         };
@@ -124,7 +159,7 @@ public partial class Hud : CanvasLayer
 
     void BuildCard(Control root)
     {
-        _card = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+        _card = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
         _card.AddThemeStyleboxOverride("panel", PanelStyle());
         _card.SetAnchorsPreset(Control.LayoutPreset.TopRight);
         _card.Position = new Vector2(-440, 20);
@@ -134,7 +169,13 @@ public partial class Hud : CanvasLayer
         v.AddThemeConstantOverride("separation", 6);
         _card.AddChild(v);
         Color gold = new(0.95f, 0.82f, 0.52f), text = new(0.93f, 0.9f, 0.84f), dim = new(0.72f, 0.68f, 0.6f);
-        _cardName = MakeLabel(24, gold); v.AddChild(_cardName);
+        var top = new HBoxContainer();
+        v.AddChild(top);
+        _cardName = MakeLabel(24, gold); _cardName.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; top.AddChild(_cardName);
+        var close = FD.UI.Ui.Button("×", CloseCard, 18);
+        close.CustomMinimumSize = new Vector2(30, 28);
+        close.Theme = FD.UI.Ui.MakeTheme(16);
+        top.AddChild(close);
         _cardSub = MakeLabel(15, dim); _cardSub.AutowrapMode = TextServer.AutowrapMode.WordSmart; v.AddChild(_cardSub);
         v.AddChild(new HSeparator());
         _cardNow = MakeLabel(18, text); _cardNow.AutowrapMode = TextServer.AutowrapMode.WordSmart; v.AddChild(_cardNow);
@@ -158,8 +199,10 @@ public partial class Hud : CanvasLayer
         v.AddChild(new HSeparator());
         var lt = MakeLabel(14, gold); lt.Text = "Günlük"; v.AddChild(lt);
         _cardLog = MakeLabel(14, dim); v.AddChild(_cardLog);
-        _cardVerbs = MakeLabel(16, new Color(1f, 0.9f, 0.6f)); _cardVerbs.AutowrapMode = TextServer.AutowrapMode.WordSmart; v.AddChild(_cardVerbs);
-        var hint = MakeLabel(13, new Color(0.6f, 0.56f, 0.5f)); hint.Text = "[E] kapat"; v.AddChild(hint);
+        _cardVerbs = new VBoxContainer { Theme = FD.UI.Ui.MakeTheme(16) };
+        _cardVerbs.AddThemeConstantOverride("separation", 4);
+        v.AddChild(_cardVerbs);
+        var hint = MakeLabel(13, new Color(0.6f, 0.56f, 0.5f)); hint.Text = "Düğmeler: yapılabilecekler (uzaksa önce yanına gider) · × ya da E: kapat"; hint.AutowrapMode = TextServer.AutowrapMode.WordSmart; v.AddChild(hint);
     }
 
     static Label SetText(Label l, string t) { l.Text = t; return l; }
@@ -268,25 +311,31 @@ public partial class Hud : CanvasLayer
         var sim = _life.Sim;
         var player = _region.Player;
         _clock.Text = $"{GameClock.TimeString}  ·  {PlaceName(player)}";
+        _clockSub.Text = $"Hava: {Weather.Describe()}";
+        var cmd = FD.Game.Commander.Instance;
+        bool paused = cmd?.IsPaused == true;
+        _pauseBanner.Visible = paused && _region.Combat?.Summary != true && FD.UI.PanelLayer.OpenPanel == null;
+        for (int i = 0; i < 4; i++) _speedBtn[i].SetPressedNoSignal(i == 0 ? paused : !paused && cmd?.Speed == i);
 
-        // interaction prompt
+        // interaction prompt (E: a shortcut for what is right in front of the controlled character)
         _promptPerson = null;
         if (player != null && player.InputEnabled && !_mapRoot.Visible)
         {
-            var fwd = -player.Camera.GlobalBasis.Z;
+            var fwd = new Vector3(MathF.Sin(player.Facing), 0, MathF.Cos(player.Facing));
             _promptPerson = _life.Facing(player.GlobalPosition, fwd);
         }
         if (_cardPerson != null && _cardPerson != _promptPerson)
         {
             var a = _life.ActorOf(_cardPerson);
-            if (a == null || !_cardPerson.Visible || player == null || a.GlobalPosition.DistanceTo(player.GlobalPosition) > 9f) CloseCard();
+            float far = _cardTalk ? 30f : 120f;
+            if (a == null || !_cardPerson.Visible || player == null || a.GlobalPosition.DistanceTo(player.GlobalPosition) > far) CloseCard();
         }
         _extra = null;
         if (_promptPerson == null && player != null && player.InputEnabled && !_mapRoot.Visible)
             foreach (var pr in Prompts) { var r = pr(); if (r != null) { _extra = r; break; } }
         _prompt.Text = _promptPerson != null && _cardPerson != _promptPerson ? $"[E]  {_promptPerson.FullName} — {Census.RoleName(_promptPerson)}"
             : _extra != null ? $"[E]  {_extra.Value.text}" : "";
-        UpdateParty();
+        if (_reportT > 0) { _reportT -= dt / MathF.Max(0.05f, (float)Engine.TimeScale); if (_reportT <= 0) _report.Visible = false; }
         if (_toastT > 0) { _toastT -= dt; _toast.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1)); if (_toastT <= 0) _toast.Text = ""; }
         if (_cardPerson != null) FillCard(_cardPerson);
 
@@ -295,7 +344,7 @@ public partial class Hud : CanvasLayer
         {
             var pp = player.GlobalPosition;
             _mapPlayer.Position = MapPos(new Vector2(pp.X, pp.Z));
-            var f = -player.Camera.GlobalBasis.Z;
+            var f = new Vector3(MathF.Sin(player.Facing), 0, MathF.Cos(player.Facing));
             _mapPlayer.Rotation = MathF.Atan2(f.X, -f.Z);
         }
 
@@ -304,16 +353,6 @@ public partial class Hud : CanvasLayer
         {
             _flashT -= dt;
             _flash.Color = new Color(0.8f, 0.05f, 0.02f, Math.Clamp(_flashT, 0, 0.35f) * 0.7f);
-        }
-        if (player != null)
-        {
-            if (_shakeT > 0)
-            {
-                _shakeT -= dt;
-                player.Camera.HOffset = (GD.Randf() - 0.5f) * 0.12f;
-                player.Camera.VOffset = (GD.Randf() - 0.5f) * 0.12f;
-            }
-            else { player.Camera.HOffset = 0; player.Camera.VOffset = 0; }
         }
 
         if (_debugOn)
@@ -364,18 +403,40 @@ public partial class Hud : CanvasLayer
         _cardLog.Text = sb.ToString().TrimEnd();
         _verbs.Clear();
         foreach (var vp in Verbs) foreach (var vb in vp(p)) _verbs.Add(vb);
-        var vs = new StringBuilder();
-        for (int i = 0; i < _verbs.Count && i < 5; i++) vs.AppendLine(_verbs[i].act != null ? $"[{i + 1}] {_verbs[i].label}" : $"     {_verbs[i].label}");
-        _cardVerbs.Text = vs.ToString().TrimEnd();
+        string key = string.Join("|", _verbs.Select(x => x.label + (x.act != null ? "+" : "-")));
+        if (key != _verbKey)
+        {
+            _verbKey = key;
+            foreach (var n in _cardVerbs.GetChildren()) n.QueueFree();
+            foreach (var (label, act) in _verbs)
+            {
+                if (act == null) { var l = MakeLabel(14, new Color(0.7f, 0.66f, 0.58f)); l.Text = label; l.AutowrapMode = TextServer.AutowrapMode.WordSmart; _cardVerbs.AddChild(l); continue; }
+                var who = p; var todo = act;
+                var b = FD.UI.Ui.Button(label, () => Use(who, todo), 15);
+                b.Alignment = HorizontalAlignment.Left;
+                _cardVerbs.AddChild(b);
+            }
+        }
         _cardVerbs.Visible = _verbs.Count > 0;
     }
 
-    void OpenCard(Person p)
+    void OpenCard(Person p, bool talk = true)
     {
         _cardPerson = p;
+        _cardTalk = talk;
+        _verbKey = null;
         _card.Visible = true;
-        _life.Greet(p);
+        if (talk) _life.Greet(p);
         FillCard(p);
+    }
+
+    /// <summary>A card button: done at once when the person is near, otherwise the character walks up first.</summary>
+    void Use(Person p, Action act)
+    {
+        var cmd = FD.Game.Commander.Instance;
+        var pl = _region.Player;
+        if (cmd == null || pl == null) { act(); return; }
+        cmd.Approach(() => new Vector2(p.Pos.X, p.Pos.Y), 2.6f, () => { if (p.Visible || p.Role == Role.Goblin) { _life.Greet(p); act(); } }, null);
     }
 
     void CloseCard() { _cardPerson = null; _card.Visible = false; }
@@ -389,12 +450,6 @@ public partial class Hud : CanvasLayer
             if (_cardPerson != null && (_promptPerson == null || _promptPerson == _cardPerson)) CloseCard();
             else if (_promptPerson != null) OpenCard(_promptPerson);
             else if (_extra != null) _extra.Value.act();
-            GetViewport().SetInputAsHandled();
-        }
-        else if (_cardPerson != null && e is InputEventKey vk && vk.Pressed && !vk.Echo && vk.PhysicalKeycode >= Key.Key1 && vk.PhysicalKeycode <= Key.Key5)
-        {
-            int i = (int)(vk.PhysicalKeycode - Key.Key1);
-            if (i < _verbs.Count && _verbs[i].act != null) { var act = _verbs[i].act; act(); }
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsActionPressed("map"))
@@ -419,31 +474,40 @@ public partial class Hud : CanvasLayer
         _mapRoot.Visible = !_mapRoot.Visible;
     }
 
-    public void OpenCardFor(Person p) => OpenCard(p);
+    public void OpenCardFor(Person p, bool talk = true) => OpenCard(p, talk);
     public bool MapOpen => _mapRoot != null && _mapRoot.Visible;
+    /// <summary>whose card is open (tests)</summary>
+    public Person CardPerson => _card.Visible ? _cardPerson : null;
 
-    float _partyT;
-    void UpdateParty()
+    // ------------------------------------------------------------------------------------------------ report (a finished fight)
+    void BuildReport(Control root)
     {
-        _partyT -= (float)GetProcessDeltaTime();
-        if (_partyT > 0) return;
-        _partyT = 0.25f;
-        var s = _region.Session;
-        bool fight = _region.Combat?.Active == true;
-        _party.Visible = !fight && s != null && s.Party.Count > 1;
-        if (!_party.Visible) return;
-        var ctl = _region.Player?.Character;
-        var sb = new StringBuilder();
-        foreach (var c in s.Party)
+        _report = new PanelContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
+        _report.AddThemeStyleboxOverride("panel", PanelStyle());
+        _report.SetAnchorsPreset(Control.LayoutPreset.CenterRight);
+        _report.GrowHorizontal = Control.GrowDirection.Begin;
+        _report.Position = new Vector2(-24, -80);
+        _report.CustomMinimumSize = new Vector2(400, 0);
+        root.AddChild(_report);
+        _reportBody = new VBoxContainer();
+        _reportBody.AddThemeConstantOverride("separation", 4);
+        _report.AddChild(_reportBody);
+        _report.GuiInput += ev => { if (ev is InputEventMouseButton mb && mb.Pressed) { _report.Visible = false; _reportT = 0; } };
+    }
+
+    /// <summary>Tur 1: what a fight left (won, escaped) — on the side for a while, the game goes on; a click closes it.</summary>
+    public void Report(string title, IEnumerable<string> lines, Color color)
+    {
+        foreach (var n in _reportBody.GetChildren()) n.QueueFree();
+        var t = MakeLabel(22, color); t.Text = title; _reportBody.AddChild(t);
+        foreach (var l in lines)
         {
-            if (c.Dead) continue;
-            string mark = c == ctl ? "▶ " : "   ";
-            string st = c.Captive ? " · kafeste" : c.Down ? " · baygın" : "";
-            string pay = c.WageSilver > 0 && !c.IsPlayer ? $" · maaşa {Math.Max(0, c.PaidUntil - GameClock.Day)} gün" : "";
-            sb.AppendLine($"{mark}{c.FullName} · {FD.Rpg.Rules.ClassName(c.Cls)} Sv{c.Level} · can {c.Hp}/{c.MaxHp}{st}{pay}");
+            var x = MakeLabel(15, new Color(0.9f, 0.88f, 0.82f)); x.Text = l; x.AutowrapMode = TextServer.AutowrapMode.WordSmart; x.CustomMinimumSize = new Vector2(370, 0);
+            _reportBody.AddChild(x);
         }
-        sb.Append("   [Tab] kontrol değiştir");
-        _party.Text = sb.ToString();
+        var h = MakeLabel(12, new Color(0.6f, 0.56f, 0.5f)); h.Text = "(tıkla: kapat)"; _reportBody.AddChild(h);
+        _report.Visible = true;
+        _reportT = 14f;
     }
 
     /// <summary>A line of feedback over the prompt (a dice check, what happened) for a few seconds.</summary>

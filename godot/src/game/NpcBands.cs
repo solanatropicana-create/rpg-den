@@ -101,7 +101,8 @@ public partial class NpcBands : Node
             p.Present = true; p.InFight = true; p.Motion = Motion.Doing; p.FightAnim = "Walk"; p.Down = false; p.Dead = false;
             p.Pos = start; p.Path.Clear();
             p.Note($"{H.Clock(_r.Life.Now)} {cp.Name} ilanının peşinde kampa yürüyor");
-            band.Members.Add(new Member { Hero = h, P = p, C = CharacterFactory.FromHero(h), Lag = k * 1.6f });
+            var hc = CharacterFactory.FromHero(h); hc.Stance = Stances.Aggressive;   // Tur 1: a band out to clear a camp attacks
+            band.Members.Add(new Member { Hero = h, P = p, C = hc, Lag = k * 1.6f });
             k++;
         }
         _bands.Add(band);

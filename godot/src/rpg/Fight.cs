@@ -39,6 +39,14 @@ public sealed class Fighter
     public Fighter OrderTarget;
     public V2 OrderPoint;
     public bool Down, Dead, Fled, Stable, Fleeing;
+    /// <summary>Tur 1 C: the stance (party: the character's; foes fight as aggressive)</summary>
+    public string Stance => Char?.Stance ?? Stances.Aggressive;
+    /// <summary>Tur 1 C: seconds a foe has been on this one's heels during a move order (caught → turn and fight)</summary>
+    public float CaughtT;
+    /// <summary>Tur 1 C: fight time of the last blow taken (a defender answers it)</summary>
+    public float HitT = -99f;
+    /// <summary>Tur 1 C: hold stance this frame — no step, only blows within reach</summary>
+    public bool Rooted;
     public int DeathOk, DeathFail;
     public float DeathCd;
     public float SleepUntil, SlowUntil;
@@ -197,6 +205,7 @@ public sealed class Fight
         if (Over || Paused || dt <= 0) return;
         dt = MathF.Min(dt, 0.1f);
         T += dt;
+        _dt = dt;
         foreach (var f in F)
         {
             if (f.Gone) continue;
@@ -212,8 +221,14 @@ public sealed class Fight
         }
         Separate();
         Morale();
-        CheckEnd();
+        CheckEnd(dt);
     }
+
+    float _dt, _apartT;
+    /// <summary>Tur 1 C: the party got away (every member still standing is far from every foe still fighting)</summary>
+    public bool Escaped;
+    /// <summary>how far the party must be from every foe for the fight to end as an escape (m)</summary>
+    public const float EscapeDistance = 26f;
 
     // ------------------------------------------------------------------------------------------------ decisions
     Fighter Nearest(Fighter f, FSide side, Func<Fighter, bool> ok = null)
@@ -234,21 +249,90 @@ public sealed class Fight
     bool InMelee(Fighter a, Fighter b) => Dist(a, b) <= MeleeReach + a.Radius + b.Radius - 0.7f;
 
     /// <summary>Pick what to do: the player's order if any, otherwise the class's (or monster's) judgement.</summary>
+    /// <summary>Pick what to do: the player's order if any (attack that one, go there), otherwise the stance and the class's (or
+    /// monster's) judgement. Tur 1 C (Kenshi): no buttons — equipment and class decide: anyone drinks a potion when nearly dead,
+    /// binds a fallen friend when no foe is near, a fighter takes his second wind, casters follow their book.</summary>
     void Think(Fighter f)
     {
         f.MoveTo = null;
+        f.Rooted = false;
         if (f.Order != null && FollowOrder(f)) return;
         if (f.Side == FSide.Foe) { ThinkFoe(f); return; }
+        var st = f.Stance;
+        if (st == Stances.Passive) { f.Target = null; return; }
+        if (st == Stances.Flee) { if (Nearest(f, Other(f.Side)) != null) { StartFlee(f); Emit(new FightEvent { Kind = "flee", A = f, Short = "kaçıyor", Text = $"{f.Name} dövüşmeden uzaklaşıyor (duruş: Kaç)." }); } return; }
+        if (f.Char != null && f.Hp < f.MaxHp * 0.3f && f.Char.Inv.Has("potion") && f.Cd <= 0) { DrinkPotion(f, f); return; }
+        if (f.Char?.Cls != "cleric" && TendFallen(f)) return;
+        if (st == Stances.Defend && !Threatened(f)) { f.Target = null; StayNear(f); return; }
         var cls = f.Char?.Cls ?? "fighter";
-        // anyone: drink a potion when nearly dead (companions; the player only by order)
-        if (!f.IsPlayer && f.Char != null && f.Hp < f.MaxHp * 0.3f && f.Char.Inv.Has("potion") && f.Cd <= 0) { DrinkPotion(f, f); return; }
+        f.Rooted = st == Stances.Hold;
         switch (cls)
         {
-            case "wizard": ThinkWizard(f); break;
-            case "cleric": ThinkCleric(f); break;
+            case "wizard": ThinkCaster(f); break;
+            case "cleric": ThinkCaster(f); break;
             case "rogue": ThinkRogue(f); break;
             default: ThinkFighter(f); break;
         }
+        if (st == Stances.Hold)
+        {
+            // never a step: keep to foes within reach (blade, bow or spell), else wait
+            f.MoveTo = null;
+            if (f.Target != null && f.Target.Side != f.Side && !InReach(f, f.Target))
+                f.Target = Nearest(f, Other(f.Side), o => InReach(f, o));
+        }
+    }
+
+    bool InReach(Fighter f, Fighter t)
+    {
+        float reach = f.Range > 0 ? f.Range : MeleeReach + f.Radius + t.Radius - 0.7f;
+        if (f.Char != null) foreach (var id in f.Char.Book()) { var sp = Spells.Get(id); if (sp != null && sp.Kind != SpellKind.Heal && (sp.Level == 0 || f.Char.Slots > 0)) reach = MathF.Max(reach, sp.Range); }
+        return Dist(f, t) <= reach;
+    }
+
+    /// <summary>Defend stance: is there anything to answer — a blow taken a moment ago, a foe close by, or a foe coming at (or
+    /// shooting at) someone of the party nearby? (A foe minding its own business — asleep, running, not after anyone — is left be.)</summary>
+    bool Threatened(Fighter f)
+    {
+        if (T - f.HitT < 6f) return true;
+        foreach (var o in F)
+        {
+            if (o.Side == f.Side || !o.Standing || o.Fleeing) continue;
+            if (o.Asleep(T)) { if (Dist(o, f) < 15f) return true; continue; }   // a foe put to sleep nearby: finish it
+            if (Dist(o, f) < 8f) return true;
+            var t = o.Target;
+            if (t == null || t.Side != f.Side || t.Dead) continue;
+            float reach = o.Range > 0 ? o.Range + 2f : 12f;
+            if (Dist(o, t) < reach && Dist(f, t) < 20f) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Nothing to answer: keep near the lead of the party.</summary>
+    void StayNear(Fighter f)
+    {
+        Fighter lead = null;
+        foreach (var o in F) if (o.Side == f.Side && o.IsPlayer && o.Standing) lead = o;
+        if (lead == null || lead == f) return;
+        if (Dist(f, lead) > 4.5f) f.MoveTo = lead.Pos + Norm(f.Pos - lead.Pos, f.Dir) * 2.5f;
+    }
+
+    /// <summary>A friend down and bleeding, no foe within 5 m of them: go and bind the wound (anyone with a bandage).</summary>
+    bool TendFallen(Fighter f)
+    {
+        if (f.Char == null || !f.Char.Inv.Has("bandage")) return false;
+        Fighter best = null;
+        foreach (var a in F)
+        {
+            if (a.Side != f.Side || !a.Down || a.Dead || a.Stable || a == f || Dist(a, f) > 14f) continue;
+            var foe = Nearest(a, Other(f.Side));
+            if (foe != null && Dist(foe, a) < 5f) continue;
+            if (best == null || Dist(f, a) < Dist(f, best)) best = a;
+        }
+        if (best == null) return false;
+        f.Target = best;
+        if (Dist(f, best) > 1.8f) { f.MoveTo = best.Pos; return true; }
+        if (f.Cd <= 0) Bandage(f, best);
+        return true;
     }
 
     bool FollowOrder(Fighter f)
@@ -257,13 +341,18 @@ public sealed class Fight
         {
             case "hold": f.Target = null; return true;
             case "move":
-                if (V2.Distance(f.Pos, f.OrderPoint) < 0.6f) { f.Order = null; return false; }
-                f.MoveTo = f.OrderPoint; f.Target = null; return true;
-            case "retreat":
             {
+                if (V2.Distance(f.Pos, f.OrderPoint) < 0.6f) { f.Order = null; f.CaughtT = 0; return false; }
+                // Tur 1 C: running off; a foe on the heels hitting this one for a while catches them — they turn and fight by their stance
                 var foe = Nearest(f, Other(f.Side));
-                if (foe == null || Dist(f, foe) > 14f) { f.Order = null; return false; }
-                f.MoveTo = f.Pos + V2.Normalize(f.Pos - foe.Pos + new V2(0.001f, 0)) * 6f; f.Target = null; return true;
+                if (foe != null && InMelee(f, foe) && foe.Target == f) f.CaughtT += _dt; else f.CaughtT = MathF.Max(0, f.CaughtT - _dt * 0.5f);
+                if (f.CaughtT > 1.6f && f.Stance is not (Stances.Flee or Stances.Passive))
+                {
+                    f.Order = null; f.CaughtT = 0;
+                    Emit(new FightEvent { Kind = "caught", A = f, Short = "yakalandı!", Text = $"{f.Name} kaçamadı; dönüp dövüşüyor." });
+                    return false;
+                }
+                f.MoveTo = f.OrderPoint; f.Target = null; return true;
             }
             case "attack":
                 if (f.OrderTarget == null || !f.OrderTarget.Standing) { f.Order = null; return false; }
@@ -345,70 +434,69 @@ public sealed class Fight
         }
     }
 
-    void ThinkWizard(Fighter f)
+    /// <summary>Tur 1 C (spellbook v1): the caster goes down their book (<see cref="Character.Book"/>, ordered by the player) and
+    /// uses the first spell that fits now — a crowd for the area spells, the chief or a nearly dead foe for the missiles, a fallen or
+    /// badly hurt friend for the healing, anyone in reach for the cantrips. A wizard with a foe at arm's length steps back unless the
+    /// spell is for exactly that; with nothing fitting (no slots, no reach) the weapon.</summary>
+    void ThinkCaster(Fighter f)
     {
+        var c = f.Char;
         var near = Nearest(f, Other(f.Side));
-        if (near == null) { f.Target = null; return; }
-        float dn = Dist(f, near);
-        var c = f.Char;
-        // a crowd within reach: burning hands (close) or sleep
-        if (c.Slots > 0 && f.Cd <= 0)
+        float dn = near != null ? Dist(f, near) : 999f;
+        foreach (var id in c.Book())
         {
-            if (c.Spells.Contains("burninghands") && dn <= 4.5f && InCone(f, near.Pos - f.Pos, 4.5f, 0.55f) >= 2) { Cast(f, Spells.Get("burninghands"), near); return; }
-            if (c.Spells.Contains("sleep"))
+            var sp = Spells.Get(id);
+            if (sp == null || (sp.Level > 0 && c.Slots <= 0)) continue;
+            Fighter t = null; V2? pt = null;
+            switch (id)
             {
-                var (pt, n) = Crowd(f, 6f, 27f);
-                if (n >= 3) { Cast(f, Spells.Get("sleep"), null, pt); return; }
+                case "curewounds":
+                {
+                    Fighter down = null, hurt = null;
+                    foreach (var a in F)
+                    {
+                        if (a.Side != f.Side || a.Dead || a.Fled) continue;
+                        if (a.Down && (down == null || Dist(f, a) < Dist(f, down))) down = a;
+                        else if (!a.Down && a.Hp < a.MaxHp * 0.4f && (hurt == null || a.Hp < hurt.Hp)) hurt = a;
+                    }
+                    t = down ?? hurt;
+                    break;
+                }
+                case "burninghands":
+                    if (near != null && dn <= 4.5f && InCone(f, near.Pos - f.Pos, 4.5f, 0.55f) >= 2) t = near;
+                    break;
+                case "sleep":
+                {
+                    var (p, n) = Crowd(f, 6f, 27f);
+                    if (n >= 3) pt = p;
+                    break;
+                }
+                case "magicmissile":
+                    foreach (var o in F)
+                        if (o.Side != f.Side && o.Standing && Dist(f, o) <= sp.Range && (o.IsBoss || o.Hp <= 8) && (t == null || o.IsBoss)) t = o;
+                    break;
+                default:
+                {
+                    if (sp.Kind == SpellKind.Heal || near == null) break;
+                    Fighter weak = null;
+                    foreach (var o in F) if (o.Side != f.Side && o.Standing && Dist(f, o) <= sp.Range && (weak == null || o.Hp < weak.Hp)) weak = o;
+                    t = weak ?? (f.Rooted ? null : near);
+                    break;
+                }
             }
-        }
-        // too close: back off (always when out of slots)
-        if (dn < 3.5f) { f.MoveTo = f.Pos + V2.Normalize(f.Pos - near.Pos + new V2(0.001f, 0)) * 5f; f.Target = near; return; }
-        // finish a hurt foe or hit the boss with magic missiles; otherwise cantrips
-        Fighter weak = null;
-        foreach (var o in F) if (o.Side != f.Side && o.Standing && Dist(f, o) <= 30f && (weak == null || o.Hp < weak.Hp)) weak = o;
-        var t = weak ?? near;
-        f.Target = t;
-        if (f.Cd > 0) return;
-        var mm = c.Spells.Contains("magicmissile") && c.Slots > 0 && (t.IsBoss || (t.Hp <= 8 && Rng.Chance(0.3)));
-        SpellDef sp = mm ? Spells.Get("magicmissile")
-            : c.Spells.Contains("rayoffrost") && Dist(f, t) < 12f ? Spells.Get("rayoffrost")
-            : c.Spells.Contains("firebolt") ? Spells.Get("firebolt") : null;
-        if (sp == null) { ThinkFighter(f); return; }
-        if (Dist(f, t) > sp.Range) { f.MoveTo = t.Pos; return; }
-        Cast(f, sp, t);
-    }
-
-    void ThinkCleric(Fighter f)
-    {
-        var c = f.Char;
-        // raise the fallen, then heal the badly hurt
-        Fighter down = null, hurt = null;
-        foreach (var a in F)
-        {
-            if (a.Side != f.Side || a.Dead || a.Fled) continue;
-            if (a.Down && (down == null || Dist(f, a) < Dist(f, down))) down = a;
-            else if (!a.Down && a.Hp < a.MaxHp * 0.4f && (hurt == null || a.Hp < hurt.Hp)) hurt = a;
-        }
-        var who = down ?? hurt;
-        if (who != null && (c.Slots > 0 || (down != null && c.Inv.Has("bandage"))))
-        {
-            f.Target = who;
-            if (Dist(f, who) > 1.6f) { f.MoveTo = who.Pos; return; }
-            if (f.Cd > 0) return;
-            if (c.Slots > 0) Cast(f, Spells.Get("curewounds"), who); else Bandage(f, who);
+            if (t == null && pt == null) continue;
+            bool close = c.Cls == "wizard" && dn < 3.5f && id != "burninghands";
+            if (close && !f.Rooted) { f.MoveTo = f.Pos + V2.Normalize(f.Pos - near.Pos + new V2(0.001f, 0)) * 5f; f.Target = near; return; }
+            f.Target = t ?? near;
+            var aim = t != null ? t.Pos : pt.Value;
+            float range = sp.Kind == SpellKind.Heal ? 1.6f : sp.Range + (t?.Radius ?? 0f);
+            if (V2.Distance(f.Pos, aim) > range) { f.MoveTo = aim; return; }
+            if (f.Cd <= 0) Cast(f, sp, t, pt);
             return;
         }
-        var near = Nearest(f, Other(f.Side));
-        if (near == null) { f.Target = null; return; }
-        if (f.Range <= 0 && c.Weapon != null && Dist(f, near) < 3f) { f.Target = near; return; }
-        f.Target = near;
-        if (f.Cd > 0) return;
-        var sf = Spells.Get("sacredflame");
-        if (c.Spells.Contains("sacredflame"))
-        {
-            if (Dist(f, near) > sf.Range) { f.MoveTo = near.Pos; return; }
-            Cast(f, sf, near);
-        }
+        if (c.Cls == "cleric" && TendFallen(f)) return;
+        if (c.Cls == "wizard" && near != null && dn < 3.5f && !f.Rooted) { f.MoveTo = f.Pos + V2.Normalize(f.Pos - near.Pos + new V2(0.001f, 0)) * 5f; f.Target = near; return; }
+        ThinkFighter(f);
     }
 
     void ThinkFoe(Fighter f)
@@ -436,13 +524,16 @@ public sealed class Fight
         if (go == null && t != null && t.Side != f.Side && t.Standing)
         {
             float reach = f.Range > 0 ? f.Range : MeleeReach + f.Radius + t.Radius - 0.7f;
-            if (Dist(f, t) > reach) go = t.Pos;
+            if (Dist(f, t) > reach) { if (!f.Rooted) go = t.Pos; }
             else canHit = true;
             f.Dir = Norm(t.Pos - f.Pos, f.Dir);
         }
+        if (f.Rooted) go = null;
         if (go is V2 g && V2.Distance(f.Pos, g) > 0.15f)
         {
-            float sp = f.Speed * (f.SlowUntil > T ? 0.5f : 1f) * (f.AnimLock > 0 ? 0.3f : 1f);
+            // Tur 1 C: running off on an order (right click on the ground, WASD) is a run
+            float run = f.Order == "move" ? 1.25f : 1f;
+            float sp = f.Speed * run * (f.SlowUntil > T ? 0.5f : 1f) * (f.AnimLock > 0 ? 0.3f : 1f);
             var d = g - f.Pos;
             float L = d.Length();
             f.Pos += d / L * MathF.Min(L, sp * dt);
@@ -542,6 +633,7 @@ public sealed class Fight
     void Damaged(Fighter t, Fighter by, double hpBefore, bool crit)
     {
         t.Hurt = 0.4f;
+        t.HitT = T;
         if (t.SleepUntil > T) { t.SleepUntil = 0; Emit(new FightEvent { Kind = "wake", A = t, Short = "uyandı", Text = $"{t.Name} acıyla uyandı." }); }
         if (t.Down)
         {
@@ -850,20 +942,40 @@ public sealed class Fight
         }
     }
 
-    void CheckEnd()
+    void CheckEnd(float dt)
     {
-        bool partyUp = false, foeUp = false;
+        bool partyUp = false, foeUp = false, partyAway = false;
         foreach (var f in F)
         {
             if (f.Side == FSide.Party && f.Standing && !f.Fleeing) partyUp = true;
+            if (f.Side == FSide.Party && !f.Dead && !f.Down && (f.Fleeing || f.Fled)) partyAway = true;
             if (f.Side == FSide.Foe && f.Standing && !f.Fleeing) foeUp = true;
         }
-        if (partyUp && foeUp) return;
+        if (partyUp && foeUp)
+        {
+            // Tur 1 C: the party got clear — everyone still on their feet is far from every foe still fighting
+            bool apart = true;
+            foreach (var a in F)
+            {
+                if (a.Side != FSide.Party || !a.Standing) continue;
+                foreach (var b in F) if (b.Side == FSide.Foe && b.Standing && !b.Fleeing && Dist(a, b) < EscapeDistance) { apart = false; break; }
+                if (!apart) break;
+            }
+            _apartT = apart ? _apartT + dt : 0f;
+            if (_apartT < 1.5f) return;
+            Over = true; Winner = null; Escaped = true;
+            foreach (var f in F) if (f.Side == FSide.Party && f.Standing) { f.Fled = true; f.Fleeing = false; f.Moving = false; }
+            foreach (var f in F) if (f.Fleeing && !f.Fled) { f.Fled = true; f.Moving = false; }
+            Emit(new FightEvent { Kind = "end", Text = "Savaş bitti: ekip kaçıp kurtuldu." });
+            return;
+        }
         // routed foes still on their way out do not keep the fight going; nor do fleeing companions
         Over = true;
-        Winner = partyUp ? FSide.Party : FSide.Foe;
+        if (!foeUp && (partyUp || partyAway)) Winner = FSide.Party;
+        else if (partyAway) { Winner = null; Escaped = true; }
+        else Winner = FSide.Foe;
         foreach (var f in F) if (f.Fleeing && !f.Fled) { f.Fled = true; f.Moving = false; }
-        Emit(new FightEvent { Kind = "end", Text = Winner == FSide.Party ? "Savaş bitti: kazandınız." : "Savaş bitti: ekip yere serildi." });
+        Emit(new FightEvent { Kind = "end", Text = Winner == FSide.Party ? "Savaş bitti: kazandınız." : Escaped ? "Savaş bitti: ekip kaçıp kurtuldu." : "Savaş bitti: ekip yere serildi." });
     }
 
     /// <summary>D: the fight is lost and the fallen lie where they are while the goblins go through their purses: those still dying keep

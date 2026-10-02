@@ -14,7 +14,7 @@ namespace FD.Game;
 public partial class GameMenu : PanelLayer
 {
     Label _info;
-    Button _pause, _dice;
+    Button _pause, _dice, _slow, _edge;
     bool _quitting;
 
     public void Init(Region r)
@@ -30,6 +30,11 @@ public partial class GameMenu : PanelLayer
         Body.AddChild(_pause);
         _dice = Ui.Button("", () => { Settings.Current.DiceOverHeads = !Settings.Current.DiceOverHeads; Settings.Save(); Refresh(); }, 16, toggle: true);
         Body.AddChild(_dice);
+        _slow = Ui.Button("", () => { Settings.Current.SlowOnThreat = !Settings.Current.SlowOnThreat; Settings.Save(); Refresh(); }, 16, toggle: true);
+        Body.AddChild(_slow);
+        _edge = Ui.Button("", () => { Settings.Current.EdgeScroll = !Settings.Current.EdgeScroll; Settings.Save(); Refresh(); }, 16, toggle: true);
+        Body.AddChild(_edge);
+        Body.AddChild(L("Tuşlar: Boşluk duraklat · + / − hız · sol tık seç / bilgi · sağ tık emir · WASD yürü · teker yakınlaş · orta tuş ya da Alt+sürükle döndür · F izle · 1–4 seç · Tab sıradaki · Shift+1…5 duruş · L zar günlüğü · I envanter · M harita · E yakındakiyle etkileşim", 13, Ui.Faint));
         Body.AddChild(new HSeparator());
         Body.AddChild(Ui.Button("Kaydet ve ana menüye dön", () => SaveAndLeave(false), 18));
         Body.AddChild(Ui.Button("Kaydet ve çık", () => SaveAndLeave(true), 18));
@@ -46,11 +51,22 @@ public partial class GameMenu : PanelLayer
         _info.Text = $"{s.Player?.FullName} · {GameClock.TimeString} · {s.Names().village}\nDemir mod: tek kayıt yuvası; oyun kendiliğinden kaydeder (çıkışta, her gün, savaştan, uykudan, kamptan sonra). Ölüm kalıcıdır. {last}";
         _pause.Text = $"Savaş başında duraklat: {(Settings.Current.AutoPause ? "açık" : "kapalı")}";
         _pause.ButtonPressed = Settings.Current.AutoPause;
-        _dice.Text = $"Zarlar başların üstünde: {(Settings.Current.DiceOverHeads ? "açık" : "kapalı")}";
+        _dice.Text = $"Zar sayıları başların üstünde: {(Settings.Current.DiceOverHeads ? "açık" : "kapalı")}";
         _dice.ButtonPressed = Settings.Current.DiceOverHeads;
+        _slow.Text = $"Tehlike görününce hız 1×'e düşsün: {(Settings.Current.SlowOnThreat ? "açık" : "kapalı")}";
+        _slow.ButtonPressed = Settings.Current.SlowOnThreat;
+        _edge.Text = $"Ekran kenarında kamera kaysın: {(Settings.Current.EdgeScroll ? "açık" : "kapalı")}";
+        _edge.ButtonPressed = Settings.Current.EdgeScroll;
     }
 
-    public void Open() => Show();
+    public void Open() { Show(); R.Commander?.MenuOpened(); }
+
+    public override void Close()
+    {
+        bool was = Visible;
+        base.Close();
+        if (was) R.Commander?.MenuClosed();
+    }
 
     public override void _UnhandledInput(InputEvent e)
     {
@@ -78,6 +94,7 @@ public partial class GameMenu : PanelLayer
         if (Session.Current != null) SaveGame.Save(R.Session, quit ? "çıkış" : "ana menü");
         _quitting = true;
         GetTree().Paused = false;
+        Engine.TimeScale = 1;
         if (quit) GetTree().Quit();
         else { Session.Current = null; GetTree().ChangeSceneToFile("res://scenes/Boot.tscn"); }
     }

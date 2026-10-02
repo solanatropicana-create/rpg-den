@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using FD.Actors;
 using FD.Life;
@@ -58,6 +59,8 @@ public partial class Region : Node3D
     public FD.Game.Talk Talk { get; private set; }
     public FD.Game.NpcBands Bands { get; private set; }
     public FD.Game.GameMenu Menu { get; private set; }
+    /// <summary>Tur 1: selection, orders, time, the one camera</summary>
+    public FD.Game.Commander Commander { get; private set; }
     public InventoryPanel Inventory { get; private set; }
     public TradePanel Trade { get; private set; }
 
@@ -210,6 +213,9 @@ public partial class Region : Node3D
         Menu = new FD.Game.GameMenu();
         AddChild(Menu);
         Menu.Init(this);
+        Commander = new FD.Game.Commander();
+        AddChild(Commander);
+        Commander.Init(this);
         // Faz 2 A: the village's state in the sim makes the street scene (festival at the plaza, a queue at the headman's door…)
         // Tur 1 D: gloomier days — while the sim says "festival", the plaza celebrates only on one day in three (the first day always)
         string MoodNow()

@@ -22,7 +22,7 @@ public sealed class VillageSite : IRegionFeature
 {
     // ------------------------------------------------------------------ frame
     Vector2 _c, _u, _v;
-    Vector2 W(float u, float v) => _c + _u * u + _v * v;
+    public Vector2 W(float u, float v) => _c + _u * u + _v * v;
     Vector2 Dir(float du, float dv) => (_u * du + _v * dv).Normalized();
     static V2 N(Vector2 p) => new(p.X, p.Y);
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using FD.Actors;
@@ -57,6 +58,25 @@ public partial class Captivity : Node
         return null;
     }
 
+    /// <summary>Tur 1 B: right click on the cage's door — force it from inside, open it for a caged friend from outside</summary>
+    public System.Collections.Generic.IEnumerable<ClickTarget> ClickTargets()
+    {
+        var hf = _r.Heightfield;
+        if (PlayerCaptive)
+        {
+            var d = CampSite.CageDoor;
+            string text; Action act;
+            if (GameClock.TotalHours < NextTry) { text = $"Kafesin kapısı — ellerin hâlâ titriyor ({Clock(NextTry)}'te yeniden dene)"; act = () => _r.Hud.Toast("Biraz soluklan; bir saat sonra yeniden dene."); }
+            else { var (what, bonus) = Best(_r.Player.Character); text = $"Kapıyı zorla ({what} {Rules.Signed(bonus)} vs ZD {DC})"; act = TryEscape; }
+            yield return new ClickTarget { Pos = new Vector3(d.X, hf.Height(d.X, d.Y), d.Y), Height = 1.8f, Radius = 1.2f, Label = text, Reach = 3.2f, Act = act };
+            yield break;
+        }
+        var cap = CaptiveCompanion();
+        if (cap == null) yield break;
+        var door = CampSite.CageDoor;
+        yield return new ClickTarget { Pos = new Vector3(door.X, hf.Height(door.X, door.Y), door.Y), Height = 1.8f, Radius = 1.0f, Label = $"Kafesi aç: {cap.Char.Name} kurtulsun", Reach = 2.4f, Act = () => Free(cap) };
+    }
+
     static string Clock(double totalHours) { double h = totalHours % 24; return $"{(int)h:00}:{(int)(h % 1 * 60):00}"; }
 
     static (string what, int bonus) Best(Character c)
@@ -69,7 +89,9 @@ public partial class Captivity : Node
     {
         var c = _r.Player.Character;
         var (what, bonus) = Best(c);
-        var rng = new M.Rng(_s.Seed * 31 + Math.Floor(GameClock.TotalHours * 60));
+        double n = _s.Flags.GetValueOrDefault("cageTries") + 1;
+        _s.Flags["cageTries"] = n;
+        var rng = new M.Rng(_s.Seed * 31 + Math.Floor(GameClock.TotalHours * 60) + n * 7919);
         int d = (int)rng.D20();
         int total = d + bonus;
         if (total >= DC || d == 20)

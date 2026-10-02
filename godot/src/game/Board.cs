@@ -96,6 +96,12 @@ public partial class Board : Node3D
         return ("İlan panosu", () => _panel.Open());
     }
 
+    /// <summary>Tur 1 B: right click on the board reads it</summary>
+    public System.Collections.Generic.IEnumerable<ClickTarget> ClickTargets()
+    {
+        yield return new ClickTarget { Pos = new Vector3(_pos.X, _r.Heightfield.Height(_pos.X, _pos.Y), _pos.Y), Height = 2f, Radius = 0.9f, Label = "Oku: ilan panosu", Reach = 2.2f, Act = () => _panel.Open() };
+    }
+
     public M.Quest Take()
     {
         var q = M.Local.TakeQuest(_s.Macro);

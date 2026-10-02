@@ -29,6 +29,7 @@ namespace FD.Dev;
 /// --probe=x,z;x,z…        print height, slope, ground cover and distances at points, then quit
 /// --seed=N --prehistory=N  macro world seed and prehistory days (Faz 2; default 1 and 1600)
 /// --worldtest=N           headless: macro link + N local days (macro steps, names, census from the sim), PASS/FAIL
+/// --weather=clear|hazy|overcast|rain|storm|fog   hold one weather (Tur 1 D); --vcam=u,y,v:tu,ty,tv  camera in the village frame
 /// </code>
 /// </summary>
 public partial class Dev : Node
@@ -39,6 +40,7 @@ public partial class Dev : Node
     public string[] Hold;
     public string Probe;
     string _camSpec;
+    bool _camVillage;
     public float? Exposure;
     public int Warm = 40, Bench;
     public float? Hour, TimeScale, CamPitch, Zoom, Fov;
@@ -176,6 +178,11 @@ public partial class Dev : Node
                         _camSpec = val;
                         CamPos = Vector3.Zero;   // resolved against the terrain once the region exists
                         break;
+                    case "--vcam":
+                        // Tur 1: the same as --cam but in the village's own frame (u along the road, v south-ish; the well is at 0,9)
+                        _camSpec = val; _camVillage = true;
+                        CamPos = Vector3.Zero;
+                        break;
                     case "--player":
                     {
                         var p = val.Split(',');
@@ -239,9 +246,14 @@ public partial class Dev : Node
             float yaw = PlayerYawDeg.HasValue ? Mathf.DegToRad(PlayerYawDeg.Value) : RegionSpec.YawFacing(RegionSpec.PlayerStartFacing);
             player.Teleport(PlayerXZ.Value, yaw, hf);
         }
-        if (player != null && (CamPitch.HasValue || Zoom.HasValue))
-            player.SetCameraAngles(player.CameraYaw, Mathf.DegToRad(CamPitch ?? -16f), Zoom ?? player.Zoom);
-        if (Fov.HasValue && player != null) player.Camera.Fov = Fov.Value;
+        var gc = FD.Actors.GameCamera.Instance;
+        if (gc != null)
+        {
+            if (Zoom.HasValue) gc.SetZoom(Zoom.Value, true);
+            if (CamPitch.HasValue) gc.PitchBias = Mathf.DegToRad(CamPitch.Value);
+            if (PlayerYawDeg.HasValue) gc.Yaw = Mathf.DegToRad(PlayerYawDeg.Value) + MathF.PI;
+            gc.SnapNow();
+        }
 
         if (_camSpec != null)
         {
@@ -250,6 +262,7 @@ public partial class Dev : Node
             {
                 var c = spec.Split(',');
                 float x = float.Parse(c[0], ci), z = float.Parse(c[2], ci);
+                if (_camVillage && region.Village != null) { var w = region.Village.W(x, z); x = w.X; z = w.Y; }
                 float y = c[1].StartsWith("@") ? hf.Height(x, z) + float.Parse(c[1][1..], ci) : float.Parse(c[1], ci);
                 return new Vector3(x, y, z);
             }
@@ -267,6 +280,12 @@ public partial class Dev : Node
             _freeCam.MakeCurrent();
             if (player != null) player.InputEnabled = false;
             // keep the player near the camera so near-field systems (grass) are consistent
+            if (_camVillage && player != null && !PlayerXZ.HasValue)
+            {
+                var back = CamPos.Value - (CamTarget ?? CamPos.Value + Vector3.Forward) ;
+                back.Y = 0; back = back.Normalized() * 2.5f;
+                player.Teleport(new Vector2(CamPos.Value.X + back.X, CamPos.Value.Z + back.Z), 0f, hf);
+            }
         }
         if (Tonemap != null)
             region.DayNight.Env.TonemapMode = Tonemap switch

@@ -37,7 +37,7 @@ public partial class Talk : Node
     IEnumerable<(string, Action)> Verbs(Person p)
     {
         if (!p.Visible || p.Dead) yield break;
-        if (p.Role == Role.Goblin) { yield return ("Saldır", () => { _r.Hud.CloseCardPublic(); _r.Combat.Start(p, $"{_r.Player.Character.Name} saldırdı!"); }); yield break; }
+        if (p.Role == Role.Goblin) { yield return ("Saldır", () => { _r.Hud.CloseCardPublic(); _r.Combat.Start(p, $"{_r.Player.Character.Name} saldırdı!", attack: true); }); yield break; }
         yield return ("Söylenti sor", () => Rumor(p));
     }
 

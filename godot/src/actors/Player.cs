@@ -6,14 +6,14 @@ using FD.World;
 namespace FD.Actors;
 
 /// <summary>
-/// Third-person hero. CharacterBody3D with a 0.35 × 1.8 m capsule; camera-relative WASD movement.
+/// The body of the character the player controls. CharacterBody3D with a 0.35 × 1.8 m capsule.
 /// <list type="bullet">
-/// <item>Default jog 4.0 m/s · hold Shift to sprint 11 m/s (fast exploring) · hold Ctrl (or Alt) to walk 1.6 m/s.</item>
-/// <item>Space jumps (~0.9 m), slopes up to 46° are walkable, floor snapping keeps the feet on descents.</item>
-/// <item>Mouse orbits the camera (captured; Esc releases, click recaptures), wheel zooms 2–12 m,
-/// the spring arm keeps the camera out of terrain and buildings.</item>
+/// <item>Tur 1 A: WASD walks it relative to the one camera (<see cref="GameCamera"/>) when it is selected; a right click sends it
+/// somewhere (<see cref="GoTo"/>: along the village lanes and roads when a house is in the way, then the last stretch straight).</item>
+/// <item>Default jog 4.0 m/s · hold Shift to sprint 11 m/s (fast exploring) · hold Ctrl to walk 1.6 m/s.</item>
+/// <item>Slopes up to 46° are walkable, floor snapping keeps the feet on descents (no jumping: Space pauses the game).</item>
 /// </list>
-/// The camera rig is top-level and follows the physics-interpolated body every frame.
+/// The old camera rig of the scene is kept but never used.
 /// </summary>
 public partial class Player : CharacterBody3D
 {
@@ -53,6 +53,8 @@ public partial class Player : CharacterBody3D
     }
     /// <summary>When false the player ignores input (dev free camera, UI).</summary>
     public bool InputEnabled = true;
+    /// <summary>Tur 1 A: WASD walks this body (it is selected); otherwise the keys pan the camera</summary>
+    public static Func<bool> WasdDrives;
     /// <summary>Faz 2: the fight moves the body (no physics, no input); <see cref="SetPose"/> each frame</summary>
     public bool Scripted;
     string _scriptAnim = "Idle";
@@ -95,10 +97,10 @@ public partial class Player : CharacterBody3D
         Arm.AddExcludedObject(GetRid());
         _zoomTarget = Zoom;
         Arm.SpringLength = Zoom;
+        Camera.Current = false;
 
         Body = new Humanoid { Name = "Body" };
         GetNode<Node3D>("Visual").AddChild(Body);
-        Input.MouseMode = Input.MouseModeEnum.Captured;
         SnapCamera();
     }
 
@@ -133,39 +135,119 @@ public partial class Player : CharacterBody3D
         UpdateRig(0f);
     }
 
-    public override void _UnhandledInput(InputEvent e)
+    // ------------------------------------------------------------------------------------------------ going somewhere (Tur 1 A/B)
+    readonly System.Collections.Generic.List<Vector2> _route = new();
+    Func<Vector2> _goal;
+    float _reach;
+    Action _arrive;
+    float _stuckT, _sideT;
+    int _stuck;
+    Vector2 _lastPos;
+    Vector2 _side;
+    /// <summary>walking to a right-clicked place or thing</summary>
+    public bool Going => _goal != null;
+    /// <summary>where it is walking to (the end of the route)</summary>
+    public Vector2? GoingTo => _goal?.Invoke();
+
+    /// <summary>Walk to a point (or a moving thing: <paramref name="goal"/> is asked every frame), within <paramref name="reach"/>
+    /// metres, then <paramref name="arrive"/>. A house in the way: along the lanes (the people's path graph), the last stretch straight.</summary>
+    public void GoTo(Func<Vector2> goal, float reach = 0.5f, Action arrive = null)
     {
-        if (!InputEnabled) return;
-        if (e is InputEventMouseMotion mm && Input.MouseMode == Input.MouseModeEnum.Captured)
+        _goal = goal; _reach = MathF.Max(0.3f, reach); _arrive = arrive;
+        _stuck = 0; _stuckT = 0; _sideT = 0;
+        _lastPos = new Vector2(GlobalPosition.X, GlobalPosition.Z);
+        PlanRoute();
+    }
+
+    public void GoTo(Vector2 p, float reach = 0.5f, Action arrive = null) => GoTo(() => p, reach, arrive);
+
+    public void CancelGoTo() { _goal = null; _arrive = null; _route.Clear(); }
+
+    void PlanRoute()
+    {
+        _route.Clear();
+        var life = FD.Life.LifeWorld.Instance?.Sim;
+        var here = new Vector2(GlobalPosition.X, GlobalPosition.Z);
+        var goal = _goal();
+        if (life == null || !Blocked(life, here, goal)) return;
+        var g = life.Graph;
+        int a = g.Nearest(new System.Numerics.Vector2(here.X, here.Y), 60f), b = g.Nearest(new System.Numerics.Vector2(goal.X, goal.Y), 60f);
+        if (a < 0 || b < 0) return;
+        var path = g.FindPath(a, b);
+        if (path == null) return;
+        foreach (var n in path) _route.Add(new Vector2(g.Nodes[n].X, g.Nodes[n].Y));
+        // skip the first nodes we can already pass
+        while (_route.Count > 1 && !Blocked(life, here, _route[1])) _route.RemoveAt(0);
+    }
+
+    static bool Blocked(FD.Sim.Life.LifeSim life, Vector2 a, Vector2 b)
+    {
+        float L = a.DistanceTo(b);
+        for (float t = 1f; t < L; t += 1f)
         {
-            _yaw -= mm.Relative.X * MouseSensitivity;
-            _pitch = Math.Clamp(_pitch - mm.Relative.Y * MouseSensitivity, Mathf.DegToRad(-75f), Mathf.DegToRad(35f));
+            var p = a.Lerp(b, t / L);
+            if (life.ObstacleAt(new System.Numerics.Vector2(p.X, p.Y), -0.4f) != null) return true;
         }
-        else if (e is InputEventMouseButton mb && mb.Pressed)
+        return false;
+    }
+
+    Vector3 AutoWish(float dt)
+    {
+        if (_goal == null) return Vector3.Zero;
+        var here = new Vector2(GlobalPosition.X, GlobalPosition.Z);
+        var goal = _goal();
+        if (here.DistanceTo(goal) <= _reach)
         {
-            if (mb.ButtonIndex == MouseButton.WheelUp) _zoomTarget = Math.Max(MinZoom, _zoomTarget * 0.88f);
-            else if (mb.ButtonIndex == MouseButton.WheelDown) _zoomTarget = Math.Min(MaxZoom, _zoomTarget * 1.13f);
-            else if (mb.ButtonIndex == MouseButton.Left && Input.MouseMode != Input.MouseModeEnum.Captured)
-                Input.MouseMode = Input.MouseModeEnum.Captured;
+            var act = _arrive;
+            CancelGoTo();
+            act?.Invoke();
+            return Vector3.Zero;
         }
-        else if (e.IsActionPressed("release_mouse"))
+        while (_route.Count > 0 && here.DistanceTo(_route[0]) < 1.6f) _route.RemoveAt(0);
+        var next = _route.Count > 0 ? _route[0] : goal;
+        // stuck (a fence, a tree): step aside for a moment; give up after a few tries
+        _stuckT += dt;
+        if (_stuckT > 0.8f)
         {
-            Input.MouseMode = Input.MouseModeEnum.Visible;
+            if (here.DistanceTo(_lastPos) < 0.35f)
+            {
+                _stuck++;
+                if (_stuck > 5)
+                {
+                    // close enough to talk or take across a fence: do it; otherwise give up
+                    var act = here.DistanceTo(goal) <= _reach + 2.5f ? _arrive : null;
+                    CancelGoTo();
+                    if (act != null) act(); else FD.World.Region.Current?.Hud?.Toast("Oraya bir yol bulamadım.", 2.5f);
+                    return Vector3.Zero;
+                }
+                var d0 = (next - here).Normalized();
+                _side = (_stuck % 2 == 0 ? new Vector2(-d0.Y, d0.X) : new Vector2(d0.Y, -d0.X));
+                _sideT = 0.7f;
+                if (_stuck == 3) PlanRoute();
+            }
+            _stuckT = 0; _lastPos = here;
         }
+        var d = (next - here).Normalized();
+        if (_sideT > 0) { _sideT -= dt; d = (d * 0.3f + _side).Normalized(); }
+        return new Vector3(d.X, 0, d.Y);
     }
 
     public override void _PhysicsProcess(double delta)
     {
         if (Scripted) return;
         float dt = (float)delta;
-        Vector2 inp = InputEnabled ? Input.GetVector("move_left", "move_right", "move_forward", "move_back") : Vector2.Zero;
-        Vector3 fwd = new(-MathF.Sin(_yaw), 0, -MathF.Cos(_yaw));
-        Vector3 right = new(MathF.Cos(_yaw), 0, -MathF.Sin(_yaw));
+        bool drive = InputEnabled && (WasdDrives?.Invoke() ?? true);
+        Vector2 inp = drive ? Input.GetVector("move_left", "move_right", "move_forward", "move_back") : Vector2.Zero;
+        float yaw = GameCamera.Instance?.Yaw ?? _yaw;
+        Vector3 fwd = new(-MathF.Sin(yaw), 0, -MathF.Cos(yaw));
+        Vector3 right = new(MathF.Cos(yaw), 0, -MathF.Sin(yaw));
         Vector3 wish = right * inp.X - fwd * inp.Y;
         if (wish.LengthSquared() > 1f) wish = wish.Normalized();
+        if (wish.LengthSquared() > 0.01f) CancelGoTo();
+        else if (_goal != null && InputEnabled) wish = AutoWish(dt);
 
-        bool sprint = InputEnabled && Input.IsActionPressed("sprint");
-        bool walk = InputEnabled && Input.IsActionPressed("walk");
+        bool sprint = drive && Input.IsActionPressed("sprint");
+        bool walk = drive && Input.IsActionPressed("walk");
         float speed = (sprint ? SprintSpeed : walk ? WalkSpeed : JogSpeed) * (Character?.SpeedFactor ?? 1f);
         Vector3 target = wish * speed;
 
@@ -175,11 +257,7 @@ public partial class Player : CharacterBody3D
         float a = floor ? (target.LengthSquared() >= hv.LengthSquared() ? Acceleration : Deceleration) : AirControl;
         hv = hv.MoveToward(target, a * dt);
         float vy = v.Y;
-        if (floor)
-        {
-            if (InputEnabled && Input.IsActionJustPressed("jump")) vy = JumpVelocity;
-            else vy = MathF.Min(vy, 0f);
-        }
+        if (floor) vy = MathF.Min(vy, 0f);
         else vy -= Gravity * dt;
         Velocity = new Vector3(hv.X, vy, hv.Z);
         MoveAndSlide();

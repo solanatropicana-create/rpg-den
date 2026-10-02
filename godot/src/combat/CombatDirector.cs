@@ -17,6 +17,8 @@ namespace FD.Combat;
 public sealed class FightOutcome
 {
     public bool Won;
+    /// <summary>Tur 1 C: the party ran and got clear (those down were left behind)</summary>
+    public bool Escaped;
     public int Killed, Fled, PartyDown, PartyDead;
     public bool BossKilled, CampCleared, PlayerDead, AllDown;
     public int XpEach;
@@ -29,28 +31,30 @@ public sealed class FightOutcome
 }
 
 /// <summary>
-/// Faz 2 C: runs a real-time d20 fight in the region. A goblin that catches the player (<see cref="LifeSim.GoblinStrike"/>) starts
-/// it: the party (player and companions) and every goblin near enough become <see cref="Fighter"/>s; goblins asleep in their
-/// tents wake and join a few seconds later, goblins that reach the fight later join it. The fight moves the bodies (the player is
-/// scripted, LifeSim leaves people with <c>InFight</c> alone); the camera goes up to the tactical view; the first time the fight
-/// pauses by itself (setting). Space pauses (the whole scene tree stops: animation frozen, clock stopped), orders go to the
-/// selected party members. At the end the results go back to the characters (HP, the fallen, XP, levels), the people (bodies stay
-/// where they fell, the routed run off and hide), and the macro world (goblins killed, camp cleared).
+/// Faz 2 C, Tur 1 C (Kenshi): runs a real-time d20 fight in the region — no mode of its own: the same camera, the same
+/// selection, the same keys. A goblin that catches someone of the party (<see cref="LifeSim.GoblinStrike"/>), the player's attack
+/// order (right click on a goblin), or a party member in the aggressive stance seeing one starts it: the party and every goblin near
+/// enough become <see cref="Fighter"/>s; goblins asleep in their tents wake and join a few seconds later, goblins that reach the
+/// fight later join it. The fight moves the bodies (the player is scripted, LifeSim leaves people with <c>InFight</c> alone).
+/// Everyone fights by their stance, class and kit; the player only says whom to attack and where to go (running off) — see
+/// <see cref="FD.Game.Commander"/>. It pauses by itself only if the setting says so. At the end the results go back to the
+/// characters (HP, the fallen, XP, levels), the people (bodies stay where they fell, the routed run off and hide), and the macro
+/// world (goblins killed, camp cleared); a won fight or an escape goes on at once, a lost one shows what the goblins did.
 /// </summary>
 public partial class CombatDirector : Node
 {
     public static CombatDirector Instance { get; private set; }
     public Fight Fight { get; private set; }
     public bool Active => Fight != null;
-    public bool Paused { get; private set; }
+    /// <summary>the game is paused (Space, anywhere — <see cref="FD.Game.Commander"/>)</summary>
+    public bool Paused => IsInsideTree() && GetTree().Paused;
+    /// <summary>a lost fight's summary is waiting for the player (Space or a click goes on)</summary>
     public bool Summary { get; private set; }
     public FightOutcome Outcome { get; private set; }
     public readonly List<Fighter> Selected = new();
     public Fighter Hover { get; private set; }
-    /// <summary>a spell waiting for its target (aim mode)</summary>
-    public SpellDef Aim { get; private set; }
-    public Fighter AimCaster { get; private set; }
-    public TacticalCamera Camera { get; private set; }
+    /// <summary>the one camera (Tur 1 A)</summary>
+    public GameCamera Camera => GameCamera.Instance;
     public CombatHud Hud { get; private set; }
     public Rect2? Box { get; private set; }
     public event Action<FightOutcome> Ended;
@@ -65,11 +69,8 @@ public partial class CombatDirector : Node
     readonly Dictionary<Fighter, Node3D> _bodies = new();
     readonly List<(Person p, float at, string why)> _wake = new();
     readonly List<(Person p, V2 to, float left)> _runOff = new();
-    Transform3D _camFrom;
-    float _blend = 1f;
-    bool _pressing, _boxing, _rpressing;
-    Vector2 _press, _rpress;
     int _campPlace = -1;
+    float _summaryT;
     V2 _camp;
     string _hint;
     float _hintT;
@@ -86,8 +87,6 @@ public partial class CombatDirector : Node
         Name = "CombatDirector";
         ProcessMode = ProcessModeEnum.Always;
         _r = r; _sim = r.Life; _s = r.Session;
-        Camera = new TacticalCamera { Name = "TacticalCamera", ProcessMode = ProcessModeEnum.Always };
-        AddChild(Camera);
         Hud = new CombatHud { Name = "CombatHud" };
         AddChild(Hud);
         Hud.Init(this);
@@ -101,7 +100,6 @@ public partial class CombatDirector : Node
     {
         if (Instance == this) Instance = null;
         if (_sim != null) _sim.GoblinStrike -= OnStrike;
-        if (Paused && IsInsideTree()) GetTree().Paused = false;
     }
 
     void OnStrike(Person g)
@@ -120,15 +118,16 @@ public partial class CombatDirector : Node
         return new M.Hero { Id = -c.Id, Name = c.Name, Cls = c.Cls, Level = c.Level, Race = c.Race, Stats = new M.JsObj<double>(), Align = c.Align };
     }
 
-    /// <summary>Start a fight with the goblins near the player (the trigger first). Also the "attack" verb (G) and dev.</summary>
-    public void Start(Person trigger, string why)
+    /// <summary>Start a fight with the goblins near the player (the trigger first). <paramref name="attack"/>: the party's own
+    /// attack (the selected go for the trigger). Also dev.</summary>
+    public void Start(Person trigger, string why, bool attack = false)
     {
         if (Fight != null || _s?.Player == null) return;
         var pl = _r.Player;
         var ppos = new V2(pl.GlobalPosition.X, pl.GlobalPosition.Z);
         Fight = new Fight(_s.Seed * 7919 + Math.Floor(GameClock.TotalHours * 600));
         _bodies.Clear(); Selected.Clear(); _wake.Clear();
-        Outcome = null; Summary = false; Aim = null; Box = null;
+        Outcome = null; Summary = false; Box = null;
 
         // the party
         var me = pl.Character ?? _s.Player;
@@ -163,19 +162,19 @@ public partial class CombatDirector : Node
         Fight.Begin(why);
         Fight.Ev += OnFightEvent;
 
-        pl.Scripted = true; pl.InputEnabled = false; pl.Velocity = Vector3.Zero;
-        Selected.Add(lead);
-        // camera: from the player's view up to the tactical one
-        var cur = GetViewport().GetCamera3D();
-        _camFrom = cur?.GlobalTransform ?? pl.Camera.GlobalTransform;
-        var center = FocusPoint();
-        Camera.Begin(_r.Heightfield, new Vector3(center.X, _r.Heightfield.Height(center.X, center.Y), center.Y), pl.CameraYaw);
-        Camera.MakeCurrent();
-        _blend = 0f;
-        Input.MouseMode = Input.MouseModeEnum.Visible;
+        pl.Scripted = true; pl.InputEnabled = false; pl.Velocity = Vector3.Zero; pl.CancelGoTo();
+        // the selection carries over (the fighters of the selected characters)
+        var cmd = FD.Game.Commander.Instance;
+        foreach (var f in Fight.Of(FSide.Party)) if (f.Char != null && (cmd == null ? f == lead : cmd.IsSelected(f.Char))) Selected.Add(f);
+        if (attack && trigger != null)
+        {
+            var tf = Fight.F.FirstOrDefault(x => x.LifeId == trigger.Id);
+            if (tf != null) { var who = Selected.Count > 0 ? Selected : new List<Fighter> { lead }; foreach (var f in who) Order(f, "attack", tf); Fight.Post("order", lead, $"{Names(who)} → {tf.Name} hedefine saldırıyor."); }
+        }
         Hud.Begin(Fight);
         GD.Print($"[Combat] start: {why} — {Fight.Of(FSide.Party).Count()} vs {Fight.Of(FSide.Foe).Count()} (+{_wake.Count} uyuyan)");
-        if (Settings.Current.AutoPause && !Unattended) SetPaused(true, "Savaş başladı — duraklatıldı. Emir ver; Boşluk ile sürdür.");
+        cmd?.OnFightStart();
+        if (Settings.Current.AutoPause && !Unattended) cmd?.SetPaused(true, "Savaş başladı — duraklatıldı. Emir ver; Boşluk ile sürdür.");
     }
 
     static V2 Norm(V2 v) { float l = v.Length(); return l > 1e-4f ? v / l : new V2(0, 1); }
@@ -198,17 +197,8 @@ public partial class CombatDirector : Node
         return f;
     }
 
-    // ------------------------------------------------------------------------------------------------ pause and orders
-    public void SetPaused(bool on, string why = null)
-    {
-        if (Fight == null) return;
-        Paused = on;
-        Fight.Paused = on;
-        GetTree().Paused = on || Summary;
-        if (why != null) Say(why, 4f);
-    }
-
-    public void TogglePause() { if (Fight != null && !Summary) SetPaused(!Paused); }
+    // ------------------------------------------------------------------------------------------------ orders
+    public void Note(string why, float secs = 3f) => Say(why, secs);
 
     public Fighter Lead => Selected.FirstOrDefault(f => f.Standing && f.Char != null) ?? Selected.FirstOrDefault();
 
@@ -241,85 +231,18 @@ public partial class CombatDirector : Node
             Order(f, "move", null, at + right * off);
             i++;
         }
-        if (n > 0) Fight.Post("order", Selected[0], $"Emir: {Names(Selected)} oraya yürüsün.");
+        if (n > 0) Fight.Post("order", Selected[0], $"Emir: {Names(Selected)} koşarak oraya gitsin.");
     }
 
-    public void OrderAll(string order, string text)
+    /// <summary>Tur 1 A: drive the lead with WASD — a short run toward where the keys point (a move order renewed every frame).</summary>
+    public void Steer(V2 dir)
     {
-        foreach (var f in Selected) Order(f, order);
-        if (Selected.Count > 0) Fight.Post("order", Selected[0], $"Emir: {Names(Selected)} {text}.");
-    }
-
-    public void ClearOrders()
-    {
-        foreach (var f in Selected) { f.Order = null; f.OrderTarget = null; }
-        if (Selected.Count > 0) Fight.Post("order", Selected[0], $"{Names(Selected)} kendi bildiği gibi dövüşüyor.");
+        var f = Lead;
+        if (f == null || !f.Standing || f.Fleeing) return;
+        Order(f, "move", null, f.Pos + dir * 2.2f);
     }
 
     static string Names(List<Fighter> fs) => fs.Count == 1 ? fs[0].Name : string.Join(", ", fs.Select(f => f.Name));
-
-    /// <summary>Spell n (1-based) of the lead: cast now when the target is clear (hovered, or self for a heal with nothing hovered),
-    /// otherwise aim mode.</summary>
-    public void SpellKey(int n)
-    {
-        var f = Lead;
-        if (f?.Char == null || !f.Standing) return;
-        var list = SpellList(f.Char);
-        if (n < 1 || n > list.Count) return;
-        var sp = list[n - 1];
-        if (sp.Level > 0 && f.Char.Slots <= 0) { Say("Büyü yuvası kalmadı (uzun dinlenmede dolar)."); return; }
-        if (Hover != null && ValidTarget(sp, Hover)) { CastOrder(f, sp, Hover); return; }
-        Aim = sp; AimCaster = f;
-        Say($"{sp.Name}: hedefi tıkla (sağ tık / Esc: vazgeç)", 6f);
-    }
-
-    public static List<SpellDef> SpellList(Character c)
-    {
-        var r = new List<SpellDef>();
-        foreach (var id in c.Spells) { var s = Spells.Get(id); if (s != null && s.Level == 0) r.Add(s); }
-        foreach (var id in c.Spells) { var s = Spells.Get(id); if (s != null && s.Level > 0) r.Add(s); }
-        return r;
-    }
-
-    static bool ValidTarget(SpellDef sp, Fighter t) =>
-        sp.Kind == SpellKind.Heal ? t.Side == FSide.Party && !t.Dead && !t.Fled : t.Side == FSide.Foe && t.Standing;
-
-    void CastOrder(Fighter f, SpellDef sp, Fighter t)
-    {
-        Order(f, "cast", t, null, sp.Id);
-        Fight.Post("order", f, $"Emir: {f.Name} → {sp.Name} ({t.Name}).");
-        Aim = null; AimCaster = null;
-    }
-
-    public void PotionKey()
-    {
-        var f = Lead;
-        if (f?.Char == null || !f.Standing) return;
-        if (!f.Char.Inv.Has("potion")) { Say($"{f.Name}: iksir yok."); return; }
-        var who = Hover != null && Hover.Side == FSide.Party && !Hover.Dead && Hover != f ? Hover : f;
-        Order(f, "potion", who);
-        Fight.Post("order", f, who == f ? $"Emir: {f.Name} iksir içsin." : $"Emir: {f.Name}, {who.Name}'a iksir içirsin.");
-    }
-
-    public void BandageKey()
-    {
-        var f = Lead;
-        if (f?.Char == null || !f.Standing) return;
-        if (!f.Char.Inv.Has("bandage")) { Say($"{f.Name}: sargı bezi yok."); return; }
-        var who = Hover != null && Hover.Side == FSide.Party && Hover.Down ? Hover
-            : Party.Where(o => o.Down && !o.Dead).OrderBy(o => V2.Distance(o.Pos, f.Pos)).FirstOrDefault();
-        if (who == null) { Say("Yerde yatan yok."); return; }
-        Order(f, "bandage", who);
-        Fight.Post("order", f, $"Emir: {f.Name}, {who.Name}'ın yarasını sarsın.");
-    }
-
-    public void WindKey()
-    {
-        var f = Lead;
-        if (f?.Char == null || !f.Standing) return;
-        if (f.Char.Uses.GetValueOrDefault("secondWind") <= 0) { Say(f.Char.Cls == "fighter" ? "Derin nefes kullanıldı (dinlenince gelir)." : "Yalnız savaşçılar."); return; }
-        Order(f, "wind");
-    }
 
     public void SelectNext(int dir)
     {
@@ -337,96 +260,21 @@ public partial class CombatDirector : Node
         if (add && Selected.Contains(f)) Selected.Remove(f); else Selected.Add(f);
     }
 
-    // ------------------------------------------------------------------------------------------------ input
+    // ------------------------------------------------------------------------------------------------ input (the lost fight's summary)
     public override void _UnhandledInput(InputEvent e)
     {
-        if (Fight == null) return;
-        if (Summary)
-        {
-            if (e is InputEventKey sk && sk.Pressed && !sk.Echo && (sk.PhysicalKeycode is Key.Space or Key.Enter or Key.KpEnter or Key.Escape))
-            { Continue(); GetViewport().SetInputAsHandled(); }
-            return;
-        }
-        if (e is InputEventKey k && k.Pressed && !k.Echo)
-        {
-            bool handled = true;
-            switch (k.PhysicalKeycode)
-            {
-                case Key.Space: TogglePause(); break;
-                case Key.Tab: SelectNext(k.ShiftPressed ? -1 : 1); break;
-                case Key.Escape: if (Aim != null) { Aim = null; Say("Vazgeçildi."); } else handled = false; break;
-                case Key.Key1: SpellKey(1); break;
-                case Key.Key2: SpellKey(2); break;
-                case Key.Key3: SpellKey(3); break;
-                case Key.Key4: SpellKey(4); break;
-                case Key.Key5: SpellKey(5); break;
-                case Key.Q: PotionKey(); break;
-                case Key.B: BandageKey(); break;
-                case Key.F: WindKey(); break;
-                case Key.R: OrderAll("retreat", "geri çekilsin"); break;
-                case Key.H: OrderAll("hold", "yerinde beklesin"); break;
-                case Key.G: ClearOrders(); break;
-                default: handled = false; break;
-            }
-            if (handled) GetViewport().SetInputAsHandled();
-            return;
-        }
-        if (e is InputEventMouseButton mb)
-        {
-            if (mb.ButtonIndex == MouseButton.Left)
-            {
-                if (mb.Pressed) { _pressing = true; _boxing = false; _press = mb.Position; }
-                else if (_pressing)
-                {
-                    _pressing = false;
-                    if (_boxing) BoxSelect(new Rect2(_press, mb.Position - _press).Abs(), mb.ShiftPressed);
-                    else Click(mb.Position, mb.ShiftPressed, false);
-                    _boxing = false; Box = null;
-                }
-                GetViewport().SetInputAsHandled();
-            }
-            else if (mb.ButtonIndex == MouseButton.Right)
-            {
-                if (mb.Pressed) { _rpressing = true; _rpress = mb.Position; }
-                else if (_rpressing)
-                {
-                    _rpressing = false;
-                    if ((mb.Position - _rpress).Length() < 6f) Click(mb.Position, false, true);
-                }
-            }
-        }
-        else if (e is InputEventMouseMotion mm && _pressing)
-        {
-            if ((mm.Position - _press).Length() > 8f) _boxing = true;
-            if (_boxing) Box = new Rect2(_press, mm.Position - _press).Abs();
-        }
+        if (Fight == null || !Summary) return;
+        if (e is InputEventKey sk && sk.Pressed && !sk.Echo && (sk.PhysicalKeycode is Key.Space or Key.Enter or Key.KpEnter or Key.Escape))
+        { Continue(); GetViewport().SetInputAsHandled(); }
     }
 
-    void Click(Vector2 screen, bool shift, bool right)
+    /// <summary>the party fighters inside a screen rectangle (box selection)</summary>
+    public IEnumerable<Fighter> InBox(Rect2 r)
     {
-        var h = PickAt(screen);
-        if (Aim != null)
-        {
-            if (right) { Aim = null; Say("Vazgeçildi."); return; }
-            if (h != null && ValidTarget(Aim, h)) CastOrder(AimCaster, Aim, h);
-            else Say(Aim.Kind == SpellKind.Heal ? "Bir yoldaşı tıkla." : "Ayakta bir düşmanı tıkla.");
-            return;
-        }
-        if (h != null && h.Side == FSide.Party && !right) { Select(h, shift); return; }
-        if (Selected.Count == 0) return;
-        if (h != null && h.Side == FSide.Foe && h.Standing) { OrderAttack(h); return; }
-        var g = Camera.Ground(screen);
-        if (g is Vector3 p) OrderMove(new V2(p.X, p.Z));
-    }
-
-    void BoxSelect(Rect2 r, bool add)
-    {
-        if (!add) Selected.Clear();
         foreach (var f in Party)
         {
             if (f.Dead || f.Fled) continue;
-            var s = ScreenOf(f, 0.9f);
-            if (s is Vector2 sp && r.HasPoint(sp) && !Selected.Contains(f)) Selected.Add(f);
+            if (ScreenOf(f, 0.9f) is Vector2 sp && r.HasPoint(sp)) yield return f;
         }
     }
 
@@ -435,12 +283,13 @@ public partial class CombatDirector : Node
     public Vector2? ScreenOf(Fighter f, float up)
     {
         var w = WorldOf(f, up);
-        if (Camera.IsPositionBehind(w)) return null;
+        if (Camera == null || Camera.IsPositionBehind(w)) return null;
         return Camera.UnprojectPosition(w);
     }
 
-    Fighter PickAt(Vector2 screen)
+    public Fighter PickAt(Vector2 screen)
     {
+        if (Camera == null) return null;
         Fighter best = null; float bd = 34f;
         foreach (var f in Fight.F)
         {
@@ -463,12 +312,12 @@ public partial class CombatDirector : Node
         if (_hintT > 0) _hintT -= dt;
         if (!GetTree().Paused) StepRunOff(dt);
         if (Fight == null) return;
-        if (_blend < 1f)
+        if (Summary)
         {
-            _blend = MathF.Min(1f, _blend + dt / 0.7f);
-            float k = _blend * _blend * (3 - 2 * _blend);
-            var to = Camera.GlobalTransform;
-            Camera.GlobalTransform = _camFrom.InterpolateWith(to, k);
+            // a lost fight: the summary waits a little for the player, then the story goes on
+            _summaryT += (float)delta / MathF.Max(0.05f, (float)Engine.TimeScale);
+            if (_summaryT > 9f) Continue();
+            return;
         }
         _sw.Restart();
         Hover = Summary ? null : PickAt(GetViewport().GetMousePosition());
@@ -482,18 +331,16 @@ public partial class CombatDirector : Node
                 _wake.RemoveAt(i);
                 if (!p.Dead && !p.InFight && p.Present && !Fight.Over) AddGoblin(p, true, why);
             }
-            if (PauseAt is float pa && Fight.T >= pa) { PauseAt = null; SetPaused(true, "Duraklatıldı."); }
+            if (PauseAt is float pa && Fight.T >= pa) { PauseAt = null; FD.Game.Commander.Instance?.SetPaused(true, "Duraklatıldı."); }
         }
         Selected.RemoveAll(f => f.Dead || f.Fled);
-        if (Selected.Count == 0) { var l = Party.FirstOrDefault(f => f.IsPlayer && !f.Dead) ?? Party.FirstOrDefault(f => f.Standing); if (l != null) Selected.Add(l); }
         SyncBodies();
         FrameMs = FrameMs * 0.95 + _sw.Elapsed.TotalMilliseconds * 0.05;
-        var c = FocusPoint();
-        Camera.Track(new Vector3(c.X, _r.Heightfield.Height(c.X, c.Y), c.Y));
         if (Fight.Over && !Summary) Finish();
     }
 
-    V2 FocusPoint()
+    /// <summary>the middle of the fight (weighted to the party)</summary>
+    public V2 FocusPoint()
     {
         V2 sum = V2.Zero; float w = 0;
         V2 party = V2.Zero; int pn = 0;
@@ -575,12 +422,11 @@ public partial class CombatDirector : Node
     // ------------------------------------------------------------------------------------------------ the end
     void Finish()
     {
-        Summary = true;
-        Aim = null; Box = null;
+        Box = null;
         var cp = _s.Camp;
         if (Fight.Winner != FSide.Party) Fight.SettleFallen();
         Fight.WriteBack((int)_s.Macro.W.Day, cp?.Name);
-        var o = Outcome = new FightOutcome { Won = Fight.Winner == FSide.Party };
+        var o = Outcome = new FightOutcome { Won = Fight.Winner == FSide.Party, Escaped = Fight.Escaped };
         foreach (var f in Fight.F)
         {
             if (f.Side == FSide.Foe) { if (f.Dead) { o.Killed++; if (f.IsBoss) o.BossKilled = true; } else if (f.Fled) o.Fled++; }
@@ -591,9 +437,10 @@ public partial class CombatDirector : Node
         o.XpEach = Fight.XpEach();
         o.CampCleared = o.Won && CampBroken();
         o.Lines.Add(o.Won ? $"{o.Killed} goblin öldü, {o.Fled} goblin kaçtı{(o.BossKilled ? "; şefleri düştü" : "")}."
+            : o.Escaped ? $"Ekip kaçıp kurtuldu{(o.Killed > 0 ? $" ({o.Killed} goblin öldü)" : "")}{(o.PartyDown > 0 ? "; yerde yatanlar geride kaldı" : "")}."
             : o.Killed > 0 ? $"Ekip yere serildi ({o.Killed} goblin de öldü)." : "Ekip yere serildi.");
-        // D: what the goblins do with the fallen
-        if (!o.Won) Fate(o, partyAll);
+        // D: what the goblins do with the fallen (after an escape: with those left behind)
+        if (!o.Won && (!o.Escaped || o.PartyDown > 0)) Fate(o, partyAll);
         foreach (var f in partyAll)
         {
             var c = f.Char;
@@ -604,7 +451,7 @@ public partial class CombatDirector : Node
                 o.Lines.Add($"{c.Name} kalıcı bir yara aldı: {Wound.Name(f.NewWound)} — {Wound.Effect(f.NewWound)} Artık «{c.Epithet}» diye anılıyor.");
                 if (c.HeroId is int hid) M.Local.Wounded(_s.Macro, hid, Wound.Name(f.NewWound), c.Epithet);
             }
-            if (f.Fled) { o.Lines.Add($"{c.Name} kaçtı."); continue; }
+            if (f.Fled) { if (!o.Escaped) o.Lines.Add($"{c.Name} kaçtı."); continue; }
             if (o.XpEach > 0)
             {
                 c.Xp += o.XpEach;
@@ -626,9 +473,18 @@ public partial class CombatDirector : Node
         if (o.GameOver) SaveGame.Delete();
         _s.SyncPlayerToMacro();
         GD.Print($"[Combat] savaşın işlemci payı ort {FrameMs:F3} ms/kare");
-        GD.Print($"[Combat] end: {(o.Won ? "zafer" : $"yenilgi ({o.Fate})")} öldürülen {o.Killed} kaçan {o.Fled} şef {o.BossKilled} kamp {(o.CampCleared ? "temizlendi" : "duruyor")} TP {o.XpEach} süre {Fight.T:F0} sn{(o.GameOver ? " — OYUN BİTTİ" : "")}");
+        GD.Print($"[Combat] end: {(o.Won ? "zafer" : o.Escaped ? $"kaçış{(o.Fate != null ? $" ({o.Fate})" : "")}" : $"yenilgi ({o.Fate})")} öldürülen {o.Killed} kaçan {o.Fled} şef {o.BossKilled} kamp {(o.CampCleared ? "temizlendi" : "duruyor")} TP {o.XpEach} süre {Fight.T:F0} sn{(o.GameOver ? " — OYUN BİTTİ" : "")}");
+        if (o.Won || o.Escaped)
+        {
+            // Tur 1: no mode to leave — the party simply goes on; what happened stays on the screen for a while
+            _r.Hud?.Report(o.Won ? "Zafer" : "Kaçış", o.Lines, o.Won ? FD.UI.Ui.Gold : new Color(0.95f, 0.8f, 0.5f));
+            Summary = true;   // Continue() needs it; it runs at once
+            CallDeferred(nameof(Continue));
+            return;
+        }
+        Summary = true;
+        _summaryT = 0;
         Hud.ShowSummary(o);
-        SetPaused(Paused);   // tree pauses while the summary shows
         if (Unattended) CallDeferred(nameof(Continue));
     }
 
@@ -747,25 +603,25 @@ public partial class CombatDirector : Node
     /// <see cref="M.Local.LocalCampFight"/>).</summary>
     void WriteMacro(FightOutcome o)
     {
-        if (o.Killed == 0 && !o.CampCleared && o.Won) return;
+        if (o.Killed == 0 && !o.CampCleared && (o.Won || (o.Escaped && o.Fate == null))) return;
         var heroes = new List<int>();
         foreach (var f in Party) if (f.Char?.HeroId is int id && !f.Dead) heroes.Add(id);
         var res = M.Local.LocalCampFight(_s.Macro, new M.Local.LocalFight
         {
             Killed = o.Killed - (o.BossKilled ? 1 : 0), BossKilled = o.BossKilled, Cleared = o.CampCleared, Won = o.Won, Heroes = heroes,
-            PlayerDowned = !o.Won,
+            PlayerDowned = !o.Won && (!o.Escaped || o.Fate != null),
         });
         if (res != null) o.Lines.Add(res);
     }
 
-    /// <summary>Close the summary: bodies back to their owners, the third-person camera back, the clock runs again.</summary>
+    /// <summary>After the fight (at once when won or escaped; after the summary when lost): bodies back to their owners, the people
+    /// back to their lives.</summary>
     public void Continue()
     {
         if (Fight == null || !Summary) return;
         var o = Outcome;
         Summary = false;
-        Paused = false; Fight.Paused = false;
-        GetTree().Paused = false;
+        Fight.Paused = false;
         // goblins still standing in the fight go back to their lives (after a lost fight: they rob and leave — D)
         foreach (var f in Fight.F)
         {
@@ -784,12 +640,11 @@ public partial class CombatDirector : Node
         foreach (var f in Fight.F)
             if (f.Char != null && _bodies.TryGetValue(f, out var b) && b is Companion cb)
                 cb.GlobalPosition = new Vector3(f.Pos.X, _r.Heightfield.Height(f.Pos.X, f.Pos.Y), f.Pos.Y);
-        pl.Camera.MakeCurrent();
         foreach (var comp in _r.Companions) comp.Scripted = false;
-        Input.MouseMode = Input.MouseModeEnum.Captured;
         Fight.Ev -= OnFightEvent;
         Hud.End();
         var done = Fight;
+        var selected = Selected.Where(f => f.Char != null && !f.Char.Dead).Select(f => f.Char).ToList();
         Fight = null;
         Selected.Clear(); Hover = null;
         if (o.GameOver) { GameOver(); return; }
@@ -797,8 +652,18 @@ public partial class CombatDirector : Node
         if (_r.Player.Character.Dead) _r.Party.SwitchControl(1);   // a fallen companion was controlled
         // the fallen are gone from the party (their bodies stay where they fell)
         _s.Party.RemoveAll(c => c.Dead);
-        if (!o.Won) Wake(o);
+        if (o.Escaped)
+        {
+            // those left behind come to after the goblins went through their purses (unless caged) and catch up
+            foreach (var c in _s.Party)
+                if (!c.Dead && !c.Captive && (c.Down || c.Hp <= 0)) { c.Down = false; c.Stable = false; c.DeathOk = c.DeathFail = 0; c.Hp = Math.Max(1, c.Hp); }
+            if (_r.Player.Character.Captive || _r.Player.Character.Down) _r.Party.SwitchControl(1);
+            _s.SyncPlayerToMacro();
+            SaveGame.Save(_s, "kaçış");
+        }
+        else if (!o.Won) Wake(o);
         else SaveGame.Save(_s, "savaş");
+        FD.Game.Commander.Instance?.OnFightEnd(selected);
         Ended?.Invoke(o);
         GD.Print($"[Combat] closed ({done.Log.Count} olay)");
     }
@@ -870,7 +735,7 @@ public partial class CombatDirector : Node
     {
         Session.Current = null;
         GetTree().Paused = false;
-        Input.MouseMode = Input.MouseModeEnum.Visible;
+        Engine.TimeScale = 1;
         GD.Print("[Combat] oyun bitti: dünya silindi");
         if (Unattended) { Ended?.Invoke(Outcome); return; }
         GetTree().ChangeSceneToFile("res://scenes/Boot.tscn");

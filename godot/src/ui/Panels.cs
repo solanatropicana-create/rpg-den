@@ -45,7 +45,6 @@ public abstract partial class PanelLayer : CanvasLayer
         OpenPanel = this;
         Visible = true;
         R.Player.InputEnabled = false;
-        Input.MouseMode = Input.MouseModeEnum.Visible;
         Refresh();
     }
 
@@ -54,14 +53,14 @@ public abstract partial class PanelLayer : CanvasLayer
         if (!Visible) return;
         Visible = false;
         if (OpenPanel == this) OpenPanel = null;
-        if (R.Combat?.Active != true) { R.Player.InputEnabled = true; Input.MouseMode = Input.MouseModeEnum.Captured; }
+        if (R.Combat?.Active != true) R.Player.InputEnabled = true;
     }
 
     protected abstract void Refresh();
 
     protected void Clear(Container c) { foreach (var n in c.GetChildren()) { c.RemoveChild(n); n.QueueFree(); } }
 
-    protected static Label L(string t, int size = 16, Color? c = null) => Ui.Label(t, size, c);
+    protected static Label L(string t, int size = 16, Color? c = null, bool wrap = false) => Ui.Label(t, size, c, wrap);
 
     public override void _UnhandledInput(InputEvent e)
     {
@@ -88,7 +87,7 @@ public partial class InventoryPanel : PanelLayer
     Character _who;
     HBoxContainer _tabs;
     Label _head, _load, _gear;
-    VBoxContainer _rows;
+    VBoxContainer _rows, _book;
     Label _msg;
 
     public void Init(Region r)
@@ -100,6 +99,10 @@ public partial class InventoryPanel : PanelLayer
         _head = L(""); Body.AddChild(_head);
         _load = L("", 15, Ui.Dim); Body.AddChild(_load);
         _gear = L("", 15, Ui.Dim); _gear.AutowrapMode = TextServer.AutowrapMode.WordSmart; Body.AddChild(_gear);
+        // Tur 1 C: the spellbook (the caster uses the first spell that fits, top down; the player only orders and switches them)
+        _book = new VBoxContainer();
+        _book.AddThemeConstantOverride("separation", 2);
+        Body.AddChild(_book);
         Body.AddChild(new HSeparator());
         var scroll = new ScrollContainer { CustomMinimumSize = new Vector2(780, 330), HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         Body.AddChild(scroll);
@@ -136,6 +139,33 @@ public partial class InventoryPanel : PanelLayer
         var at = w.Attack();
         string wounds = w.Wounds.Count > 0 ? $"\nYaralar: {string.Join("; ", w.Wounds.Select(x => $"{Wound.Name(x.Kind)} ({Wound.Effect(x.Kind)})"))}" : "";
         _gear.Text = $"Silah: {Items.Get(w.Weapon)?.Name ?? "yok (yumruk)"} — saldırı {Rules.Signed(at.atk)}, {at.n}d{at.sides}{Rules.Signed(at.bonus)}{(at.range > 0 ? $", {at.range:F0} m" : "")} · Zırh: {Items.Get(w.Armor)?.Name ?? "yok"} · Kalkan: {Items.Get(w.Shield)?.Name ?? "yok"}{wounds}";
+        Clear(_book);
+        if (w.Spells.Count > 0)
+        {
+            _book.AddChild(L($"Büyü kitabı — {w.Name} savaşta yukarıdan aşağı, işe yarayan ilk büyüyü kendisi yapar (yuvalar elverdikçe). Sen sırayı ve açık/kapalıyı düzenlersin.", 14, Ui.Dim, true));
+            var book = w.BookAll();
+            for (int i = 0; i < book.Count; i++)
+            {
+                var sp = Spells.Get(book[i]);
+                if (sp == null) continue;
+                string id = sp.Id;
+                bool off = w.SpellOff.Contains(id);
+                var row = new HBoxContainer(); row.AddThemeConstantOverride("separation", 6);
+                var nm = L($"{i + 1}. {sp.Name}{(sp.Level > 0 ? " (yuva)" : "")}", 15, off ? Ui.Faint : Ui.Text);
+                nm.CustomMinimumSize = new Vector2(220, 0); nm.TooltipText = sp.Desc; nm.MouseFilter = Control.MouseFilterEnum.Pass;
+                row.AddChild(nm);
+                var up = Ui.Button("▲", () => { w.MoveSpell(id, -1); Refresh(); }, 13); up.Disabled = i == 0; row.AddChild(up);
+                var dn = Ui.Button("▼", () => { w.MoveSpell(id, +1); Refresh(); }, 13); dn.Disabled = i == book.Count - 1; row.AddChild(dn);
+                row.AddChild(Ui.Button(off ? "kapalı" : "açık", () => { w.ToggleSpell(id); Refresh(); }, 13, toggle: true));
+                var when = L(sp.Id switch
+                {
+                    "sleep" => "3+ düşman bir aradayken", "burninghands" => "2+ düşman önünde, dibindeyken", "magicmissile" => "şef ya da can çekişen düşmana",
+                    "curewounds" => "yere düşen ya da ağır yaralı yoldaşa", _ => "menzildeki düşmana",
+                }, 13, Ui.Faint);
+                row.AddChild(when);
+                _book.AddChild(row);
+            }
+        }
         Clear(_rows);
         if (w.Inv.Items.Count == 0) _rows.AddChild(L("Sırt çantası boş.", 15, Ui.Faint));
         foreach (var st in w.Inv.Items.ToList())

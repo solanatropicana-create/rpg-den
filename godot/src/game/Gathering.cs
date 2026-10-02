@@ -129,6 +129,37 @@ public partial class Gathering : Node3D
         _r.Hud.Toast($"{n} demet şifalı ot topladın ({Load()}). Şifacı (rahip) ve hancı alır.", 4f);
     }
 
+    /// <summary>Tur 1 B: what a right click can take here — ripe herb patches, unsearched goblin bodies, the camp chest.</summary>
+    public IEnumerable<ClickTarget> ClickTargets()
+    {
+        var hf = _r.Heightfield;
+        var cam = FD.Actors.GameCamera.Instance;
+        var view = cam != null ? new Vector2(cam.Focus.X, cam.Focus.Z) : Here;
+        for (int i = 0; i < _herbs.Count; i++)
+        {
+            if (GameClock.Day < ReadyDay(i) || _herbs[i].pos.DistanceTo(view) > 120f) continue;
+            int idx = i; var p = _herbs[i].pos;
+            yield return new ClickTarget { Pos = new Vector3(p.X, hf.Height(p.X, p.Y), p.Y), Height = 0.5f, Radius = 0.5f, Label = "Topla: şifalı ot", Reach = 1.6f, Act = () => Pick(idx) };
+        }
+        foreach (var p in _r.Life.People)
+        {
+            if (!p.Dead || p.Role != Role.Goblin || _looted.Contains(p.Id) || p.InFight) continue;
+            var who = p;
+            yield return new ClickTarget { Pos = new Vector3(p.Pos.X, hf.Height(p.Pos.X, p.Pos.Y), p.Pos.Y), Height = 0.4f, Radius = 0.7f, Label = $"Ara: {who.Name}'in cesedi", Reach = 1.6f, Act = () => Loot(who) };
+        }
+        if (CampSite.ChestPos != default)
+        {
+            var c = CampSite.ChestPos;
+            bool empty = _s.CampChest.Items.Count == 0 && _s.CampChest.Silver == 0 && (CampFallen ? _s.Link.CampLoot <= 0 : (_s.Camp?.Loot ?? 0) < 1);
+            yield return new ClickTarget
+            {
+                Pos = new Vector3(c.X, hf.Height(c.X, c.Y), c.Y), Height = 0.8f, Radius = 0.6f, Reach = 1.8f,
+                Label = empty ? "Kamp sandığı (boş)" : CampFallen ? "Aç: kamp sandığı" : "Sessizce boşalt: kamp sandığı",
+                Act = empty ? () => _r.Hud.Toast("Sandıkta kemik ve paçavradan başka bir şey yok.", 3f) : () => OpenChest(),
+            };
+        }
+    }
+
     /// <summary>herb patch positions (tests, map)</summary>
     public IReadOnlyList<Vector2> HerbPositions => _herbs.Select(h => h.pos).ToList();
 

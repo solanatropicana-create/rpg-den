@@ -99,7 +99,7 @@ public static class Weather
         Wet = Math.Clamp(wet * 1.4f, 0f, 1f);
     }
 
-    public static string Describe() => Now switch
+    public static string Describe() => Fog > 0.6f && Rain < 0.3f ? "sisli" : Now switch
     {
         Kind.Clear => "açık", Kind.Hazy => "puslu", Kind.Overcast => "kapalı", Kind.Rain => "yağmurlu", _ => "fırtınalı",
     };

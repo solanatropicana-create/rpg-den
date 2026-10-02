@@ -47,6 +47,10 @@ public static class Spells
             Desc = "Dua (1. seviye). Dokunduğu yaralıya 1d8 + Bilgelik can; baygını ayağa kaldırır." });
     }
 
+    /// <summary>Tur 1 C: the default place of a spell in a new book (lower first)</summary>
+    static readonly string[] DefaultOrder = { "curewounds", "sleep", "burninghands", "magicmissile", "rayoffrost", "sacredflame", "firebolt" };
+    public static int Rank(string id) { int i = System.Array.IndexOf(DefaultOrder, id); return i < 0 ? 99 : i; }
+
     public static SpellDef Get(string id) => id != null && All.TryGetValue(id, out var d) ? d : null;
     public static readonly string[] WizardCantrips = { "firebolt", "rayoffrost" };
     public static readonly string[] WizardFirst = { "magicmissile", "burninghands", "sleep" };

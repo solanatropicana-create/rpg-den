@@ -64,6 +64,49 @@ public sealed class Character
     /// <summary>D: locked in the goblin camp's cage</summary>
     public bool Captive;
     public int DeathOk, DeathFail;
+    /// <summary>Tur 1 C: how they behave when foes are about (Kenshi): aggressive | defend (default) | hold | flee | passive</summary>
+    public string Stance = Stances.Defend;
+    /// <summary>Tur 1 C (spellbook v1): the order in which the caster uses their spells — the first one that fits is cast; spells in
+    /// <see cref="SpellOff"/> are never cast by themselves. New spells go to the end.</summary>
+    public List<string> SpellOrder = new();
+    public List<string> SpellOff = new();
+
+    /// <summary>The book as the caster reads it: the player's order, then any spell not yet placed (in the default order: healing,
+    /// the area spells, the missiles, the cantrips); switched-off ones left out.</summary>
+    public List<string> Book()
+    {
+        var r = new List<string>();
+        foreach (var id in SpellOrder) if (Spells.Contains(id) && !SpellOff.Contains(id) && !r.Contains(id)) r.Add(id);
+        var rest = new List<string>();
+        foreach (var id in Spells) if (!SpellOrder.Contains(id) && !SpellOff.Contains(id) && !r.Contains(id) && !rest.Contains(id)) rest.Add(id);
+        rest.Sort((a, b) => FD.Rpg.Spells.Rank(a).CompareTo(FD.Rpg.Spells.Rank(b)));
+        r.AddRange(rest);
+        return r;
+    }
+
+    /// <summary>the whole book in the order shown to the player (switched-off ones included)</summary>
+    public List<string> BookAll()
+    {
+        var r = new List<string>();
+        foreach (var id in SpellOrder) if (Spells.Contains(id) && !r.Contains(id)) r.Add(id);
+        var rest = new List<string>();
+        foreach (var id in Spells) if (!r.Contains(id) && !rest.Contains(id)) rest.Add(id);
+        rest.Sort((a, b) => FD.Rpg.Spells.Rank(a).CompareTo(FD.Rpg.Spells.Rank(b)));
+        r.AddRange(rest);
+        return r;
+    }
+
+    /// <summary>Move a spell up (−1) or down (+1) in the book.</summary>
+    public void MoveSpell(string id, int dir)
+    {
+        var all = BookAll();
+        SpellOrder.Clear(); SpellOrder.AddRange(all);
+        int i = SpellOrder.IndexOf(id), j = i + dir;
+        if (i < 0 || j < 0 || j >= SpellOrder.Count) return;
+        (SpellOrder[i], SpellOrder[j]) = (SpellOrder[j], SpellOrder[i]);
+    }
+
+    public void ToggleSpell(string id) { if (!SpellOff.Remove(id)) SpellOff.Add(id); }
 
     public string FullName => string.IsNullOrEmpty(Epithet) ? Name : $"{Name} «{Epithet}»";
     public int Mod(int stat) => Rules.Mod(Stats[stat]);
@@ -150,4 +193,24 @@ public sealed class Character
         foreach (var k in new[] { "eye", "limp", "scar" }) if (HasWound(k)) { Epithet = Wound.Epithet(k); return; }
         Epithet = null;
     }
+}
+
+/// <summary>Tur 1 C: the stances (Kenshi). The fight reads them; the party bar sets them (Shift+1…5 for the selected).</summary>
+public static class Stances
+{
+    public const string Aggressive = "aggressive", Defend = "defend", Hold = "hold", Flee = "flee", Passive = "passive";
+    public static readonly string[] All = { Aggressive, Defend, Hold, Flee, Passive };
+    public static string Name(string s) => s switch
+    {
+        Aggressive => "Saldırgan", Hold => "Yerini koru", Flee => "Kaç", Passive => "Pasif", _ => "Savunmada",
+    };
+    public static string Short(string s) => s switch { Aggressive => "Sal", Hold => "Yer", Flee => "Kaç", Passive => "Pas", _ => "Sav" };
+    public static string Desc(string s) => s switch
+    {
+        Aggressive => "Gözüne kestirdiği düşmana kendiliğinden saldırır (yolda da).",
+        Hold => "Yerinden kıpırdamaz; menzildekine vurur.",
+        Flee => "Dövüşmez; düşmandan uzaklaşır.",
+        Passive => "Hiç karşılık vermez.",
+        _ => "Saldırıya uğrayınca ya da bir yoldaşı sıkışınca karşılık verir.",
+    };
 }

@@ -63,6 +63,8 @@ public partial class Companion : Node3D
 
     /// <summary>D: wait where they stand (the leader is caged, or told to stay)</summary>
     public bool Hold;
+    /// <summary>Tur 1 A: the player told them to wait here (the party bar's "bekle"); a group order including them ends it</summary>
+    public bool Waiting;
 
     /// <summary>Put the companion on the ground at its slot behind the leader (after a teleport or a load).</summary>
     public void SnapToLeader()
@@ -124,7 +126,7 @@ public partial class Companion : Node3D
             return;
         }
         if (_leader == null) return;
-        if (Hold)
+        if (Hold || Waiting)
         {
             _speed = 0;
             if (_lastAnim != "Idle") { Body.Drive("Idle", 0, 0.3f); _lastAnim = "Idle"; }

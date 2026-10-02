@@ -123,8 +123,9 @@ public partial class CampTestRunner : Node
         int inFight = life.People.Count(p => p.InFight);
         Check($"tur {_round}: savaş", true, $"{(o.Won ? "ZAFER" : "YENİLGİ")}: öldürülen {o.Killed}, kaçan {o.Fled}, şef {(o.BossKilled ? "öldü" : "yaşıyor")}, ekipte yerde {o.PartyDown}, ölü {o.PartyDead}, TP {o.XpEach}; {string.Join(" / ", o.Lines)}");
         Check($"tur {_round}: ölüler yerde", deadNow - _dead0 == o.Killed, $"yeni goblin cesedi {deadNow - _dead0} = öldürülen {o.Killed}");
-        Check($"tur {_round}: kimse savaşta kalmadı", inFight == 0 && !Region.Combat.Active && !Region.Player.Scripted && Region.Player.Camera.Current,
-            $"savaşta kalan {inFight}, oyuncu {(Region.Player.Scripted ? "betikte" : "serbest")}, kamera {(Region.Player.Camera.Current ? "üçüncü şahıs" : "başka")}");
+        bool oneCam = FD.Actors.GameCamera.Instance?.Current == true;
+        Check($"tur {_round}: kimse savaşta kalmadı", inFight == 0 && !Region.Combat.Active && !Region.Player.Scripted && oneCam,
+            $"savaşta kalan {inFight}, oyuncu {(Region.Player.Scripted ? "betikte" : "serbest")}, kamera {(oneCam ? "tek kamera" : "başka")}");
         int hidden = life.People.Count(p => p.Role == Role.Goblin && !p.Dead && (!p.Present || p.Motion == Motion.Inside) && p.Act?.Label is "Ormanda saklanıyor" or null);
         Check($"tur {_round}: kaçanlar gitti", o.Fled == 0 || hidden >= o.Fled, $"kaçan {o.Fled}, saklanan/giden {hidden}");
         int xp = (int)s.Player.Xp - _xp0;

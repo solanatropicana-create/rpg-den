@@ -7,6 +7,23 @@ başlatılamıyor, E ile yanaşmak kötü, büyük ekipte tek tek emir yönetile
 D atmosfer (önce/sonra kareleri için önce) → A tek kamera + C savaş + B bağlam tıklaması (tek kumanda; iç içe) → E demirci ve
 ilk dakika → kabul.
 
+### Nasıl oynanır (Tur 1)
+
+`OYNA.bat` → **Yeni oyun** (ya da devam) → karakter → dünya doğar → köyün kıyısında başlarsın.
+
+- **Fare:** sol tık seç (kişiye: bilgi kartı), sol sürükle kutu, **sağ tık ne gerekiyorsa** (git, konuş, saldır, al, ara, aç,
+  oku, gir — imleç söyler; uzaksa önce yürür). Kartın düğmeleri: Kirala, Ticaret, Söylenti sor, Oda tut, Ödülü al…
+- **Kamera:** teker yakın/uzak (omuzdan kuş bakışına), orta tuş ya da Alt+sürükle döndür, ok tuşları ve ekran kenarı kaydır,
+  **F** seçiliyi izle.
+- **Tuşlar:** **WASD** seçiliyi yürüt (Shift koş, Ctrl yavaş) · **Boşluk** duraklat/sürdür (her yerde) · **+ / −** hız 1×–3× ·
+  **1–4** ekipten birini seç, **Tab** sıradaki · **Shift+1…5** duruş (Saldırgan, Savunmada, Yerini koru, Kaç, Pasif) · **L** zar
+  günlüğü · **I** envanter (büyü kitabının sırası da orada) · **M** harita · **E** önündekiyle (kısa yol) · **Esc** menü ve ayarlar
+  · **F3** FPS.
+- **Savaş:** ayrı bir ekranı yok. Goblini sağ tıkla → saldırırsın; ekibin duruşlarına göre kendi dövüşür. Kaçmak için uzağa
+  sağ tıkla. Saldırgan duruştaki biri goblin görünce kendisi başlatır.
+- Hava çoğu gün kapalı, sık yağmur, sabahları sis; geceler karanlık (elinde fener). Gün 30 gerçek dakika (1× hızda).
+
+
 ### D · Kasvetli atmosfer (bitti)
 
 Hedef kareler `docs/stil/valheim_kasvet_v2.png` (gündüz), `valheim_gece.png` (gece); değerler brief'in D+ bölümünden. Modellere
@@ -46,12 +63,85 @@ dokunulmadı (beyaz sıva, mor/yeşil panjur, saksı Tur 2).
 - Güneşin ışık yüksekliğini kırpmak, "hep karşıdan alçak güneş" yerine seçildi: oyunda kamera döner, güneş kameraya bağlanamaz.
 - Yağmur ve toz her makinede çizilir; zayıf kartta F3 ile bakılmalı (hacimsel sis en pahalı kalem).
 
+### A + C + B · Tek kamera, tek kumanda, Kenshi savaşı (bitti)
+
+Üçü tek bir kumandada birleşti (`src/game/Commander.cs`, `src/actors/GameCamera.cs`): kamera, seçim, emir ve zaman savaşta da
+dışında da aynı; "taktik mod" yok. Bu yüzden tek adımda yazıldı ve birlikte işlendi.
+
+**A · Tek kamera (`GameCamera`)**
+- Teker omuz üstünden (2,2 m, baş hizası, sağ omuz) yükseğe (75 m, ~64° aşağı) kesintisiz yakınlaşır; eğim ve odak yüksekliği
+  uzaklığın logaritmasıyla akar, uzakta kendiliğinden taktik görünüm olur. Ayrı mod da otomatik kamera geçişi de yok (savaş
+  başlayınca kamera yerinde kalır, yalnız lideri izler).
+- **Orta tuş** ya da **Alt+sol sürükle** döndürür (biraz da eğer). **Ok tuşları** ve **ekran kenarı** serbest kaydırır (ayar);
+  kaydırınca izleme bırakılır, **F** seçili karakteri yeniden izler. Yakınken duvara ve tepeye girmez (ışın).
+- **WASD** seçili karakteri (ya da grubun önderini) kameraya göre doğrudan yürütür, kamera onu izler; seçili yoksa WASD
+  kamerayı kaydırır. Savaşta WASD liderin kısa koşu emri olur.
+- **Seçim:** sol tık tek, sol sürükle kutu (Shift ekler), **Tab** sıradaki, **1–4** doğrudan. Seçilen önder oyuncunun
+  bedenini alır (Faz 2'nin Tab beden değişimi), yoldaşlar onu formasyonda (sıralı dosya) izler. Ekip çubuğunda yoldaşa
+  "bekle / gel".
+- Fare hep serbest (yakalama yok); zıplama kalktı (Boşluk duraklatır).
+
+**B · Sağ tıkla bağlama göre emir**
+- Seçili karakter/grup için: düşman → **saldır**, yer → **git** (savaşta: koşarak git = kaç), eşya → **al** (şifalı ot), kişi →
+  **konuş** (kartı açar, selamlar), kapı → **gir** (aşağıda), ceset → **ara**, sandık → **aç**, pano → **oku**, kafes kapısı →
+  **zorla / aç**. Uzaksa önce yürür (köy evleri arada kalırsa yolların ve sokakların ağından), sonra eylemi yapar.
+- **Sol tık** kişiye: bilgi kartı (yürümeden); kartın altındaki düğmeler yapılabilecekler (Kirala, Ticaret, Söylenti sor, Oda
+  tut, Ödülü al, Saldır…); uzaksa önce yanına gider. Kartta 1–5 tuşları kalktı (1–4 seçim oldu).
+- **İmleç** hedefe göre: kılıç (saldır), ağız (konuş), el (al, ara, aç, oku, gir), ayak (git); yanında tek satır ne olacağı
+  ("Konuş: Ayşe — çiftçi"). İmleçler koddan çizilir (görsel dosya yok).
+- **E** kısa yol olarak kalır (önündekiyle konuş, nesneyi kullan), zorunlu değil.
+
+**C · Kenshi tarzı savaş (`src/rpg/Fight.cs`, `src/combat/*`)**
+- **Duruşlar** (karakter başına, kayıtta; ekip çubuğundaki beş düğme ya da **Shift+1…5**): **Saldırgan** (gördüğü düşmana
+  kendiliğinden saldırır — yolda da: 22 m'de goblin görürse savaşı kendi başlatır), **Savunmada** (varsayılan: saldırıya
+  uğrayınca, yanındaki düşmana ya da bir yoldaşına saldıranlara karşılık verir), **Yerini koru** (kıpırdamaz; kılıç, yay ya da
+  büyü menzilindekine vurur), **Kaç** (dövüşmez, uzaklaşır; 26 m açılınca kurtulur), **Pasif** (hiç karşılık vermez).
+- **Saldırı emri** (sağ tık goblin): karakter hedefe yürür ve kendi dövüşür; uzaktaysa önce yaklaşır (18 m), sonra savaş
+  başlar. Goblin yetişince de savaş başlar; ikisinde de oyun **durmaz** (ayar: "Savaş başında duraklat", kapalı).
+- **Kaçış:** savaşta yere sağ tık → seçilenler koşar (normalin 1,25 katı; goblin 3,8 m/s); bir düşman topuğunda 1,6 sn vurursa
+  "yakalandı" — dönüp duruşuna göre dövüşür. Ayakta kalan herkes her düşmandan 26 m açılınca savaş "kaçış" diye biter; yerde
+  kalanlar goblinlerin eline düşer (soyulur, kafese gider; Faz 2'deki gibi), sonra ayılıp ekibe yetişir.
+- **Aktif yetenek ve büyü düğmesi yok:** donanım ve sınıf belirler. Herkes canı %30'un altındayken iksir içer, düşmanı uzak
+  yere düşmüş yoldaşını sargıyla kaldırır; savaşçı derin nefesi kendisi alır; rahip yaralıyı iyileştirir.
+- **Büyü kitabı v1:** büyücü (ve rahip) kitabını yukarıdan aşağı okur, **işe yarayan ilk** büyüyü yuvalar elverdikçe yapar (Uyku:
+  3+ düşman bir aradayken; Yanan Eller: 2+ düşman önünde; Sihirli Füze: şef ya da can çekişen; Yara Sarma: düşen/ağır yaralı
+  yoldaş; basit büyüler: menzildekine). Oyuncu yalnız sırayı ve açık/kapalıyı düzenler (envanter → büyücünün sekmesi). Varsayılan
+  sıra: iyileştirme, Uyku, Yanan Eller, Sihirli Füze, basit büyüler.
+- **Zaman:** **Boşluk** her yerde duraklatır/sürdürür (sahne ağacı durur, saat durur; duraklıyken emir verilir), **+ / −**
+  hız 1×·2×·3× her yerde (saatin yanındaki düğmeler de), tehdit görüş alanına girince (26 m, kovalarsa 40 m) hız kendiliğinden
+  1×'e düşer (ayar). Oyun menüsü (Esc) açıkken oyun durur.
+- **Zar:** başların üstünde küçük ve soluk sayılar (hasar; kritik altın ve büyük, ıska silik; ayardan kapanır); zar günlüğü
+  **L** ile açılır/kapanır (duraklıyken ayrıntılı). "Geri çekil" kalktı (yerine Kaç duruşu ve yere sağ tık).
+- Savaşın bir paneli yok: ekip çubuğu, saat ve hız HUD'un (savaşta da aynı). Üstte küçük bir "Savaş · 0:12 · ayakta 3 düşman"
+  satırı. Kazanınca ya da kaçınca oyun hemen sürer, sağda kısa bir rapor (tıkla, kapanır); yalnız kaybedince özet bekler (Boşluk
+  ya da 9 sn).
+- Ekip dört kişi olabilir (oyuncu + üç yoldaş; Faz 2'de iki).
+
+**HUD:** sol üstte saat, yer, hava ve ⏸ 1× 2× 3×; duraklıyken ortada "DURAKLATILDI"; sol altta ekip çubuğu (ad, sınıf, can,
+büyü yuvası, durum, beş duruş düğmesi, bekle/gel; tıkla seç, çift tıkla kamera); sağ üstte kişi kartı (× ile kapanır).
+
+#### A–C kararları
+- **1–4 seçim, + / − hız:** brief'te 1/2/3 hem hız hem seçim tuşuydu; A'nın "1–4 doğrudan seçer"i kesin, C'nin "1/2/3 ya da
+  + / −"si seçenekliydi → hız + / − (ve düğmeler), seçim 1–4. Duruşlar Shift+1…5.
+- **Seçim = beden:** tek kişi seçmek oyuncunun bedenini ona verir (WASD onu yürütsün, kamera onu izlesin); seçilmeyen
+  yoldaşlar önderi izlemeye devam eder (RPG alışkanlığı), bırakmak için "bekle". Kenshi'deki gibi herkesin tek tek dağılması
+  yerine bu seçildi: köyde yürürken ekip dağılmasın.
+- **Seçili yokken sağ tık** kontrol edilen karaktere gider (boşa tıklama olmasın); sol tık boş yere seçimi kaldırır (RTS).
+- **"Kapı → gir":** binaların içi yok; kapıya sağ tık o yerin sahibini (hancı, demirci ya da çırağı, rahip) kapıya çağırır ve
+  kartını açar (ticaret, oda, ödül…); evlerin kapısı kapalı ("içeriden ses gelmiyor") ya da evdekiyle konuşulur.
+- **Savunmada'nın tanımı:** düşman 8 m'deyse, son 6 sn'de darbe aldıysa ya da bir düşman yakındaki bir yoldaşa (20 m) saldırıyor
+  ya da ok atıyorsa karşılık verir; yoksa önderin yanında bekler.
+- **Kaçış uzaklığı 26 m** (uyuyan düşman da sayılır: uyutup kaçmak kurtuluş sayılmaz, uyutan kazanır).
+- Goblinler hâlâ kendi saldırgan; köylüler ve maceracılar düşman değil (sağ tık = konuş).
+
 ## Faz 2 · Oyuncu, ekip ve d20 savaş (bitti)
 
 Brief: `claude/faz2-brief.md` (proje). Sıra: A simülasyon bağlantısı → B karakter yaratma → C duraklatmalı d20 savaş →
 D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano → H Demir mod kaydı → kabul testleri.
 
 ### Nasıl oynanır (Faz 2)
+
+> Tur 1'de kontroller değişti (tek kamera, sağ tık, duruşlar, Boşluk/+−); geçerli olan yukarıdaki "Nasıl oynanır (Tur 1)".
 
 `OYNA.bat` → başlık: **Yeni oyun (Demir mod)** → ırk, sınıf, 27 puan, ad, görünüş → dünya doğar (~20 sn) → Sessiztepe'nin
 yerinde simdeki köy. Hana yürü (yol boyunca doğuya), **panodan** kampın ilanını kopar (E), **demirciden** ucuz bir silah al,
@@ -354,6 +444,8 @@ işi, ihtiyaçları ve gün planı var; yaptığı her şeyin kartta okunan bir 
    (Godot 4.7.2 .NET, `RPG Den\_tools\` altında.)
 
 ## Kontroller
+
+> Bu bölüm Faz 1b'nin kontrolleri; Tur 1'den beri geçerli olanlar en üstteki "Nasıl oynanır (Tur 1)"de.
 
 (Faz 2'nin güncel tuşları yukarıda, "Nasıl oynanır".) W A S D yürü (koşar adım 4 m/s) · **Shift hızlı koşu 11 m/s** · Ctrl
 yavaş yürü · Space zıpla · fare kamera · tekerlek yakınlaştır · **E** konuş / kart · **M** harita · **F3** geliştirici bilgisi ·
