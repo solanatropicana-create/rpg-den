@@ -134,8 +134,9 @@ public static class Local
         if (link == null || cp == null || !cp.Alive || v == null) return null;
         var open = J.Find(s.W.Quests, q => q.Open && q.Camp == cp.Id);
         if (open != null) return open;
-        // biri ilanı kopardıysa ve yoldaysa köy yeniden ilan asmaz
+        // biri ilanı kopardıysa ve yoldaysa (ya da oyuncu aldıysa) köy yeniden ilan asmaz
         if (J.Some(s.W.Quests, q => !q.Open && q.Camp == cp.Id && q.Done == null && q.TakenBy.Count > 0 && J.Some(s.W.Agents, a => a.Quest == q.Id && !J.T(a.Dead)))) return null;
+        if (link.Player is int pid && J.Some(s.W.Quests, q => !q.Open && q.Camp == cp.Id && q.Done == null && q.TakenBy.Contains(pid))) return null;
         var c = Civ(s);
         double gold = c != null ? s.St(c, "gold") : 0;
         double bounty = JsMath.Round(JsMath.Max(25, JsMath.Min(gold * 0.5, 30 + (c?.Threat ?? 0) * 40 + cp.Count * 3)));
@@ -385,6 +386,88 @@ public static class Local
         s.Add(c, good, -units);
         s.Add(c, "gold", units > 0 ? gold : -JsMath.Min(gold, s.St(c, "gold")));
         s.Metric(units > 0 ? "localBuy" : "localSell");
+    }
+
+    /// <summary>G: oyuncu panodan bağlı kampın ilanını kopardı (simdeki kahramanlar artık alamaz; köy yeni ilan asmaz).</summary>
+    public static Quest TakeQuest(Sim s)
+    {
+        var q = CampQuest(s); var pl = Player(s);
+        if (q == null || pl == null) return null;
+        q.Open = false;
+        q.TakenBy = new List<int> { pl.Id };
+        q.Expires = null;
+        Will.Note(s, pl, $"{J.S(q.Bounty)} altınlık ilanı panodan kopardı");
+        s.Metric("playerQuest");
+        var cp = Camp(s);
+        s.Log("quest", $"{pl.Name}, {(cp != null ? Lore.Ek(cp.Name, "in") : "kampın")} ilanını panodan kopardı.", tile: Village(s)?.Tile, civ: Village(s)?.Civ, major: false,
+            cause: $"Ödül {J.S(q.Bounty)} altın");
+        return q;
+    }
+
+    /// <summary>
+    /// G: simdeki kahraman grubu bölgede kampla dövüştü (<see cref="Sim.LocalCamp"/>): sonuç simdeki savaş gibi yazılır. Kahramanlar
+    /// bölgedeki savaştan kalan canlarıyla savaşan sayılır (ölen ölür, XP ve ün <c>AfterBattle</c>'dan), ölen goblinler kamptan düşer;
+    /// kamp kırıldıysa temizlenir, ilan kapanır ve ödül kahramanlara ödenir; kırılmadıysa ilan "başarısız" olur ve ödül artar. Grup
+    /// yuvasına döner.
+    /// </summary>
+    public static string LocalBandResult(Sim s, List<int> agentIds, Dictionary<int, double> heroHp, int killed, bool bossKilled, bool cleared, Dictionary<int, int> heroKills = null)
+    {
+        var w = s.W; var link = w.Region; var cp = Camp(s); var v = Village(s);
+        var band = new List<Agent>();
+        foreach (int id in agentIds) { var a = J.Find(w.Agents, x => x.Id == id && !J.T(x.Dead)); if (a != null) band.Add(a); }
+        if (cp == null || band.Count == 0) return null;
+        var cs = new List<Combatant>();
+        foreach (var a in band)
+            foreach (int hid in a.Heroes ?? new List<int>())
+            {
+                var h = s.Hero(hid); if (h == null || h.State == "dead") continue;
+                var c = Combat.HeroCombatant(h, "A");
+                if (heroHp.TryGetValue(hid, out var hp)) c.Hp = hp;
+                if (heroKills != null && heroKills.TryGetValue(hid, out var k)) c.Kills = k;
+                cs.Add(c);
+            }
+        var foes = new List<Combatant>();
+        for (int i = 0; i < killed; i++) { var u = Combat.Unit(D.MONSTERS["goblin"], "B", "monster"); u.Hp = 0; foes.Add(u); }
+        if (bossKilled) { var u = Combat.Unit(D.MONSTERS["goblinBoss"], "B", "boss"); u.Hp = 0; foes.Add(u); }
+        Agents.SyncHeroes(s, cs, cleared ? 100 : 20, foes, cp.Name, "camp");
+        var alive = J.Filter(cs, c => c.Hero != null && c.Hero.State != "dead");
+        string names = alive.Count > 0 ? string.Join(", ", J.Map(alive, c => c.Hero.Name)) : string.Join(", ", J.Map(cs, c => c.Hero.Name));
+        cp.Count = JsMath.Max(0, cp.Count - killed);
+        if (bossKilled) cp.Boss = false;
+        s.Metric("localBandFight");
+        string line;
+        if (cleared && alive.Count > 0)
+        {
+            double loot = JsMath.Round(cp.Loot);
+            cp.Alive = false; cp.Count = 0; cp.ClearedDay = s.Day;
+            w.Tiles[cp.Tile].Camp = null;
+            s.Metric("campCleared"); s.Metric("localBandCleared");
+            link.CampLoot += loot * 0.5;   // kahramanlar ganimetin yarısını götürür, yarısı sandıkta kalır
+            foreach (var a in band)
+            {
+                var q = a.Quest is int qid ? J.Find(w.Quests, x => x.Id == qid) : null;
+                if (q == null) continue;
+                q.Done = s.Day; q.Open = false;
+                s.Metric("questDone");
+                double each = Math.Floor((q.Bounty + loot * 0.25) / Math.Max(1, alive.Count));
+                foreach (var c in alive) { c.Hero.Gold += each; if (q.Civ >= 0) c.Hero.Rep.Set(q.Civ, (c.Hero.Rep.Get(q.Civ) ?? 0) + 1); Heroes.QuestDone(s, c.Hero, q, cp); }
+            }
+            foreach (var oq in w.Quests) if (oq.Camp == cp.Id && oq.Open) oq.Open = false;
+            var civ = Civ(s); if (civ != null) civ.Threat *= 0.4;
+            link.SettlersDay = s.Day + s.Rng.Int(SETTLERS_MIN, SETTLERS_MAX);
+            s.Log("lair", $"{names}, {Tr.Ek(cp.Name, "i")} yerle bir etti!{(v != null ? $" {v.Name} rahat bir nefes aldı." : "")}", tile: cp.Tile, civ: v?.Civ,
+                cause: "İlanı panodan koparıp kampa yürüdüler", major: true);
+            line = $"{names}, {Tr.Ek(cp.Name, "i")} temizledi.";
+        }
+        else
+        {
+            foreach (var a in band) { var q = a.Quest is int qid ? J.Find(w.Quests, x => x.Id == qid) : null; if (q != null && q.Done == null) Heroes.QuestFailed(s, q); }
+            s.Log("lair", $"{names}, {Tr.Ek(cp.Name, "da")} püskürtüldü.", tile: cp.Tile, civ: v?.Civ,
+                cause: $"Goblinler {J.S(cp.Count)} kişiyle kampı tuttu{(killed > 0 ? $"; {J.S(killed)} goblin öldü" : "")}", major: true);
+            line = $"{names}, {Tr.Ek(cp.Name, "da")} püskürtüldü.";
+        }
+        foreach (var a in band) { a.Muster = null; Agents.PartyReturn(s, a); }
+        return line;
     }
 
     /// <summary>G: oyuncu bekleyen ilan ödülünü handa ya da muhtarda aldı (altın).</summary>

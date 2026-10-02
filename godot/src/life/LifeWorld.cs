@@ -220,6 +220,15 @@ public partial class LifeWorld : Node3D
 
     public PersonActor ActorOf(Person p) => p != null && p.Id < Actors.Count ? Actors[p.Id] : null;
 
+    /// <summary>Faz 2 G: a body for a person added to the sim during play (their id is the next index).</summary>
+    public PersonActor AddActor(Person p)
+    {
+        var a = PersonActor.Create(p);
+        AddChild(a);
+        Actors.Add(a);
+        return a;
+    }
+
     /// <summary>Nearest person in front of the player within reach (for the E prompt).</summary>
     public Person Facing(Vector3 playerPos, Vector3 forward, float reach = 3.4f)
     {
@@ -246,7 +255,7 @@ public partial class LifeWorld : Node3D
         if (p.Motion == Motion.Walking) p.Wait = 2.2f;
         if (Sim.Now - a.LastGreet < 0.5) return;
         a.LastGreet = Sim.Now;
-        a.Say(Lines.Greeting(p, Sim));
+        a.Say(FD.Game.Talk.Instance?.Line(p) ?? Lines.Greeting(p, Sim));
     }
 }
 

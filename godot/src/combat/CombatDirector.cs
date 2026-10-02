@@ -695,6 +695,7 @@ public partial class CombatDirector : Node
         if (line != null) o.Lines.Add(line);
         o.Lines.Add(taken.Count > 0 ? $"Götürdükleri: {what}." : "Götürecek bir şey bulamadılar.");
         M.Local.Robbed(_s.Macro, heroes, value, what);
+        _s.Flags["robbedDay"] = _s.Macro.W.Day;
     }
 
     /// <summary>The camp is broken when its chief fell and no goblin of it still stands outside the fight (the rest scatter), or when

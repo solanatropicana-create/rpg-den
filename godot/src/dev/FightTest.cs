@@ -86,6 +86,28 @@ public static class FightTest
             if (cls[0] == "fighter") { float ms = meleeShare / Math.Max(1, meleeSamples); extra += $", savaşçı yakın dövüşte %{ms * 100:F0}"; pass &= ms > 0.4f; }
             Check($"{comp} (Sv1+Sv2) vs 5 goblin", pass, $"{n} savaş: kazanılan {wins}, bozgun {routs}, biten {ended}, ort {secs / n:F0} sn{extra}");
         }
+        // G: a band of the sim's heroes (higher level) against a whole camp — the same rules
+        foreach (var comp in new[] { "cleric", "fighter", "rogue" })
+        {
+            int wins = 0, n = 60; float secs = 0;
+            for (int s = 0; s < n; s++)
+            {
+                var fight = new Fight(s * 7717 + 3) { FoeHome = new V2(0, -40) };
+                for (int i = 0; i < 3; i++)
+                {
+                    var c = Companion(comp, 6);
+                    fight.AddCharacter(c, HeroFor(c), FSide.Party, new V2(i * 1.5f, 0), "hero");
+                }
+                for (int g = 0; g < 7; g++) fight.AddMonster("goblin", $"G{g}", FSide.Foe, new V2(-6 + g * 2f, -14 - (g % 2) * 2), g % 4 == 3 ? "archer" : "goblin", -1, g % 4 == 3 ? 16f : 0f);
+                fight.Begin("deneme");
+                float t = 0;
+                while (!fight.Over && t < 240f) { fight.Update(0.05f); t += 0.05f; }
+                secs += t;
+                if (fight.Winner == FSide.Party) wins++;
+            }
+            Check($"3 × {comp} Sv6 vs 7 goblin", wins >= n * 0.8, $"{n} savaş: kazanılan {wins}, ort {secs / n:F0} sn");
+        }
+
         // D: permanent wounds after bad death saves / crits while down (one in four), applied to the character
         {
             int fights = 200, wounds = 0, bad = 0; var kinds = new Dictionary<string, int>();
@@ -152,9 +174,9 @@ public static class FightTest
         return c;
     }
 
-    static Character Companion(string cls)
+    static Character Companion(string cls, int level = 2)
     {
-        var h = new M.Hero { Id = 9000 + cls.Length, Name = "Yoldaş " + cls, Race = "human", Cls = cls, Level = 2, Xp = 300, Stats = new M.JsObj<double>(), Hp = 18, MaxHp = 18, Align = "good", Given = "Yoldaş" };
+        var h = new M.Hero { Id = 9000 + cls.Length, Name = "Yoldaş " + cls, Race = "human", Cls = cls, Level = level, Xp = 300, Stats = new M.JsObj<double>(), Hp = 99, MaxHp = 99, Align = "good", Given = "Yoldaş" };
         var pr = M.D.HERO_CLASSES[cls].Priority; int[] arr = { 15, 14, 13, 12, 10, 8 };
         for (int i = 0; i < 6; i++) h.Stats.Set(pr[i], arr[i]);
         return CharacterFactory.FromHero(h);

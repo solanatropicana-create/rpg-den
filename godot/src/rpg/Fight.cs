@@ -689,6 +689,8 @@ public sealed class Fight
         if (c == null || sp == null) return;
         if (sp.Level > 0) { if (c.Slots <= 0) return; c.Slots--; }
         int dc = Rules.SpellDc(c), atk = Rules.SpellAtk(c), mod = c.Mod(Rules.CastStat(c.Cls));
+        // D&D: damage cantrips grow at levels 5 and 11
+        int nd = sp.Level == 0 ? sp.N * (c.Level >= 11 ? 3 : c.Level >= 5 ? 2 : 1) : sp.N;
         f.Anim = sp.Kind == SpellKind.Heal ? "Pray" : "Attack"; f.AnimLock = 0.8f;
         f.Cd = f.Period + (float)Rng.Next() * 0.4f - 0.2f;
         if (t != null) f.Dir = Norm(t.Pos - f.Pos, f.Dir);
@@ -697,7 +699,7 @@ public sealed class Fight
         {
             case SpellKind.Attack:
             {
-                var tmp = new M.Combatant { Name = f.Name, Side = f.Cb.Side, Atk = atk, Dmg = new List<double> { sp.N, sp.S, 0 }, Attacks = 1, Hp = 1, MaxHp = 1, Uses = new M.JsObj<double>() };
+                var tmp = new M.Combatant { Name = f.Name, Side = f.Cb.Side, Atk = atk, Dmg = new List<double> { nd, sp.S, 0 }, Attacks = 1, Hp = 1, MaxHp = 1, Uses = new M.JsObj<double>() };
                 double hp0 = t.Cb.Hp;
                 var r = M.Combat.Strike(Rng, tmp, t.Cb, new M.Combat.StrikeCtx { Adv = t.Asleep(T), Dis = Nearest(f, Other(f.Side)) is Fighter nf && Dist(f, nf) < 1.8f });
                 int d = (int)r.D20, ac = (int)t.Cb.Ac;
@@ -707,7 +709,7 @@ public sealed class Fight
                     Short = r.Fumble ? $"{sp.Name}: 1 · ıska" : !r.Hit ? $"{sp.Name}: {d}{Rules.Signed(atk)} → {d + atk} vs ZS {ac} · ıska"
                         : r.Crit ? $"{sp.Name}: {d} KRİTİK! · {(int)r.Dmg}" : $"{sp.Name}: {d}{Rules.Signed(atk)} → {d + atk} vs ZS {ac} · {(int)r.Dmg}",
                     Text = $"{f.Name} {sp.Name} → {t.Name}: {(r.Hit ? $"{(int)r.Dmg} hasar{(r.Crit ? " (kritik)" : "")}" : "ıska")}.",
-                    Detail = $"büyü saldırısı d20 {d} + {atk} vs ZS {ac}; {sp.N}d{sp.S}{(r.Dice != null ? " = " + string.Join("+", r.Dice.ConvertAll(x => ((int)x).ToString())) : "")}",
+                    Detail = $"büyü saldırısı d20 {d} + {atk} vs ZS {ac}; {nd}d{sp.S}{(r.Dice != null ? " = " + string.Join("+", r.Dice.ConvertAll(x => ((int)x).ToString())) : "")}",
                 };
                 Emit(e);
                 if (r.Hit)
@@ -732,9 +734,9 @@ public sealed class Fight
                     }
                 }
                 else if (t != null) targets.Add(t);
-                var dice = Rng.Roll(sp.N, sp.S);
+                var dice = Rng.Roll(nd, sp.S);
                 int total = 0; foreach (var x in dice) total += (int)x;
-                Emit(new FightEvent { Kind = "spell", A = f, B = t, Short = $"{sp.Name}!{slot}", Text = $"{f.Name} {sp.Name}: {sp.N}d{sp.S} = {total}, kurtarış ZD {dc}." });
+                Emit(new FightEvent { Kind = "spell", A = f, B = t, Short = $"{sp.Name}!{slot}", Text = $"{f.Name} {sp.Name}: {nd}d{sp.S} = {total}, kurtarış ZD {dc}." });
                 foreach (var o in targets)
                 {
                     int save = (int)Rng.D20() + (o.Char != null ? o.Char.Mod(sp.Save) : o.DexMod);

@@ -54,6 +54,9 @@ public partial class Region : Node3D
     public FD.Game.PartyManager Party { get; private set; }
     public FD.Game.Gathering Gathering { get; private set; }
     public FD.Game.Services Services { get; private set; }
+    public FD.Game.Board Board { get; private set; }
+    public FD.Game.Talk Talk { get; private set; }
+    public FD.Game.NpcBands Bands { get; private set; }
     public InventoryPanel Inventory { get; private set; }
     public TradePanel Trade { get; private set; }
 
@@ -194,6 +197,15 @@ public partial class Region : Node3D
         Services = new FD.Game.Services();
         AddChild(Services);
         Services.Init(this);
+        Board = new FD.Game.Board();
+        AddChild(Board);
+        Board.Init(this);
+        Talk = new FD.Game.Talk();
+        AddChild(Talk);
+        Talk.Init(this);
+        Bands = new FD.Game.NpcBands();
+        AddChild(Bands);
+        Bands.Init(this);
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

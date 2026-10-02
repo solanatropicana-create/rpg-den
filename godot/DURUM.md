@@ -40,8 +40,7 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
 - Makroda bağdan bağımsız iki değişiklik: kamp adları yalnız yaşayan ve yakın zamanda temizlenmiş kamplarda "kullanılıyor"
   sayılır (uzun tarihte "Kırıkdiş Kampı 269" gibi adlar çıkıyordu; eski boyun adı yıllar sonra geri dönebilir); oyuncu ve
   ekibindekiler han havuzuna (`Inns.InnPool`) sayılmaz.
-- **Açık:** bağlı kampın ilanını simdeki bir kahraman alıp kampa yürüyebilir (makro kampı uzaktan çözer); bunun bölgede yerel
-  savaşla çözülmesi G'de. Karar: G'ye dek makro yolu (`Agents.FightCamp`) sürer.
+- Bağlı kampın ilanını alan simdeki kahramanlar G'den beri kampla bölgede dövüşür (aşağıda).
 
 ### B · Karakter yaratma ve oyuncu kişisi (bitti)
 
@@ -206,6 +205,33 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
   izle düşen Karizma geri gelir, lakap kalkar).
 - **Test:** `--econtest` (dükkânlar simden, alış ve satış devletin stoğunu ve hazinesini değiştirir, 24 ot öbeği ve toplama, ağırlık
   ×0,60, ceset, sandık, handa uyku 07:00'ye ve tam can, ödül +550 gümüş ve tarihte, tapınakta iz tedavisi). Tohum 1, 2, 4 PASS.
+
+### G · Etkileşim, pano ve simetri (bitti)
+
+- **Laf** (`src/game/Talk.cs`; E ile yaklaşınca balon): kişinin ve dünyanın durumundan tek satır, ağırlıklı seçimle: kamp düştüyse
+  ("…goblinlerini sen mi temizledin? Sağ ol!" — tarihte oyuncunun adıyla yazıldıysa), kamp duruyorsa çiftçi/çoban/oduncu/muhtar
+  goblinlerden yakınır; kahramanın canı yarının altındaysa ("Kan kaybediyorsun! Tapınağa git"), yaraları (iz, topallık, göz), soyulduysa;
+  hancı bekleyen ödülü, parasız yolcuyu; kişinin açlığı, yorgunluğu, yalnızlığı; köyün simdeki durumu (festival, refah, kıtlık, salgın,
+  canavar tehdidi, göç, işgal, kuşatma), devletin savaşı, yöneticinin vergisi, düşük istikrar; mesleğinin ve saatin eski lafları.
+- **Fiiller** (kartta 1–5): **Söylenti sor** — simin son 60 günlük haberlerinden (`Local.News`: köyün ve kampın çevresi, devletin
+  büyük olayları, dünyanın savaşları ve ejderhaları) biri, oturum boyunca her biri bir kez ("Tüccarlar anlatıyor: …", ekranda ne zaman
+  olduğu ve nedeni); **Saldır** — goblinde savaşı başlatır; **Kirala** (E), **Ticaret** ve hizmetler (F). Rüşvet, tehdit, ikna,
+  katılmak, yankesicilik sonraya.
+- **Han panosu** (`src/game/Board.cs`): hanın merdiveni yanında tahta pano (açık ilan başına bir kâğıt). E: bağlı kampın ilanı (asan,
+  ödül, kalan gün, başarısızlıklar; kim kopardı, yolda mı; tamamlandı mı), hanın açık ve yoldaki öteki ilanları (kaç fersah ötede),
+  bekleyen ödül. **İlanı kopar**: `Local.TakeQuest` — simdeki kahramanlar artık alamaz, köy yeni ilan asmaz, kamp düşünce ödül oyuncunun.
+- **Simetri — simdeki kahramanlar bölgede dövüşür** (`src/game/NpcBands.cs`, `Sim.LocalCamp`, `Local.LocalBandResult`): ilanı alan
+  kahraman grubu simde bağlı kampa varınca savaş bölgeye devredilir: kahramanlar handan çıkar (handaki kişileri kalkar; başka handan
+  gelenler kişi olarak eklenir), yoldan ve orman patikasından kampa yürür (~650 m, 2 m/s), kampın bütün goblinleriyle aynı `Fight`
+  kurallarıyla dövüşür (oyuncu yakındaysa görür; değilse de oynanır). Sonuç simdeki bir savaş gibi yazılır (`Heroes.AfterBattle`: XP,
+  ün, ölen ölür; ölen goblinler kamptan düşer; kamp kırıldıysa temizlenir, ilan kapanır, ödül kahramanlara; kırılmadıysa ilan
+  başarısız sayılır, ödül artar); grup yuvasına döner, ölüler yerde kalır. Oyuncu o sırada kampta dövüşüyorsa grup bekler. Ordular
+  (devlet seferleri) simde çözülür.
+- **Büyü:** hasar cantrip'leri 5. seviyede iki, 11.'de üç zar (D&D).
+- **Testler:** `--gtest` (12 köylünün lafı; can 2 iken 5/12 kişi kanı fark etti; 24 söylenti; pano; 3 kahramanlık grup (rahip Sv6,
+  iki druid Sv5–6) handan kampa yürüdü, dövüştü — bir koşuda kampı yerle bir etti, birinde püskürtüldü ve rahip öldü; sim sonucu aldı;
+  kamp ayaktaysa oyuncu ilanı kopardı ve 3 gün sonra açık ilan yok). `--fighttest`'e 3 × Sv6 (rahip/savaşçı/haydut) vs 7 goblin:
+  56/60, 60/60, 60/60.
 
 ---
 

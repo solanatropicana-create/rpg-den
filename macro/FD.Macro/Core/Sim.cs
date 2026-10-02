@@ -27,6 +27,9 @@ public sealed partial class Sim
     public readonly Dictionary<string, List<int>> NavCache = new();
     public byte[] ShoreW;
     public Action<GameEvent> OnEvent;
+    /// <summary>Faz 2: oyuncunun bölgesi (kaydedilmez): bağlı kampa varan kahraman grubunu yerel oyun üstlenir (true: savaşı bölgede
+    /// oynanacak, sonuç <see cref="Local.LocalBandResult"/> ile gelir; o güne dek grup kampın başında bekler).</summary>
+    public Func<List<Agent>, Camp, bool> LocalCamp;
 
     /// <summary>Golden-test checkpoint hook (null in normal runs).</summary>
     public Action<string> Cp;

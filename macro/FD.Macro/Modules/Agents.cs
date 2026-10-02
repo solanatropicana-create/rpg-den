@@ -836,6 +836,12 @@ public static class Agents
         J.Sort(band, (x, y) => (y.Kind == "army" ? 1 : 0) - (x.Kind == "army" ? 1 : 0));
         foreach (var bb in band) bb.Muster = null;
         if (band.Count > 1) s.Metric("jointBattle");
+        // Faz 2: oyuncunun bölgesindeki kampa varan kahraman grupları bölgede, aynı kurallarla dövüşür
+        if (cp != null && s.LocalCamp != null && s.W.Region != null && s.W.Region.Camp == cp.Id && J.Every(band, b => b.Kind == "party") && s.LocalCamp(band, cp))
+        {
+            foreach (var bb in band) bb.Muster = new Muster { Since = s.Day, Until = s.Day + 30 };
+            return;
+        }
         if (cp != null) FightCamp(s, band, cp);
         else if (st != null) Siege(s, band, st);
     }
@@ -1020,7 +1026,7 @@ public static class Agents
         }
     }
 
-    private static void PartyReturn(Sim s, Agent a)
+    public static void PartyReturn(Sim s, Agent a)
     {
         var alive = J.Filter(J.Map(a.Heroes ?? new List<int>(), id => s.Hero(id)), h => h.State != "dead");
         a.Returning = true;

@@ -111,7 +111,7 @@ public partial class PartyManager : Node
         var inn = _s.Inn;
         foreach (var p in _r.Life.People)
         {
-            if (!p.Guest || p.Hired || p.HeroId < 0) continue;
+            if (!p.Guest || p.Hired || p.HeroId < 0 || p.InFight) continue;
             var h = _s.Macro.Hero(p.HeroId);
             bool here = h != null && h.State == "tavern" && h.BaseInn && inn != null && h.Base == inn.Id;
             if (!here && p.Present) { p.Present = false; p.Act = null; p.Motion = Motion.Inside; p.Note($"{H.Clock(_r.Life.Now)} handan ayrıldı{(h?.State == "quest" ? ": bir ilanın peşine düştü" : h?.State == "dead" ? "" : "")}"); }

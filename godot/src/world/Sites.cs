@@ -23,6 +23,9 @@ static class SiteUtil
 /// <summary>The "Yorgun Katır" inn by the road: model, porch seats, stable, trough, lights; sim places.</summary>
 public sealed class InnSite : IRegionFeature
 {
+    /// <summary>Faz 2 G: the notice board by the steps</summary>
+    public static Vector2 BoardPos;
+    public static float BoardYaw;
     Vector2 _origin;
     float _yaw;
     Place _inn, _yard;
@@ -62,6 +65,10 @@ public sealed class InnSite : IRegionFeature
         foreach (var (x, z, fz) in new[] { (-4.9f, 7.7f, -1f), (5.2f, 7.7f, -1f), (-2.4f, 6.1f, 1f), (1.2f, 6.9f, 1f), (-6.9f, 6.0f, 1f) })
             life.AddSpot(_inn, "serve", L(x, z), F(0, fz), 0.45f);
 
+        // Faz 2 G: the notice board left of the steps, facing the road
+        BoardPos = SiteUtil.LocalToWorld(_origin, _yaw, -3.9f, 10.6f);
+        BoardYaw = RegionSpec.YawFacing(RegionSpec.InnFront);
+        life.Obstacles.Add((SiteUtil.N(BoardPos), new V2(0.9f, 0.15f), MathF.Atan2(-RegionSpec.InnFront.X, RegionSpec.InnFront.Y), "board"));
         // yard: the whole plot is walkable; stable stalls and the trough
         _yard = life.AddPlace(PlaceKind.InnYard, "han avlusu", L(11.6f, 5.5f), F(0, 1));
         _yard.Center = SiteUtil.N(RegionSpec.Inn); _yard.IsRect = true; _yard.Half = new V2(RegionSpec.InnPadHalfSize.X - 1, RegionSpec.InnPadHalfSize.Y - 1);

@@ -336,6 +336,16 @@ public static class Census
 
     static string ClassTr(string c) => c switch { "fighter" => "savaşçı", "rogue" => "haydut", "wizard" => "büyücü", "cleric" => "rahip", "paladin" => "paladin", "ranger" => "korucu", "barbarian" => "barbar", "druid" => "druid", "bard" => "ozan", "monk" => "keşiş", "warlock" => "cadı", "sorcerer" => "sihirbaz", _ => c ?? "maceracı" };
 
+    /// <summary>Faz 2 G: an adventurer arriving during play (a hero of the sim coming for the camp).</summary>
+    public static Person AddGuest(LifeSim w, GuestSpec g, ulong seed)
+    {
+        var rng = new Rng(seed);
+        var gp = NewPerson(w, Role.Adventurer, g.Female, g.Age, g.Name, g.Surname ?? "", rng);
+        gp.Race = g.Race; gp.IsVisitor = true; gp.Guest = true; gp.HeroId = g.HeroId; gp.Cls = g.Cls; gp.Level = g.Level; gp.Align = g.Align;
+        gp.Work = 5; gp.WalkSpeed = 1.45f; gp.Present = false;
+        return gp;
+    }
+
     public static string RoleName(Person p) => p.Role switch
     {
         Role.Farmer => p.Female ? "Çiftçi (kadın)" : "Çiftçi",
