@@ -79,6 +79,8 @@ public partial class Dev : Node
     public string Mood;
     /// <summary>--scenario (with --newgame=…): the brief's acceptance scenario, headless</summary>
     public bool Scenario;
+    /// <summary>--t1test: Tur 1 controls (camera, pause, speed, clicks, selection, stances, flight, smith, hints), headless</summary>
+    public bool T1Test;
     bool _saveTestStarted;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
@@ -87,7 +89,7 @@ public partial class Dev : Node
     /// <summary>--newgame=race,class[,seed[,name]]: run the boot flow headless (creation → world → save → region)</summary>
     public string NewGame;
     /// <summary>tests, shots and tools go straight to the region (Boot skips the menu)</summary>
-    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || PartyTest || EconTest || GTest || SaveTest || ShotPath != null || Bench > 0 || MapDumpPath != null
+    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || PartyTest || EconTest || GTest || SaveTest || T1Test || ShotPath != null || Bench > 0 || MapDumpPath != null
                             || DumpModel != null || Probe != null || Follow != null || CamPos.HasValue);
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
@@ -159,6 +161,7 @@ public partial class Dev : Node
                     case "--mood": Mood = val; break;
                     case "--weather": Weather.Force = val; break;
                     case "--scenario": Scenario = true; break;
+                    case "--t1test": T1Test = true; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -306,6 +309,7 @@ public partial class Dev : Node
         if (GTest) CallDeferred(nameof(RunGTest));
         if (SaveTest && !_saveTestStarted) { _saveTestStarted = true; CallDeferred(nameof(RunSaveTest)); }
         if (Scenario) CallDeferred(nameof(RunScenario));
+        if (T1Test) CallDeferred(nameof(RunT1Test));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
@@ -318,6 +322,7 @@ public partial class Dev : Node
     void RunGTest() => FD.Dev.GTest.Run(this, Region.Current);
     void RunSaveTest() => FD.Dev.SaveTest.Run(this, Region.Current);
     void RunScenario() => FD.Dev.ScenarioTest.Run(this, Region.Current);
+    void RunT1Test() => FD.Dev.Tur1Test.Run(this, Region.Current);
 
     void OpenPanelDev()
     {

@@ -234,6 +234,16 @@ public partial class Region : Node3D
         }
         Life.Mood = MoodNow();
         Director.NewDay += _ => Life.Mood = MoodNow();
+        // Tur 1 E: the smith's own workshop works every day (iron and charcoal from the realm)
+        FD.Game.Smithy.Warm(Session);
+        Director.NewDay += _ =>
+        {
+            var made = FD.Game.Smithy.Day(Session);
+            var smith = Life.People.FirstOrDefault(p => p.Role == FD.Sim.Life.Role.Smith && !p.Dead);
+            if (smith == null) return;
+            if (made.Count > 0) smith.Note($"{FD.Sim.Life.H.Clock(Life.Now)} atölyede dövdü: {string.Join(", ", made.Select(id => FD.Rpg.Items.Get(id)?.Name.ToLowerInvariant()))}");
+            else if (FD.Game.Smithy.ColdReason(Session) is string why) smith.Note($"{FD.Sim.Life.H.Clock(Life.Now)} ocak soğuk: {why} yok");
+        };
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

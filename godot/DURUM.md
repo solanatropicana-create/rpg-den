@@ -1,6 +1,6 @@
 # Fantastik Dünya — açık dünya dikey dilimi (durum, 2 Ekim 2026, Tur 1)
 
-## Tur 1 · Kontrol ve atmosfer (sürüyor)
+## Tur 1 · Kontrol ve atmosfer (bitti; kullanıcının "tamam"ını bekliyor)
 
 Brief: `claude/tur1-kontrol-atmosfer-brief.md` (proje). Faz 2'nin geri bildirimi: ayrı taktik mod "başka oyun" gibi, saldırı
 başlatılamıyor, E ile yanaşmak kötü, büyük ekipte tek tek emir yönetilemez, hız her yerde olsun, atmosfer fazla neşeli. Sıra:
@@ -133,6 +133,21 @@ büyü yuvası, durum, beş duruş düğmesi, bekle/gel; tıkla seç, çift tık
   ya da ok atıyorsa karşılık verir; yoksa önderin yanında bekler.
 - **Kaçış uzaklığı 26 m** (uyuyan düşman da sayılır: uyutup kaçmak kurtuluş sayılmaz, uyutan kazanır).
 - Goblinler hâlâ kendi saldırgan; köylüler ve maceracılar düşman değil (sağ tık = konuş).
+
+### E · Demircinin sivil üretimi ve ilk dakika (bitti)
+
+- **Demirci kendi atölyesinde** (`src/game/Smithy.cs`) her gün diyarın stoğundan demir (en çok 2) ve odun kömürü için odun
+  (4 odun → 2 kömür) alır, parasını hazineye öder (`Local.Trade`), ve günde bir (bazen iki) parça döver: **hançer (bıçak)
+  %36, el baltası %26, mızrak %28, kılıç %10** (kısa ya da uzun; 2 demir, 2 kömür). Demir ya da kömür yoksa **ocak soğur**,
+  yeni bir şey yapılmaz; demirci de söyler ("Ocak soğuk; demir gelmedi."), günlüğüne yazar. Tezgâhta en çok 6 parça bekler
+  (kayıtta: `LocalState.SmithStock`). Dükkânda bu raf **devletin ordu deposundan ayrı**: ordu rafı (pala, kısa yay, gürz,
+  kalkan, zincir zırh) diyarın "arms" stoğundan; atölyeden alınan bir şey diyarın stoğuna dokunmaz (parası demircinin).
+  Oyun başında rafta önceden kalmış bir hançer, bir balta, bir mızrak vardır.
+- **Kömür:** makro dünyada kömür malı yok; makronun kendi demircileri de odun kömürü yakar (`iron.use`: "odun kömürüyle") →
+  kömür = odundan yakılan kömür.
+- **İlk dakikalar:** ilk üç günde (ya da ekip silahsızken, ilan alınmamışken, kimse kiralanmamışken) insanların lafına bir satır
+  karışır: hancı panoyu ve köşedeki paralı maceracıları, köylüler demirciyi ve panoyu söyler. Yanından geçerken biri de
+  kendiliğinden tek cümle söyleyebilir (her konu bir kez, en sık 40 sn'de bir). El tutma yok: işaret, görev listesi, ok yok.
 
 ## Faz 2 · Oyuncu, ekip ve d20 savaş (bitti)
 

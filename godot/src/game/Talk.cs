@@ -34,6 +34,38 @@ public partial class Talk : Node
 
     public override void _ExitTree() { if (Instance == this) Instance = null; }
 
+    // ------------------------------------------------------------------------------------------------ Tur 1 E: a word in passing
+    float _barkT = 8f;
+    readonly HashSet<string> _barked = new();
+
+    /// <summary>In the first days someone the party passes close by may say one line toward the board, the smith or the inn's
+    /// sellswords — unasked, once each, at most one every 40 seconds.</summary>
+    public override void _Process(double delta)
+    {
+        _barkT -= (float)delta;
+        if (_barkT > 0 || _r?.Player == null || _r.Combat?.Active == true || GameClock.Day >= 3 || _barked.Count >= 3) return;
+        _barkT = 1.5f;
+        var pl = _r.Player;
+        var me = pl.Character;
+        if (me == null || me.Captive) return;
+        var here = new System.Numerics.Vector2(pl.GlobalPosition.X, pl.GlobalPosition.Z);
+        foreach (var p in _r.Life.People)
+        {
+            if (!p.Visible || p.Dead || p.InFight || p.IsVisitor || p.Role is Role.Goblin or Role.Child || p.Act?.Kind == ActKind.Flee) continue;
+            if (System.Numerics.Vector2.Distance(p.Pos, here) > 6f) continue;
+            string kind = null, line = null;
+            string camp = (_s.Camp?.Name ?? "goblin kampı").Replace(" Kampı", "");
+            if (me.Weapon == null && !_barked.Contains("smith")) { kind = "smith"; line = p.Role is Role.Smith or Role.Apprentice ? "Elin boş mu? Tezgâhta bıçak da var balta da." : "Silahın yok mu? Demirci meydanın yanında, ocağı yanıyor."; }
+            else if (!_barked.Contains("board")) { kind = "board"; line = p.Role == Role.Innkeeper ? $"Panoya bak: {camp} goblinleri için ödül var." : $"Handaki panoya {camp} goblinleri için ilan asmışlar."; }
+            else if (_s.Party.Count < 2 && !_barked.Contains("hire")) { kind = "hire"; line = p.Role == Role.Innkeeper ? "Köşedeki maceracılar paraya yoldaş olur." : "Handa kılıcını satan adamlar var; goblinlere yalnız gidilmez."; }
+            if (kind == null) return;
+            _barked.Add(kind);
+            _r.LifeWorld.ActorOf(p)?.Say(line, 5f);
+            _barkT = 40f;
+            return;
+        }
+    }
+
     IEnumerable<(string, Action)> Verbs(Person p)
     {
         if (!p.Visible || p.Dead) yield break;
@@ -105,11 +137,43 @@ public partial class Talk : Node
             if (civ != null && _s.Macro.InWar(civ)) c.Add((1.5f, $"{civ.Name} savaşta; gençleri askere yazıyorlar."));
             if (vi.Stability < 30) c.Add((1f, "Herkes huzursuz; ağızlar bozuk, kapılar kilitli."));
         }
+        // Tur 1 E: the smith's own forge
+        if (p.Role is Role.Smith or Role.Apprentice)
+        {
+            if (Smithy.ColdReason(_s) is string cold) c.Add((3f, $"Ocak soğuk; {cold} gelmedi. Tezgâhta ne varsa o kadar."));
+            else if (Smithy.LastMade(_s) is string made && Items.Get(made) is ItemDef md) c.Add((1.6f, $"Bu sabah bir {md.Name.ToLowerInvariant()} dövdüm; tezgâhta duruyor, bak istersen."));
+            if (me.Weapon == null) c.Add((2.5f, "Elin boş mu geziyorsun? Gel, sana bir bıçak ya da balta bulalım."));
+        }
+        // Tur 1 E: the first days — a word toward the board, the smith and the hirelings (once each, not a tutorial)
+        foreach (var (w, t) in Hints(p)) c.Add((w, t));
         // their trade and the hour (the old lines)
         c.Add((1.5f, Lines.Greeting(p, sim)));
         float tot = c.Sum(x => x.w), r = Hash(p.Id, (int)(sim.Now / 30), 3) * tot;
         foreach (var (w, t) in c) { if ((r -= w) <= 0) return t; }
         return c[^1].t;
+    }
+
+    /// <summary>Tur 1 E: in the first days (or while the party has not found them yet) people point at the board, the smith and the
+    /// sellswords in the inn — in their own words, as one line among their others.</summary>
+    public IEnumerable<(float, string)> Hints(Person p)
+    {
+        var me = _r.Player.Character;
+        bool early = GameClock.Day < 3;
+        bool tookQuest = _s.Link?.Player is int pid && _s.Macro.W.Quests.Any(q => q.TakenBy.Contains(pid));
+        bool hired = _s.Party.Count > 1;
+        bool armed = me.Weapon != null;
+        string camp = (_s.Camp?.Name ?? "goblin kampı").Replace(" Kampı", "");
+        if (p.Role == Role.Innkeeper)
+        {
+            if (!tookQuest && (early || Hash(p.Id, 31, GameClock.Day) < 0.5f)) yield return (3f, $"Panoya bak, yolcu: {camp} goblinleri için ödül asılı. Ama tek başına gitme.");
+            if (!hired) yield return (early ? 2.5f : 1f, "Köşedeki masalarda kılıcını satan adamlar oturur; parası olana yoldaş olurlar.");
+            yield break;
+        }
+        if (p.IsVisitor || p.Role is Role.Child or Role.Goblin) yield break;
+        if (!(early || !armed || !tookQuest)) yield break;
+        if (!armed) yield return (2.2f, "Silahsız yola çıkılmaz; demircinin ocağı meydanın yanında.");
+        if (!tookQuest && Hash(p.Id, 33) < 0.6f) yield return (1.6f, $"Handaki panoya {camp} goblinleri için ilan asmışlar, duydun mu?");
+        if (!hired && Hash(p.Id, 35) < 0.5f) yield return (1.2f, "Handa paralı askerler var derler; goblinlere kalabalık gitmek iyidir.");
     }
 
     /// <summary>A piece of news (each told once per session): near the village and the camp, the realm's big ones, the world's.</summary>

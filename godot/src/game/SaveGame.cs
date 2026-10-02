@@ -26,6 +26,8 @@ public sealed class LocalState
     public Dictionary<string, double> Flags = new();
     /// <summary>the goblin camp's chest (stolen goods)</summary>
     public Inventory CampChest = new();
+    /// <summary>Tur 1 E: what the smith has forged in his own workshop (knives, axes, spears, now and then a sword)</summary>
+    public Inventory SmithStock = new();
 }
 
 /// <summary>
@@ -69,7 +71,7 @@ public static class SaveGame
         {
             Seed = s.Seed, BaseLocalDay = s.BaseLocalDay, BaseMacroDay = s.BaseMacroDay, ClockHours = GameClock.TotalHours,
             Party = new List<Character>(s.Party), NextCharId = s.PeekNextCharId(), SavedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
-            Flags = new Dictionary<string, double>(s.Flags), CampChest = s.CampChest,
+            Flags = new Dictionary<string, double>(s.Flags), CampChest = s.CampChest, SmithStock = s.SmithStock,
         };
         var pl = Region.Current?.Player;
         if (pl != null)
@@ -118,6 +120,7 @@ public static class SaveGame
         s.SetNextCharId(st.NextCharId);
         foreach (var kv in st.Flags) s.Flags[kv.Key] = kv.Value;
         s.CampChest = st.CampChest ?? new Inventory();
+        s.SmithStock = st.SmithStock ?? new Inventory();
         GameClock.SetTotalHours(st.ClockHours);
         Pending = st;
         Session.Current = s;

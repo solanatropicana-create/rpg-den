@@ -14,6 +14,8 @@ public sealed class Offer
     public string Id;
     public int Stock;
     public int Buy;
+    /// <summary>Tur 1 E: off the smith's own shelf (not the realm's stock)</summary>
+    public bool Workshop;
     public ItemDef Def => Items.Get(Id);
 }
 
@@ -84,13 +86,12 @@ public static class Economy
                 break;
             case ShopKind.Smith:
                 shop.Name = "Demirci";
-                // simple weapons the smith forges himself (iron or tools in the realm: up to two each, at least one); martial weapons and
-                // mail from the realm's armoury (arms)
+                // Tur 1 E: what he forged in his own workshop (Smithy: knives, axes, spears, a sword now and then — sold off his shelf);
+                // martial weapons and mail from the realm's armoury (arms), a separate shelf
                 int arms = Stock(s, "arms", 6, 3);
-                int simple = Math.Max(Stock(s, "iron", 8, 2, 1), Stock(s, "tools", 8, 2, 1));
                 O("club", 3); O("staff", 2);
-                foreach (var id in new[] { "dagger", "spear", "handaxe", "mace" }) O(id, simple);
-                foreach (var id in new[] { "shortsword", "scimitar", "longsword", "shortbow" }) O(id, Math.Min(arms, id is "longsword" or "shortbow" ? 1 : 2));
+                foreach (var it in s.SmithStock.Items) shop.Offers.Add(new Offer { Id = it.Id, Stock = it.Count, Buy = PriceOf(s, it.Id), Workshop = true });
+                foreach (var id in new[] { "scimitar", "shortbow", "mace" }) O(id, Math.Min(arms, id == "shortbow" ? 1 : 2));
                 O("leather", Stock(s, "leather", 6, 2));
                 O("shield", Math.Min(arms, 2));
                 O("chainshirt", Math.Min(arms, 1));
@@ -117,6 +118,7 @@ public static class Economy
         who.Inv.Silver -= o.Buy;
         who.Inv.Add(id);
         o.Stock--;
+        if (o.Workshop) { s.SmithStock.Remove(id); return true; }   // his own work: the silver is his, the realm's stock is not touched
         _sold[Key(s, shop.Kind, id)] = _sold.GetValueOrDefault(Key(s, shop.Kind, id)) + 1;
         WriteMacro(s, id, o.Buy, +1);
         return true;

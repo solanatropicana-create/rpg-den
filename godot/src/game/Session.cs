@@ -42,6 +42,8 @@ public sealed class Session
     public readonly Dictionary<string, double> Flags = new();
     /// <summary>D/F: what the goblins took (and keep) in their camp's chest; found there when the camp falls</summary>
     public Inventory CampChest = new();
+    /// <summary>Tur 1 E: the smith's own forged goods (<see cref="Smithy"/>)</summary>
+    public Inventory SmithStock = new();
 
     /// <summary>Register the created character in the macro world (hero record, State "player") and make them the party leader.</summary>
     public M.Hero AddPlayer(Character c)
