@@ -138,7 +138,11 @@ public partial class Companion : Node3D
         _lastAnim = null;
         if (L > 40f) { SnapToLeader(); return; }
         // speed to keep up: match the leader near the slot, hurry when behind
-        float want = L < 0.35f ? 0f : MathF.Min(MathF.Max(leaderSpeed, 1.4f) * (L > 4f ? 1.35f : L > 1.5f ? 1.1f : 0.8f), 11f * Char.SpeedFactor + 0.5f);
+        float want = L < 0.35f ? 0f
+            : L > 10f ? MathF.Max(leaderSpeed * 1.15f, 6.5f)
+            : L > 4f ? MathF.Max(leaderSpeed * 1.2f, 4.2f)
+            : MathF.Max(leaderSpeed, 1.4f) * (L > 1.5f ? 1.1f : 0.8f);
+        want = MathF.Min(want, 11f * Char.SpeedFactor + 0.5f);
         _speed = Mathf.Lerp(_speed, want, 1f - MathF.Exp(-dt * 6f));
         if (_speed > 0.05f && L > 0.05f)
         {

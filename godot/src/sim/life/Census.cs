@@ -52,7 +52,20 @@ public sealed class VillageSpec
     /// <summary>race → (adult from, old from, max) in years; null: human (17, 60, 85)</summary>
     public Func<string, (int adult, int old, int max)> Ages;
 
+    /// <summary>Faz 2 E: adventurers staying at the inn (free heroes of the macro world first, mercenaries otherwise)</summary>
+    public readonly List<GuestSpec> Guests = new();
+
     public static VillageSpec Default() => new();
+}
+
+/// <summary>One adventurer at the inn (Faz 2 E).</summary>
+public sealed class GuestSpec
+{
+    public string Name, Surname, Race = "human", Cls = "fighter", Align = "neutral";
+    public bool Female;
+    public int Age = 25, Level = 1, HeroId = -1;
+    /// <summary>can be hired (fighters and rogues)</summary>
+    public bool ForHire = true;
 }
 
 /// <summary>Who lives where and does what. Faz 2: households are built from <see cref="VillageSpec"/> (the macro village).</summary>
@@ -241,6 +254,15 @@ public static class Census
         var v1 = NewPerson(w, Role.Merchant, false, 44, "Yusuf", "", rng); v1.Name = "Tüccar Yusuf"; v1.IsVisitor = true; v1.HasCart = true; v1.Present = false;
         var v2 = NewPerson(w, Role.Pilgrim, true, 57, "Sister", "", rng); v2.Name = "Hacı Theodora"; v2.IsVisitor = true; v2.Present = false;
         var v3 = NewPerson(w, Role.Adventurer, false, 27, "", "", rng); v3.Name = "Kara Rowena"; v3.Female = true; v3.IsVisitor = true; v3.Present = false; v3.WalkSpeed = 1.5f;
+        // Faz 2 E: adventurers staying at the inn
+        int gi = 0;
+        foreach (var g in spec.Guests)
+        {
+            var gp = NewPerson(w, Role.Adventurer, g.Female, g.Age, g.Name, g.Surname ?? "", rng);
+            gp.Race = g.Race; gp.IsVisitor = true; gp.Guest = true; gp.HeroId = g.HeroId; gp.Cls = g.Cls; gp.Level = g.Level; gp.Align = g.Align;
+            gp.Work = gi++;
+            gp.WalkSpeed = 1.45f;
+        }
         // goblins of the camp
         var camp = w.PlaceOf(PlaceKind.Camp);
         if (camp != null)
@@ -312,6 +334,8 @@ public static class Census
         return p;
     }
 
+    static string ClassTr(string c) => c switch { "fighter" => "savaşçı", "rogue" => "haydut", "wizard" => "büyücü", "cleric" => "rahip", "paladin" => "paladin", "ranger" => "korucu", "barbarian" => "barbar", "druid" => "druid", "bard" => "ozan", "monk" => "keşiş", "warlock" => "cadı", "sorcerer" => "sihirbaz", _ => c ?? "maceracı" };
+
     public static string RoleName(Person p) => p.Role switch
     {
         Role.Farmer => p.Female ? "Çiftçi (kadın)" : "Çiftçi",
@@ -329,7 +353,7 @@ public static class Census
         Role.Elder => "Yaşlı",
         Role.Merchant => "Gezgin tüccar",
         Role.Pilgrim => "Hacı",
-        Role.Adventurer => "Maceracı (korucu)",
+        Role.Adventurer => p.Guest ? $"Maceracı · {ClassTr(p.Cls)} Sv{p.Level}{(p.HeroId < 0 ? " · paralı asker" : "")}" : "Maceracı (korucu)",
         Role.Goblin => p.IsBoss ? "Goblin şefi" : "Goblin",
         _ => p.Role.ToString(),
     };

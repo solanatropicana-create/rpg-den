@@ -128,13 +128,14 @@ public partial class CombatDirector : Node
         Outcome = null; Summary = false; Aim = null; Box = null;
 
         // the party
-        var lead = Fight.AddCharacter(_s.Player, HeroOf(_s.Player), FSide.Party, ppos, "player");
+        var me = pl.Character ?? _s.Player;
+        var lead = Fight.AddCharacter(me, HeroOf(me), FSide.Party, ppos, "player");
         lead.Dir = new V2(MathF.Sin(pl.Facing), MathF.Cos(pl.Facing));
-        lead.Stable = _s.Player.Stable;
+        lead.Stable = me.Stable;
         _bodies[lead] = pl;
         foreach (var comp in _r.Companions)
         {
-            if (comp.Char.Dead) continue;
+            if (comp.Char.Dead || comp.Char.Captive || comp.Char.Down) continue;
             var cpos = new V2(comp.GlobalPosition.X, comp.GlobalPosition.Z);
             var f = Fight.AddCharacter(comp.Char, HeroOf(comp.Char), FSide.Party, cpos, comp.Char.HeroId != null ? "hero" : "companion");
             f.Kind = "companion";
@@ -609,7 +610,9 @@ public partial class CombatDirector : Node
         o.PlayerDead = _s.Player.Dead;
         if (o.PlayerDead)
         {
-            var heir = _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead && !c.Captive) ?? _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead);
+            var ctl = _r.Player.Character;
+            var heir = ctl != null && ctl != _s.Player && !ctl.Dead ? ctl
+                : _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead && !c.Captive) ?? _s.Party.FirstOrDefault(c => c != _s.Player && !c.Dead);
             if (heir == null) { o.GameOver = true; o.Lines.Add("Ekipten kimse kalmadı. Demir mod: bu dünya kapandı."); }
             else { o.NewLeader = heir; o.Lines.Add($"Ekibin başına {heir.Name} geçiyor."); }
         }
@@ -775,6 +778,7 @@ public partial class CombatDirector : Node
         Selected.Clear(); Hover = null;
         if (o.GameOver) { GameOver(); return; }
         if (o.NewLeader != null) PassLeadership(o.NewLeader);
+        if (_r.Player.Character.Dead) _r.Party.SwitchControl(1);   // a fallen companion was controlled
         // the fallen are gone from the party (their bodies stay where they fell)
         _s.Party.RemoveAll(c => c.Dead);
         if (!o.Won) Wake(o);
@@ -800,7 +804,7 @@ public partial class CombatDirector : Node
         var away = (RegionSpec.CampSpurControl[0] - RegionSpec.GoblinCamp).Normalized();
         var wake = atCamp ? RegionSpec.CampSpurControl[0] + away * 22f : here + new Vector2(3, 3);
         string text;
-        if (_s.Player.Captive)
+        if (_r.Player.Character.Captive)
         {
             _r.Captivity.Cage();
             foreach (var comp in _r.Companions) { if (comp.Char.Captive || comp.Char.Dead) continue; comp.GlobalPosition = new Vector3(wake.X, _r.Heightfield.Height(wake.X, wake.Y), wake.Y); comp.Hold = true; }
@@ -826,21 +830,22 @@ public partial class CombatDirector : Node
     {
         var old = _s.Player;
         var pl = _r.Player;
-        var comp = _r.Companions.FirstOrDefault(c => c.Char == heir);
-        var oldPos = pl.GlobalPosition; float oldYaw = pl.Facing;
-        Vector3 heirPos = comp?.GlobalPosition ?? oldPos;
         old.IsPlayer = false;
         heir.IsPlayer = true;
         _s.Party.Remove(heir); _s.Party.Insert(0, heir);
         _s.Player = heir;
         _s.PromoteToPlayer(heir);
-        pl.SetCharacter(heir);
-        pl.Teleport(new Vector2(heirPos.X, heirPos.Z), oldYaw, _r.Heightfield);
-        if (comp != null)
+        if (pl.Character == old)
         {
-            comp.Become(old);
-            comp.GlobalPosition = oldPos;
+            // the fallen leader was the controlled body: the heir takes it, the heir's companion body becomes the corpse
+            var comp = _r.Companions.FirstOrDefault(c => c.Char == heir);
+            var oldPos = pl.GlobalPosition; float oldYaw = pl.Facing;
+            Vector3 heirPos = comp?.GlobalPosition ?? oldPos;
+            pl.SetCharacter(heir);
+            pl.Teleport(new Vector2(heirPos.X, heirPos.Z), oldYaw, _r.Heightfield);
+            if (comp != null) { comp.Become(old); comp.GlobalPosition = oldPos; }
         }
+        _s.Controlled = pl.Character;
         _r.Hud.Toast($"{old.Name} düştü. Ekibin başında artık {heir.Name} var.", 7f);
     }
 

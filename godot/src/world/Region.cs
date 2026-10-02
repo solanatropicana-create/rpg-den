@@ -51,6 +51,20 @@ public partial class Region : Node3D
     public readonly List<Companion> Companions = new();
     public FD.Combat.CombatDirector Combat { get; private set; }
     public FD.Game.Captivity Captivity { get; private set; }
+    public FD.Game.PartyManager Party { get; private set; }
+
+    /// <summary>E: a body for a new party member at (x, z), following the controlled one.</summary>
+    public Companion AddCompanion(FD.Rpg.Character c, Vector2 at)
+    {
+        int slot = 0;
+        while (Companions.Exists(x => x.Slot == slot && !x.Char.Dead)) slot++;
+        var comp = Companion.Create(c, slot);
+        AddChild(comp);
+        comp.Init(Player, Heightfield);
+        comp.GlobalPosition = new Vector3(at.X, Heightfield.Height(at.X, at.Y), at.Y);
+        Companions.Add(comp);
+        return comp;
+    }
     public readonly List<IRegionFeature> Features = new();
     public bool IsReady { get; private set; }
 
@@ -122,7 +136,7 @@ public partial class Region : Node3D
             var dev = FD.Rpg.CharacterFactory.Player("Deneme Yolcu", "human", "fighter", "neutral", FD.Rpg.Rules.SuggestedBase("fighter"), new FD.Rpg.Look(), null, 10);
             Session.AddPlayer(dev);
         }
-        Player.SetCharacter(Session.Player);
+        Player.SetCharacter(Session.Controlled ?? Session.Player);
         var pending = FD.Game.SaveGame.Pending;
         if (pending != null && pending.HasPosition)
             Player.Teleport(new Vector2(pending.PlayerX, pending.PlayerZ), pending.PlayerYaw, Heightfield);
@@ -133,7 +147,7 @@ public partial class Region : Node3D
         int slot = 0;
         foreach (var c in Session.Party)
         {
-            if (c == Session.Player || c.Dead) continue;
+            if (c == (Session.Controlled ?? Session.Player) || c.Dead) continue;
             var comp = Companion.Create(c, slot++);
             AddChild(comp);
             comp.Init(Player, Heightfield);
@@ -159,8 +173,11 @@ public partial class Region : Node3D
         Captivity = new FD.Game.Captivity();
         AddChild(Captivity);
         Captivity.Init(this);
-        if (Session.Player.Captive) Captivity.Cage();
-        foreach (var comp in Companions) comp.Hold = Session.Player.Captive;
+        if (Player.Character.Captive) Captivity.Cage();
+        foreach (var comp in Companions) comp.Hold = Player.Character.Captive;
+        Party = new FD.Game.PartyManager();
+        AddChild(Party);
+        Party.Init(this);
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

@@ -40,9 +40,12 @@ public static class CharacterFactory
     /// assume for the class (Combat.HeroAc / HeroCombatant): fighter longsword, chain shirt and shield; rogue shortsword and
     /// leather; cleric mace, chain shirt and shield; wizard staff; others a spear.
     /// </summary>
+    /// <summary>The local class a macro class plays as (paladin, barbarian and ranger fight; druids pray; the rest fight).</summary>
+    public static string LocalClass(string cls) => Array.IndexOf(Rules.Classes, cls) >= 0 ? cls : cls switch { "paladin" => "fighter", "barbarian" => "fighter", "ranger" => "fighter", "druid" => "cleric", _ => "fighter" };
+
     public static Character FromHero(M.Hero h)
     {
-        string cls = Array.IndexOf(Rules.Classes, h.Cls) >= 0 ? h.Cls : h.Cls switch { "paladin" => "fighter", "barbarian" => "fighter", "ranger" => "fighter", "druid" => "cleric", _ => "fighter" };
+        string cls = LocalClass(h.Cls);
         var c = new Character
         {
             HeroId = h.Id, Name = h.Name, Race = h.Race, Cls = cls, Align = h.Align ?? "neutral", Faith = h.Faith ?? "none", Level = h.Level, Xp = h.Xp,
@@ -72,6 +75,21 @@ public static class CharacterFactory
             Skin = 0, Hair = 0, Cloth1 = ClassColor(cls, r), Cloth2 = 0x4a3a2a,
             HairStyle = r.Chance(0.5) ? "hair_short" : "hair_long", Beard = r.Chance(0.4), Height = 0.97f + (float)r.Next() * 0.06f,
         };
+        return c;
+    }
+
+    /// <summary>Faz 2 E: a mercenary from the inn (no macro record): level-1 fighter or rogue with the class kit, standard array by the
+    /// class's priority plus the race bonus.</summary>
+    public static Character Mercenary(string name, string race, bool female, string cls, string align, int id, int level = 1)
+    {
+        var h = new M.Hero { Id = 800000 + id, Name = name, Race = race, Cls = cls, Level = level, Xp = Rules.XpFor(level), Stats = new M.JsObj<double>(), Hp = 99, MaxHp = 99, Align = align, Gold = 1 };
+        var pr = M.D.HERO_CLASSES.GetOr(cls, null)?.Priority;
+        int[] arr = { 15, 14, 13, 12, 10, 8 };
+        if (pr != null) for (int i = 0; i < 6; i++) h.Stats.Set(pr[i], arr[i] + Rules.RaceBonus(race, Array.IndexOf(Rules.StatIds, pr[i])));
+        var c = FromHero(h);
+        c.HeroId = null; c.Id = id; c.Look.Female = female;
+        c.Inv.Silver = 0;
+        c.Recalc(true); c.Rest();
         return c;
     }
 

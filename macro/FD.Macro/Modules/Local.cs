@@ -376,6 +376,33 @@ public static class Local
         return n.Count == 0 ? "yolcuları" : string.Join(", ", n);
     }
 
+    /// <summary>E: handaki serbest kahraman oyuncunun ekibine kiralandı (State "party": simin yapay zekâsı ona dokunmaz, han havuzunda
+    /// sayılmaz).</summary>
+    public static void Hire(Sim s, int heroId, double wageSilver)
+    {
+        var link = s.W.Region; var h = s.Hero(heroId); var pl = Player(s);
+        if (link == null || h == null) return;
+        h.State = "party"; h.Goal = null; h.Auction = null;
+        if (!link.Party.Contains(h.Id)) link.Party.Add(h.Id);
+        Will.Note(s, h, $"{(pl != null ? Tr.Ek(pl.Name, "a") : "bir yabancıya")} haftalığı {J.S(wageSilver)} gümüşe yoldaş oldu");
+        s.Metric("partyHire");
+        s.Log("hero", $"{h.Name}, {(pl != null ? pl.Name : "bir yabancı")} ile yola çıktı.", tile: Village(s)?.Tile, cause: $"Haftalığı {J.S(wageSilver)} gümüş", major: false);
+    }
+
+    /// <summary>E: yoldaş ekipten ayrıldı (maaş ödenmedi, hizalama uyuşmadı): hana döner, yeniden iş bekler.</summary>
+    public static void Dismiss(Sim s, int heroId, string why)
+    {
+        var link = s.W.Region; var h = s.Hero(heroId); var inn = Inn(s);
+        if (link == null || h == null) return;
+        link.Party.Remove(h.Id);
+        if (h.State == "dead") return;
+        h.State = "tavern"; h.Civ = -1;
+        if (inn != null) { h.Base = inn.Id; h.BaseInn = true; h.Pos = inn.Tile; }
+        h.IdleSince = s.Day;
+        Will.Note(s, h, $"ekipten ayrıldı: {why}");
+        s.Metric("partyLeave");
+    }
+
     /// <summary>D: oyuncu öldü, ekipten biri başa geçti: simde artık o "oyuncu"dur (State "player", bağ onu gösterir).</summary>
     public static void Promote(Sim s, Hero h)
     {

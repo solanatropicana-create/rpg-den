@@ -158,6 +158,14 @@ public sealed class Person
     public string FightAnim;
     /// <summary>Faz 2: weapon shown in a fight instead of the usual tool (e.g. proc_bow for goblin archers)</summary>
     public string FightTool;
+    /// <summary>Faz 2 E: an adventurer staying at the inn (a free hero of the macro world, or a mercenary): can be hired</summary>
+    public bool Guest;
+    /// <summary>macro hero record (−1: a mercenary with no record)</summary>
+    public int HeroId = -1;
+    public string Cls, Align;
+    public int Level;
+    /// <summary>joined the party (the body is now a companion; this person stays away)</summary>
+    public bool Hired;
     /// <summary>Faz 2: dead (a body on the ground; LifeSim never moves them again) — or lying unconscious (<see cref="Down"/>)</summary>
     public bool Dead, Down;
     public Role Role;

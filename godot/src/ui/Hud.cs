@@ -36,6 +36,10 @@ public partial class Hud : CanvasLayer
     (string text, Action act)? _extra;
     Label _toast;
     float _toastT;
+    /// <summary>Faz 2 E/G: what can be done with the person whose card is open (Kirala, Söylenti sor, Ticaret, Saldır…), keys 1–5.</summary>
+    public readonly List<Func<Person, IEnumerable<(string label, Action act)>>> Verbs = new();
+    readonly List<(string label, Action act)> _verbs = new();
+    Label _cardVerbs, _party;
     readonly List<(Label l, Vector2 world)> _mapLabels = new();
     const int MapPx = 600;
 
@@ -78,6 +82,12 @@ public partial class Hud : CanvasLayer
 
         BuildCard(root);
         BuildMap(root);
+        _party = MakeLabel(15, new Color(0.9f, 0.92f, 0.85f));
+        _party.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
+        _party.GrowVertical = Control.GrowDirection.Begin;
+        _party.Position = new Vector2(22, -22);
+        _party.VerticalAlignment = VerticalAlignment.Bottom;
+        root.AddChild(_party);
 
         _flash = new ColorRect { Color = new Color(0.8f, 0.05f, 0.02f, 0f), MouseFilter = Control.MouseFilterEnum.Ignore };
         _flash.SetAnchorsPreset(Control.LayoutPreset.FullRect);
@@ -148,6 +158,7 @@ public partial class Hud : CanvasLayer
         v.AddChild(new HSeparator());
         var lt = MakeLabel(14, gold); lt.Text = "Günlük"; v.AddChild(lt);
         _cardLog = MakeLabel(14, dim); v.AddChild(_cardLog);
+        _cardVerbs = MakeLabel(16, new Color(1f, 0.9f, 0.6f)); _cardVerbs.AutowrapMode = TextServer.AutowrapMode.WordSmart; v.AddChild(_cardVerbs);
         var hint = MakeLabel(13, new Color(0.6f, 0.56f, 0.5f)); hint.Text = "[E] kapat"; v.AddChild(hint);
     }
 
@@ -275,6 +286,7 @@ public partial class Hud : CanvasLayer
             foreach (var pr in Prompts) { var r = pr(); if (r != null) { _extra = r; break; } }
         _prompt.Text = _promptPerson != null && _cardPerson != _promptPerson ? $"[E]  {_promptPerson.FullName} — {Census.RoleName(_promptPerson)}"
             : _extra != null ? $"[E]  {_extra.Value.text}" : "";
+        UpdateParty();
         if (_toastT > 0) { _toastT -= dt; _toast.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1)); if (_toastT <= 0) _toast.Text = ""; }
         if (_cardPerson != null) FillCard(_cardPerson);
 
@@ -349,6 +361,12 @@ public partial class Hud : CanvasLayer
         var sb = new StringBuilder();
         for (int i = p.Log.Count - 1; i >= 0 && i >= p.Log.Count - 4; i--) sb.AppendLine(p.Log[i]);
         _cardLog.Text = sb.ToString().TrimEnd();
+        _verbs.Clear();
+        foreach (var vp in Verbs) foreach (var vb in vp(p)) _verbs.Add(vb);
+        var vs = new StringBuilder();
+        for (int i = 0; i < _verbs.Count && i < 5; i++) vs.AppendLine(_verbs[i].act != null ? $"[{i + 1}] {_verbs[i].label}" : $"     {_verbs[i].label}");
+        _cardVerbs.Text = vs.ToString().TrimEnd();
+        _cardVerbs.Visible = _verbs.Count > 0;
     }
 
     void OpenCard(Person p)
@@ -360,6 +378,7 @@ public partial class Hud : CanvasLayer
     }
 
     void CloseCard() { _cardPerson = null; _card.Visible = false; }
+    public void CloseCardPublic() => CloseCard();
 
     public override void _UnhandledInput(InputEvent e)
     {
@@ -369,6 +388,12 @@ public partial class Hud : CanvasLayer
             if (_cardPerson != null && (_promptPerson == null || _promptPerson == _cardPerson)) CloseCard();
             else if (_promptPerson != null) OpenCard(_promptPerson);
             else if (_extra != null) _extra.Value.act();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (_cardPerson != null && e is InputEventKey vk && vk.Pressed && !vk.Echo && vk.PhysicalKeycode >= Key.Key1 && vk.PhysicalKeycode <= Key.Key5)
+        {
+            int i = (int)(vk.PhysicalKeycode - Key.Key1);
+            if (i < _verbs.Count && _verbs[i].act != null) { var act = _verbs[i].act; act(); }
             GetViewport().SetInputAsHandled();
         }
         else if (e.IsActionPressed("map"))
@@ -394,6 +419,30 @@ public partial class Hud : CanvasLayer
     }
 
     public void OpenCardFor(Person p) => OpenCard(p);
+
+    float _partyT;
+    void UpdateParty()
+    {
+        _partyT -= (float)GetProcessDeltaTime();
+        if (_partyT > 0) return;
+        _partyT = 0.25f;
+        var s = _region.Session;
+        bool fight = _region.Combat?.Active == true;
+        _party.Visible = !fight && s != null && s.Party.Count > 1;
+        if (!_party.Visible) return;
+        var ctl = _region.Player?.Character;
+        var sb = new StringBuilder();
+        foreach (var c in s.Party)
+        {
+            if (c.Dead) continue;
+            string mark = c == ctl ? "▶ " : "   ";
+            string st = c.Captive ? " · kafeste" : c.Down ? " · baygın" : "";
+            string pay = c.WageSilver > 0 && !c.IsPlayer ? $" · maaşa {Math.Max(0, c.PaidUntil - GameClock.Day)} gün" : "";
+            sb.AppendLine($"{mark}{c.FullName} · {FD.Rpg.Rules.ClassName(c.Cls)} Sv{c.Level} · can {c.Hp}/{c.MaxHp}{st}{pay}");
+        }
+        sb.Append("   [Tab] kontrol değiştir");
+        _party.Text = sb.ToString();
+    }
 
     /// <summary>A line of feedback over the prompt (a dice check, what happened) for a few seconds.</summary>
     public void Toast(string text, float seconds = 4f) { _toast.Text = text; _toastT = seconds; _toast.Modulate = Colors.White; }

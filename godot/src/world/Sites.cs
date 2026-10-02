@@ -73,6 +73,9 @@ public sealed class InnSite : IRegionFeature
             life.AddSpot(_yard, "stall", L(p.X, p.Z + 1.1f), F(0, -1));
         }
         life.AddSpot(_yard, "trough", L(18.4f, 6.9f), F(-1, 0));
+        // Faz 2 E: sword drill in front of the yard (the inn's adventurers)
+        foreach (var (x, z) in new[] { (10.5f, 11.5f), (13.5f, 12.2f), (16.2f, 11.2f) })
+            life.AddSpot(_yard, "drill", L(x, z), F(-0.3f, -1f));
     }
 
     public void Build(Region region)

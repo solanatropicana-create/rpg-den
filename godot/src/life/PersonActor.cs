@@ -26,6 +26,7 @@ public partial class PersonActor : Node3D
     Vector3 _enterFrom;
     string _outfitKey;
     string[] _baseOutfit = Array.Empty<string>();
+    string _baseHand;
     string _lastClip;
     public float Scale01 = 1f;
     public double LastGreet = -999;
@@ -45,10 +46,11 @@ public partial class PersonActor : Node3D
         {
             Name = "Body", ModelName = P.Role == Role.Goblin ? "goblin" : "human",
             Skin = look.Skin, Cloth1 = look.Cloth1, Cloth2 = look.Cloth2, Hair = look.Hair,
-            Outfit = look.Outfit, Ears = look.Ears,
+            Outfit = look.Outfit, Ears = look.Ears, HandProp = look.HandProp,
         };
         if (P.Role == Role.Goblin) { Body.WalkAnimSpeed = 1.1f; Body.RunAnimSpeed = 3.8f; }
         _baseOutfit = look.Outfit;
+        _baseHand = look.HandProp;
         Body.Scale = new Vector3(Scale01 * look.Wide, Scale01, Scale01 * look.Wide);
         AddChild(Body);
         Body.SpeedMul = 0.93f + H.Hash(P.Id, 5) * 0.14f;
@@ -152,7 +154,7 @@ public partial class PersonActor : Node3D
             _outfitKey = key;
             if (tool == null) Body.SetOutfit(_baseOutfit);
             else { var o = new string[_baseOutfit.Length + 1]; _baseOutfit.CopyTo(o, 0); o[^1] = tool; Body.SetOutfit(o); }
-            if (Body.HandProp != null) Body.SetHandProp(null);
+            if (Body.HandProp != _baseHand) Body.SetHandProp(_baseHand);
         }
         if (clip == "Attack" && _lastClip == "Attack" && !Body.IsPlaying()) Body.Restart();
         Body.Drive(clip, speed);
@@ -240,6 +242,8 @@ public struct Appearance
     /// <summary>Faz 2: width multiplier (stocky dwarves and half-orcs, slender elves) and ear shape (see Humanoid.Ears)</summary>
     public float Wide;
     public int Ears;
+    /// <summary>Faz 2 E: weapon in the right hand (adventurers at the inn)</summary>
+    public string HandProp;
 
     /// <summary>Faz 2: how a people looks on the shared human model: height, build, skin, ears, beard (gerçek modeller sonra).</summary>
     public readonly struct RaceLook
@@ -327,6 +331,12 @@ public struct Appearance
             case Role.Homemaker: if (r.Chance(0.5f)) o.Add("apron"); break;
             case Role.Priest: o.Clear(); o.Add("hood"); ap.Cloth2 = FMath.Hex(0xd8d0c0); break;
             case Role.Pilgrim: o.Add("hood"); ap.Cloth2 = FMath.Hex(0x6a5a40); break;
+            case Role.Adventurer when p.Guest:
+                ap.Cloth1 = FMath.Hex(p.Cls switch { "rogue" => 0x2a3a2au, "wizard" => 0x3a2f6au, "cleric" => 0xd8c890u, _ => r.Chance(0.5f) ? 0x6a2a2au : 0x3a4a6au });
+                if (p.Cls == "rogue") o.Add("hood"); else if (p.Cls is "fighter" or "paladin" && r.Chance(0.5f)) o.Add("helmet");
+                ap.HandProp = p.Cls switch { "rogue" => "proc_shortsword", "wizard" or "druid" => "proc_staff", "ranger" => "proc_bow", "cleric" => null, _ => "proc_longsword" };
+                if (p.Cls == "cleric") o.Add("tool_hammer");
+                break;
             case Role.Adventurer: o.Add("hood"); ap.Cloth2 = FMath.Hex(0x2a3a2a); o.Add("tool_spear"); break;
             case Role.StableHand: if (r.Chance(0.5f)) o.Add("hat_straw"); break;
         }

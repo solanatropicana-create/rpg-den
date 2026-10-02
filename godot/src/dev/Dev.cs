@@ -63,6 +63,8 @@ public partial class Dev : Node
     public int CampTest;
     /// <summary>--fate=rob|capture|kill: force what the goblins do after a lost fight (tests)</summary>
     public string Fate;
+    /// <summary>--partytest: headless hiring, following, wages, alignment, Tab</summary>
+    public bool PartyTest;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
     /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
@@ -70,7 +72,7 @@ public partial class Dev : Node
     /// <summary>--newgame=race,class[,seed[,name]]: run the boot flow headless (creation → world → save → region)</summary>
     public string NewGame;
     /// <summary>tests, shots and tools go straight to the region (Boot skips the menu)</summary>
-    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || ShotPath != null || Bench > 0 || MapDumpPath != null
+    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || PartyTest || ShotPath != null || Bench > 0 || MapDumpPath != null
                             || DumpModel != null || Probe != null || Follow != null || CamPos.HasValue);
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
@@ -134,6 +136,7 @@ public partial class Dev : Node
                     case "--autopause": AutoPause = val != "0"; break;
                     case "--camptest": CampTest = val == "" ? 1 : int.Parse(val, ci); break;
                     case "--fate": Fate = val; break;
+                    case "--partytest": PartyTest = true; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -259,6 +262,7 @@ public partial class Dev : Node
         if (region.Combat != null && PauseAt.HasValue) region.Combat.PauseAt = PauseAt;
         if (region.Combat != null && Fate != null) region.Combat.ForceFate = Fate;
         if (CampTest > 0) CallDeferred(nameof(RunCampTest));
+        if (PartyTest) CallDeferred(nameof(RunPartyTest));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
@@ -266,6 +270,7 @@ public partial class Dev : Node
     void RunLifeTest() => FD.Dev.LifeTest.Run(this, Region.Current, LifeTestDays);
     void RunWorldTest() => FD.Dev.WorldTest.Run(this, Region.Current, WorldTestDays);
     void RunCampTest() => FD.Dev.CampTest.Run(this, Region.Current, CampTest);
+    void RunPartyTest() => FD.Dev.PartyTest.Run(this, Region.Current);
 
     /// <summary>--fight: start a fight with the goblins near the player (the camp's if none are near: they are brought over)</summary>
     void DevFight()

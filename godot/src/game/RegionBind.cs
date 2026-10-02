@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Collections.Generic;
 using FD.Sim.Life;
 using M = FD.Macro;
 
@@ -50,12 +52,56 @@ public static class RegionBind
         var inn = s.Inn;
         spec.InnRace = !string.IsNullOrEmpty(inn?.KeeperRace) ? inn.KeeperRace : spec.Races[0].race;
         var cp = s.Camp;
-        spec.Goblins = cp != null ? Math.Clamp((int)Math.Round(cp.Count), 2, MaxGoblins) : 6;
-        spec.GoblinBoss = cp != null && cp.Boss;
+        spec.Goblins = cp == null ? 6 : !cp.Alive ? 0 : Math.Clamp((int)Math.Round(cp.Count), 2, MaxGoblins);
+        spec.GoblinBoss = cp != null && cp.Alive && cp.Boss;
+        Guests(s, spec);
         spec.Given = Given;
         spec.Surname = Family;
         spec.Ages = Ages;
         return spec;
+    }
+
+    public const int MaxGuests = 3, MinForHire = 2;
+
+    /// <summary>Faz 2 E: the inn's adventurers: free heroes waiting at the bound inn in the macro world (highest level first, at most
+    /// three), then mercenaries (fighters and rogues of the village's peoples, level 1) until two can be hired. The party's own
+    /// members are not here.</summary>
+    static void Guests(Session s, VillageSpec spec)
+    {
+        var party = new HashSet<int>();
+        foreach (var c in s.Party) if (c.HeroId is int id) party.Add(id);
+        var heroes = M.Local.InnHeroes(s.Macro).Where(h => !party.Contains(h.Id)).OrderByDescending(h => h.Level).ThenBy(h => h.Id).Take(MaxGuests).ToList();
+        var day = s.Macro.W.Day;
+        int hireable = 0;
+        foreach (var h in heroes)
+        {
+            var mapped = FD.Rpg.CharacterFactory.LocalClass(h.Cls);
+            bool forHire = mapped is "fighter" or "rogue";
+            if (forHire) hireable++;
+            var age = Ages(h.Race);
+            spec.Guests.Add(new GuestSpec
+            {
+                Name = string.IsNullOrEmpty(h.Given) ? h.Name.Split(' ')[0] : h.Given, Surname = h.Surname ?? "", Race = h.Race, Cls = h.Cls,
+                Level = (int)h.Level, Align = h.Align ?? "neutral", HeroId = h.Id, ForHire = forHire,
+                Female = FD.Rpg.CharacterFactory.IsFemaleName(h), Age = age.adult + 3 + (int)h.Level * 2,
+            });
+        }
+        var rng = new Rng((ulong)(Math.Abs(s.Seed) * 1000 + day));
+        for (int k = 0; hireable < MinForHire && spec.Guests.Count < MaxGuests; k++)
+        {
+            string race = spec.Races[0].race;
+            float tot = spec.Races.Sum(r => r.w), x = rng.Next01() * tot;
+            foreach (var (r, w) in spec.Races) { if ((x -= w) <= 0) { race = r; break; } }
+            if (race == "goblin") race = "human";
+            bool female = rng.Chance(0.35f);
+            float a = rng.Next01();
+            spec.Guests.Add(new GuestSpec
+            {
+                Name = Given(race, female, rng), Surname = Family(race, rng), Race = race, Female = female, Cls = k % 2 == 0 ? "fighter" : "rogue",
+                Level = 1, Align = a < 0.4f ? "good" : a < 0.85f ? "neutral" : "evil", HeroId = -1, ForHire = true, Age = Ages(race).adult + 2 + rng.Int(8),
+            });
+            hireable++;
+        }
     }
 
     /// <summary>Given name from the macro pool of the race: even entries male, odd entries female.</summary>

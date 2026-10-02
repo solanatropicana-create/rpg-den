@@ -526,8 +526,31 @@ public sealed class Brain
 
     // ------------------------------------------------------------------------------------------------ visitors
 
+    /// <summary>Faz 2 E: an adventurer staying at the inn waits for work: breakfast and the common room in the morning, sword drill in
+    /// the yard in the afternoon, ale in the evening, a room at night.</summary>
+    Activity InnGuest()
+    {
+        var inn = _w.PlaceOf(PlaceKind.Inn);
+        var yard = _w.PlaceOf(PlaceKind.InnYard);
+        if (inn == null) return null;
+        float h = _h;
+        int k = _p.Work;
+        if (h >= 23.2f - 0.2f * k || h < 7.2f + 0.3f * k)
+            return new Activity { Kind = ActKind.Sleep, Inside = true, Place = inn.Id, Target = inn.Door, Face = inn.DoorFace, Until = h < 12 ? At(7.2f + 0.3f * k) : At(24 + 7.2f + 0.3f * k), Label = "Handaki odasında uyuyor", GoLabel = "Odasına çıkıyor", Reason = "Maceracı; iş çıkana dek handa kalıyor." };
+        if (h < 12.5f)
+        {
+            var s = FreeSpot(inn, "sit", 130 + k);
+            return AtSpot(ActKind.Drink, inn, s, "Sit", null, At(12.5f), "Handa oturuyor, iş bekliyor", "Hana yürüyor", "Maceracı; panodaki ilanlara bakıyor, kendisini kiralayacak birini bekliyor.");
+        }
+        if (h < 18.5f && yard != null && FreeSpot(yard, "drill", 150 + k) is Spot ds)
+            return AtSpot(ActKind.Work, yard, ds, "Attack", null, At(18.5f), "Avluda kılıç talimi yapıyor", "Avluya çıkıyor", "Kılıcı paslanmasın diye her gün talim ediyor.");
+        var s2 = FreeSpot(inn, "sit", 140 + k);
+        return AtSpot(ActKind.Drink, inn, s2, "Sit", null, At(23.2f - 0.2f * k), "Handa içiyor", "Hana dönüyor", "Akşam; maceracılar hanın ocağının başında yol hikâyeleri anlatıyor.");
+    }
+
     Activity Visitor()
     {
+        if (_p.Guest) return InnGuest();
         var inn = _w.PlaceOf(PlaceKind.Inn);
         var ends = _w.PlacesOf(PlaceKind.RoadEnd);
         Place east = ends.Count > 0 ? ends[0] : null, west = ends.Count > 1 ? ends[1] : east;

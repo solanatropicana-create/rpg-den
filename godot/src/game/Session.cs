@@ -28,6 +28,12 @@ public sealed class Session
     /// <summary>Faz 2: the player character (null until created) and the party (companions, the player first)</summary>
     public Character Player;
     public readonly List<Character> Party = new();
+    /// <summary>E: the party member the player controls now (Tab); the party follows them. Null: the player character.</summary>
+    public Character Controlled
+    {
+        get { if (Flags.TryGetValue("controlled", out var id)) foreach (var c in Party) if (c.Id == (int)id && !c.Dead) return c; return Player; }
+        set { if (value == null || value == Player) Flags.Remove("controlled"); else Flags["controlled"] = value.Id; }
+    }
     int _nextCharId = 1;
     public int NextCharId() => _nextCharId++;
     public int PeekNextCharId() => _nextCharId;
@@ -82,6 +88,13 @@ public sealed class Session
         h.Gold = Player.Inv.Silver / (double)Rules.SilverPerGold;
         h.Faith = Player.Faith; h.Epithet = Player.Epithet;
         if (Player.Dead && h.State != "dead") { h.State = "dead"; h.DeathDay = Macro.W.Day; }
+        // companions who are heroes of the sim
+        foreach (var c in Party)
+        {
+            if (c == Player || c.HeroId is not int cid || Macro.Hero(cid) is not M.Hero ch || ch.State == "dead") continue;
+            ch.Hp = Math.Max(1, c.Hp); ch.MaxHp = c.MaxHp; ch.Level = c.Level; ch.Xp = c.Xp;
+            if (!string.IsNullOrEmpty(c.Epithet)) ch.Epithet = c.Epithet;
+        }
     }
 
     /// <summary>

@@ -30,7 +30,8 @@ public partial class Captivity : Node
         r.Hud.Prompts.Add(Prompt);
     }
 
-    bool PlayerCaptive => _s.Player?.Captive == true;
+    /// <summary>the controlled body is caged (the player character, or a companion they switched to)</summary>
+    bool PlayerCaptive => _r.Player.Character?.Captive == true;
     double NextTry
     {
         get => _s.Flags.TryGetValue("cageNextTry", out var v) ? v : 0;
@@ -48,7 +49,7 @@ public partial class Captivity : Node
             if (p.DistanceTo(CampSite.CagePrisoner) > 2.5f) return null;
             if (GameClock.TotalHours < NextTry)
                 return ($"Kafesin kapısı — ellerin hâlâ titriyor ({Clock(NextTry)}'te yeniden dene)", () => _r.Hud.Toast("Biraz soluklan; bir saat sonra yeniden dene."));
-            var (what, bonus) = Best(_s.Player);
+            var (what, bonus) = Best(_r.Player.Character);
             return ($"Kafesin kapısını zorla ({what} {Rules.Signed(bonus)} vs ZD {DC})", TryEscape);
         }
         var cap = CaptiveCompanion();
@@ -66,7 +67,7 @@ public partial class Captivity : Node
 
     void TryEscape()
     {
-        var c = _s.Player;
+        var c = _r.Player.Character;
         var (what, bonus) = Best(c);
         var rng = new M.Rng(_s.Seed * 31 + Math.Floor(GameClock.TotalHours * 60));
         int d = (int)rng.D20();

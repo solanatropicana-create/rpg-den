@@ -261,6 +261,10 @@ public static class Lines
         if (p.Role == Role.Goblin) return new[] { "Grrah! Defol!", "Parlak şeylerini ver!", "Snik seni gördü!" }[k];
         if (p.Role == Role.Child) return new[] { "Sen şövalye misin?", "Kılıcın var mı? Göster!", "Annem yabancılarla konuşma dedi!" }[k];
         if (p.Act?.Kind == ActKind.Flee) return "Goblinler! Kaç!";
+        if (p.Guest)
+            return FD.Game.PartyManager.ForHire(p)
+                ? new[] { "Kılıcım satılık, kesen doluysa.", $"{sim.CampName.Replace(" kampı", "").Replace(" Kampı", "")} goblinlerine mi gidiyorsun? Yalnız gitme.", "İş bulunursa hancının birası daha da tatlı gelir." }[k]
+                : new[] { "Kendi yolumdayım, dostum.", "Panodaki ilanlara bakıyorum; belki birlikte gideriz, belki değil.", "Yol uzun, bira kısa." }[k];
         return p.Role switch
         {
             Role.Farmer => new[] { $"{tod}, yolcu. Toprak bu yıl cömert.", "Yağmur yağarsa hasat iyi olur.", "Kuzeydeki goblinler geçen ay iki koyun çaldı." }[k],

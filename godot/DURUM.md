@@ -155,6 +155,33 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
 - **Kararlar:** kaybedilen savaşta ölüm zarlarının üçüncü kaybı öldürmez (brief: kaybeden bayılır, soyulur, uyanır; goblinler nadiren
   bitirir); kafes için zaman sınırı yok (kaçış her saat denenebilir).
 
+### E · Ekip (bitti)
+
+- **Handaki maceracılar** (`RegionBind.Guests`, `Census`, `Brain.InnGuest`): simde bağlı handa bekleyen serbest kahramanlar (en
+  çok 3, seviyesi yüksek olan önce) handa birer kişi olur: sabah ortak salonda iş bekler, öğleden sonra avluda kılıç talimi yapar,
+  akşam içer, geceyi handaki odasında geçirir; sınıfına göre giyimli ve elinde silahı. Kiralık olanlar (savaşçı ve haydut; paladin,
+  barbar ve korucu savaşçı sayılır) ikiden azsa köyün halklarından 1. seviye paralı askerler (savaşçı, haydut) eklenir. Kartta:
+  "Maceracı · savaşçı Sv2" (paralıysa "paralı asker"). Simde handan ayrılan kahraman (ilan aldı, bir devlete kiralandı) ertesi gün
+  handan da gider.
+- **Kiralama** (`PartyManager`): kişinin kartında **[1] Kirala** — haftalığı (5 gün) simdeki kahramanda 25 × seviye + 25 gümüş
+  (Sv2: 75), paralı askerde 40 gümüş; ilk ödeme bir hafta sonra (başlangıçtaki 5–15 gümüşle de kiralanabilsin diye: yoldaş ödülü
+  bekler). Hizalaması liderinkine zıtsa (iyi–kötü) kartta "yolları ilk konaklamada ayrılır" yazar. En çok 2 yoldaş. Simdeki kahraman
+  kaydını korur (State "party", `RegionLink.Party`; `Local.Hire`), paralı askerin kaydı yok. Yoldaşın görünüşü handaki kişininkidir.
+- **Maaş günü:** gün başında, ödeme günü gelen yoldaşın haftalığı ekibin keselerinden (önce liderin) ödenir; yetmezse ayrılır
+  ("Parasız yol yürünmez"), simdeki kahraman hana döner (`Local.Dismiss`), handaki kişi yeniden görünür. Bir gün önce uyarı.
+- **Sadakat:** hizalaması liderinkine zıt yoldaş ekip **konaklayınca** (handa uyuma — H) ayrılır. Karar: brief'teki "kampta"
+  konaklama/kamp kurma olarak okundu.
+- **Keşifte:** yoldaşlar kontrol edilen kişinin ardında gevşek bir dizide yürür (geride kalınca koşar, 40 m'den uzakta yanına gelir).
+  **Tab** kontrolü sıradaki ekip üyesine geçirir: oyuncu bedeni onun görünüşünü ve yerini alır, eski kişi yoldaş bedenine geçer; ekip
+  yeni kontrol edileni izler (`Session.Controlled`, kayıtta). Savaşta Tab yine seçimi değiştirir. Kafesteki kişiye geçilirse
+  parmaklıkların ardında kalır; kafesteki ana karaktere başka bir üyeyle gidip kapıyı dışarıdan açmak böyle olur.
+- **HUD:** sol altta ekip şeridi (kontrol edilen ▶, sınıf, seviye, can, kafes/baygın, maaşa kalan gün); kartta fiiller (1–5).
+- Simdeki yoldaşların canı, seviyesi, XP'si ve lakabı simdeki kayda yazılır (`SyncPlayerToMacro`).
+- **Test:** `--partytest` (handaki maceracılar simden + paralı, kiralama → simde "party", izleme ≤ 4,5 m, Tab ileri/geri, maaş ödenir,
+  ödenmeyince ayrılır ve hana döner — simdeki kahraman hemen yeni bir ilana çıkabildi —, zıt hizalama konaklamada ayrılır). Tohum
+  1–6 PASS (3–6'da simden kahraman kiralandı: Laucian Gökçeorman korucu Sv3 → savaşçı, haftalık 100 gümüş).
+- Kalan: savaşta kafesteki ya da baygın yoldaş savaşa girmez; handa oturma yerleri içerideyse kişiler görünmez (öğleden sonra avluda).
+
 ---
 
 # Açık dünya dikey dilimi (30 Eylül 2026)
