@@ -124,6 +124,8 @@ public sealed class CampSite : IRegionFeature
     /// <summary>Faz 2 D: the cage (prisoner point inside, door point outside its front bars) and its yaw</summary>
     public static Vector2 CagePrisoner, CageDoor;
     public static float CageYaw;
+    /// <summary>Faz 2 F: the camp's chest (stolen goods and loot)</summary>
+    public static Vector2 ChestPos;
     Place _camp, _lurk;
     const float Palisade = 13f;
 
@@ -226,6 +228,9 @@ public sealed class CampSite : IRegionFeature
         }
         Vector2 lean = _c + new Vector2(MathF.Cos(_entAng - 1.9f), MathF.Sin(_entAng - 1.9f)) * 8.5f;
         kit.Place("buildings", "goblin_leanto", SiteUtil.At(hf, lean), RegionSpec.YawFacing((_c - lean).Normalized()), null, 1f, 120f);
+        Vector2 chest = _c + new Vector2(MathF.Cos(_entAng - 1.25f), MathF.Sin(_entAng - 1.25f)) * 7.4f;
+        kit.Place("village", "crate", SiteUtil.At(hf, chest), RegionSpec.YawFacing((_c - chest).Normalized()), FMath.Hex(0x6a4a2a), 1f, 90f);
+        ChestPos = chest + (_c - chest).Normalized() * 0.9f;
         Vector2 totem = _c + new Vector2(e.Y, -e.X) * 3.5f - e * 2.5f;
         kit.Place("buildings", "totem", SiteUtil.At(hf, totem), fyaw, null, 1f, 150f);
         kit.Place("buildings", "bone_pile", SiteUtil.At(hf, _c - e * 6f + new Vector2(-e.Y, e.X) * 2f), 0.6f, null, 1f, 90f);

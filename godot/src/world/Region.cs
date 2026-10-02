@@ -52,6 +52,10 @@ public partial class Region : Node3D
     public FD.Combat.CombatDirector Combat { get; private set; }
     public FD.Game.Captivity Captivity { get; private set; }
     public FD.Game.PartyManager Party { get; private set; }
+    public FD.Game.Gathering Gathering { get; private set; }
+    public FD.Game.Services Services { get; private set; }
+    public InventoryPanel Inventory { get; private set; }
+    public TradePanel Trade { get; private set; }
 
     /// <summary>E: a body for a new party member at (x, z), following the controlled one.</summary>
     public Companion AddCompanion(FD.Rpg.Character c, Vector2 at)
@@ -178,6 +182,18 @@ public partial class Region : Node3D
         Party = new FD.Game.PartyManager();
         AddChild(Party);
         Party.Init(this);
+        Gathering = new FD.Game.Gathering();
+        AddChild(Gathering);
+        Gathering.Init(this);
+        Inventory = new InventoryPanel();
+        AddChild(Inventory);
+        Inventory.Init(this);
+        Trade = new TradePanel();
+        AddChild(Trade);
+        Trade.Init(this);
+        Services = new FD.Game.Services();
+        AddChild(Services);
+        Services.Init(this);
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

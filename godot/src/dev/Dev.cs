@@ -65,6 +65,10 @@ public partial class Dev : Node
     public string Fate;
     /// <summary>--partytest: headless hiring, following, wages, alignment, Tab</summary>
     public bool PartyTest;
+    /// <summary>--econtest: headless shops, trade, herbs, loot, inn, reward, cure</summary>
+    public bool EconTest;
+    /// <summary>--panel=inv|inn|smith|priest: open that panel after warm-up (shots)</summary>
+    public string Panel;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
     /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
@@ -72,7 +76,7 @@ public partial class Dev : Node
     /// <summary>--newgame=race,class[,seed[,name]]: run the boot flow headless (creation → world → save → region)</summary>
     public string NewGame;
     /// <summary>tests, shots and tools go straight to the region (Boot skips the menu)</summary>
-    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || PartyTest || ShotPath != null || Bench > 0 || MapDumpPath != null
+    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || CampTest > 0 || PartyTest || EconTest || ShotPath != null || Bench > 0 || MapDumpPath != null
                             || DumpModel != null || Probe != null || Follow != null || CamPos.HasValue);
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
@@ -137,6 +141,8 @@ public partial class Dev : Node
                     case "--camptest": CampTest = val == "" ? 1 : int.Parse(val, ci); break;
                     case "--fate": Fate = val; break;
                     case "--partytest": PartyTest = true; break;
+                    case "--econtest": EconTest = true; break;
+                    case "--panel": Panel = val; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
@@ -263,6 +269,7 @@ public partial class Dev : Node
         if (region.Combat != null && Fate != null) region.Combat.ForceFate = Fate;
         if (CampTest > 0) CallDeferred(nameof(RunCampTest));
         if (PartyTest) CallDeferred(nameof(RunPartyTest));
+        if (EconTest) CallDeferred(nameof(RunEconTest));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
@@ -271,6 +278,21 @@ public partial class Dev : Node
     void RunWorldTest() => FD.Dev.WorldTest.Run(this, Region.Current, WorldTestDays);
     void RunCampTest() => FD.Dev.CampTest.Run(this, Region.Current, CampTest);
     void RunPartyTest() => FD.Dev.PartyTest.Run(this, Region.Current);
+    void RunEconTest() => FD.Dev.EconTest.Run(this, Region.Current);
+
+    void OpenPanelDev()
+    {
+        var r = Region.Current; if (r == null) return;
+        var me = r.Player.Character;
+        me.Inv.Silver += 60; me.Inv.Add("herb", 5); me.Inv.Add("trinket", 2); me.Inv.Add("scimitar"); me.Inv.Add("potion");
+        switch (Panel)
+        {
+            case "inv": r.Inventory.Toggle(); break;
+            case "inn": r.Trade.Open(FD.Game.Economy.Open(r.Session, FD.Game.ShopKind.Inn, "Hancı")); break;
+            case "smith": r.Trade.Open(FD.Game.Economy.Open(r.Session, FD.Game.ShopKind.Smith, "Demirci")); break;
+            case "priest": r.Trade.Open(FD.Game.Economy.Open(r.Session, FD.Game.ShopKind.Priest, "Rahip")); break;
+        }
+    }
 
     /// <summary>--fight: start a fight with the goblins near the player (the camp's if none are near: they are brought over)</summary>
     void DevFight()
@@ -335,6 +357,7 @@ public partial class Dev : Node
         if (_done || !_regionHooked) return;
         _frames++;
         if (FightAt is float fa && _frames == Math.Max(2, (int)(fa * 30))) DevFight();
+        if (Panel != null && _frames == Math.Max(3, Warm - 6)) OpenPanelDev();
         if (Follow != null) FollowPerson();
         else if (CardFor != null && _frames == Warm - 3)
         {

@@ -182,6 +182,31 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
   1–6 PASS (3–6'da simden kahraman kiralandı: Laucian Gökçeorman korucu Sv3 → savaşçı, haftalık 100 gümüş).
 - Kalan: savaşta kafesteki ya da baygın yoldaş savaşa girmez; handa oturma yerleri içerideyse kişiler görünmez (öğleden sonra avluda).
 
+### F · Envanter ve ekonomi (bitti)
+
+- **Envanter** (I; `src/ui/Panels.cs` `InventoryPanel`): ekibin her üyesinin çantası (sekmeler), ağırlık ve değer; silah, zırh ve
+  kalkan kuşan/çıkar (iki elli silahla kalkan olmaz; zincir zırh Güç 13 ister), iksir iç (2d4+2), sargıyla yara sar (1d4), başka üyeye
+  ver, at. Yük sınırı Güç × 7 kg (buçukluk, gnom ×¾); yarısını geçince %15, sınırı geçince %40 yavaş — keşifte oyuncunun koşusu
+  da (`Player` hızı × `Character.SpeedFactor`: ırk, topallık, yük). **Kamp kur**: yakında goblin yoksa, kişi başı 1 erzakla 8 saat
+  dinlenme (can, büyü yuvası, derin nefes geri); zıt hizalamalı yoldaş burada ayrılır (E).
+- **Fiyat ve stok simden** (`src/game/Economy.cs`): eşyanın PHB fiyatı (gümüş) × köyün devletinin o maldaki bugünkü fiyat oranı
+  (`Local.Price / taban`, 0,4–3 arası; savaşta silah pahalı). Dükkânın bugünkü stoğu devletin ambarından: handa erzak (ekmek),
+  sargı (ot), iksir; demircide sopa ve asa her zaman, hançer/mızrak/el baltası/topuz demirin ya da aletin varsa (en az bir), kısa
+  kılıç, pala, uzun kılıç, kısa yay, kalkan ve zincir devletin silahhanesinden (`arms`; ordular tüketir — çoğu krallıkta demircide
+  kılıç yok, goblinden alınır), deri zırh deriden; tapınakta iksir ve sargı. Alınan mal devletin stoğundan düşer, para hazineye girer;
+  satışta tersi (`Local.Trade`). Han şifalı otu ve ıvır zıvırı tam fiyata, erzak ve iksiri yarıya; demirci kullanılmış silah ve zırhı
+  yarıya; tapınak (şifacı) otu tam fiyata alır. Ticaret ekranı (`TradePanel`): satılıklar (stok, fiyat), çantan (aldığı fiyat), kese.
+- **Toplama** (`src/game/Gathering.cs`): orman kıyısında ve dere boyunda 24 şifalı ot öbeği (mor çiçekli küçük çalı); E ile 1–3
+  demet, öbek 2 gün sonra yeniden biter (kayıtta). **Yağma:** goblin cesedi bir kez aranır (yayı, palası, sopası ya da mızrağı;
+  ıvır zıvır; birkaç gümüş; şef daha çok, bazen iksir). **Kamp sandığı** (kampta, sandık): goblinlerin çaldıkları (D) ve kampın
+  ganimeti; kamp düşünce açılır (simdeki ganimet değeri gümüş olur), kamp ayaktayken yakında goblin yoksa sessizce dörtte biri alınır.
+- **Hizmetler** (`src/game/Services.cs`, kartta fiil): hancı — ticaret, **oda tut ve uyu** (17:00'den sonra, kişi başı 5 gümüş: saat
+  sabah 07:00'ye atlar, herkes dinlenir; zıt hizalamalı yoldaş ayrılır), **ödülü al** (kamp düştükten sonra ilan ödülü; muhtar, han
+  yoksa); demirci — ticaret; rahip — ticaret, yaraları sardırma (5 gümüş bağış, herkes tam can), **kalıcı yara tedavisi** (400 gümüş;
+  izle düşen Karizma geri gelir, lakap kalkar).
+- **Test:** `--econtest` (dükkânlar simden, alış ve satış devletin stoğunu ve hazinesini değiştirir, 24 ot öbeği ve toplama, ağırlık
+  ×0,60, ceset, sandık, handa uyku 07:00'ye ve tam can, ödül +550 gümüş ve tarihte, tapınakta iz tedavisi). Tohum 1, 2, 4 PASS.
+
 ---
 
 # Açık dünya dikey dilimi (30 Eylül 2026)

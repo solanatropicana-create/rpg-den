@@ -166,7 +166,7 @@ public partial class Player : CharacterBody3D
 
         bool sprint = InputEnabled && Input.IsActionPressed("sprint");
         bool walk = InputEnabled && Input.IsActionPressed("walk");
-        float speed = sprint ? SprintSpeed : walk ? WalkSpeed : JogSpeed;
+        float speed = (sprint ? SprintSpeed : walk ? WalkSpeed : JogSpeed) * (Character?.SpeedFactor ?? 1f);
         Vector3 target = wish * speed;
 
         Vector3 v = Velocity;

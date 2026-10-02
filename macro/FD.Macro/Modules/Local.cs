@@ -376,6 +376,29 @@ public static class Local
         return n.Count == 0 ? "yolcuları" : string.Join(", ", n);
     }
 
+    /// <summary>F: bölgede alım satım: köyün devletinin stoğu ve hazinesi değişir (alınan mal stoktan düşer, ödenen para hazineye girer;
+    /// satılan mal stoğa eklenir, hazine öder). <paramref name="units"/> malın kendi biriminde (artı: oyuncu aldı), <paramref name="gold"/>
+    /// ödenen/alınan altın.</summary>
+    public static void Trade(Sim s, string good, double units, double gold)
+    {
+        var c = Civ(s); if (c == null || D.GOODS.GetOr(good, null) == null) return;
+        s.Add(c, good, -units);
+        s.Add(c, "gold", units > 0 ? gold : -JsMath.Min(gold, s.St(c, "gold")));
+        s.Metric(units > 0 ? "localBuy" : "localSell");
+    }
+
+    /// <summary>G: oyuncu bekleyen ilan ödülünü handa ya da muhtarda aldı (altın).</summary>
+    public static double CollectReward(Sim s)
+    {
+        var link = s.W.Region; if (link == null || link.Reward <= 0) return 0;
+        double r = link.Reward; link.Reward = 0;
+        var pl = Player(s); var v = Village(s);
+        if (pl != null) { pl.Gold += r; Will.Note(s, pl, $"{J.S(r)} altın ilan ödülünü aldı"); }
+        s.Metric("regionRewardPaid");
+        s.Log("quest", $"{(pl != null ? pl.Name : "Bir yabancı")} {J.S(r)} altınlık ödülünü aldı.", tile: v?.Tile, civ: v?.Civ, major: false);
+        return r;
+    }
+
     /// <summary>E: handaki serbest kahraman oyuncunun ekibine kiralandı (State "party": simin yapay zekâsı ona dokunmaz, han havuzunda
     /// sayılmaz).</summary>
     public static void Hire(Sim s, int heroId, double wageSilver)
