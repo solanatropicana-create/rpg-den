@@ -235,6 +235,85 @@ public static class Combat
         return JsMath.Max(0.1, JsMath.Min(0.75, p));
     }
 
+    /// <summary>Faz 2: tek saldırının bağlamı. <see cref="Sneak"/>: haydudun sinsi saldırısına izin (tur tabanlı savaşta yanında bir dost
+    /// var; bölgedeki gerçek zamanlı savaşta hedefin yanında bir dost ya da arkadan saldırı ve uygun silah); <see cref="Mul"/>: ilk tur
+    /// baskın çarpanı; <see cref="Adv"/>: avantaj (iki d20'nin büyüğü; bölge: uyuyan, baygın hedef) ve <see cref="Dis"/> dezavantaj.</summary>
+    public sealed class StrikeCtx
+    {
+        public bool Sneak;
+        /// <summary>ilk tur çarpanı: verilirse hasar ×Mul yuvarlanır (1 de olsa yuvarlanır, eski kuralla aynı); null: çarpan yok</summary>
+        public double? Mul;
+        public bool Adv, Dis;
+        /// <summary>bölge: yere düşmüş hedefe yakından vuruş kritik sayılır (D&amp;D: baygına 1,5 m içinden isabet kritiktir)</summary>
+        public bool AutoCritOnHit;
+    }
+
+    /// <summary>Faz 2: tek saldırının sonucu (zar, isabet, kritik, hasar zarları, ekler).</summary>
+    public sealed class StrikeResult
+    {
+        public double D20, D20b;
+        public bool Hit, Crit, Fumble, Half;
+        public List<double> Dice;
+        public double Dmg, Smite, Bonus;
+        public double? Mul;
+        public List<ReplayPart> Parts = new();
+        public bool Killed;
+    }
+
+    /// <summary>
+    /// Faz 2: tek saldırının ortak kuralı (simetri): d20 (avantaj/dezavantajla iki zar), doğal 1 ıska (fumble), kritik (doğal 20;
+    /// Sv3+ savaşçı 19–20), isabet = d20 + saldırı ≥ zırh sınıfı, hasar zarları (kritikte iki kat; kötülere İlahi Çarpış çarpanı),
+    /// öfke +2, haydudun sinsi saldırısı (bağlam izin verirse ⌈Sv/2⌉d6, kritikte iki kat), korucunun av işareti 1d6, paladinin İlahi
+    /// Çarpışı 2d8, ilk tur çarpanı, öfkeli hedefe yarı hasar, en az 1. Hasarı uygular; hedef düşerse vuranın öldürme sayısı ve
+    /// katil kaydı. Zar sırası eski tur tabanlı savaşla birebir (ölçüm hash'leri değişmez).
+    /// </summary>
+    public static StrikeResult Strike(Rng rng, Combatant c, Combatant target, StrikeCtx ctx)
+    {
+        var r = new StrikeResult();
+        double d20 = rng.D20();
+        if (ctx.Adv || ctx.Dis)
+        {
+            r.D20b = rng.D20();
+            if (ctx.Adv && !ctx.Dis) d20 = JsMath.Max(d20, r.D20b);
+            else if (ctx.Dis && !ctx.Adv) d20 = JsMath.Min(d20, r.D20b);
+        }
+        r.D20 = d20;
+        if (d20 == 1) { r.Fumble = true; return r; }
+        double critRange = c.Hero?.Cls == "fighter" && c.Hero.Level >= 3 ? 19 : 20;
+        bool crit = d20 >= critRange;
+        if (!crit && d20 + c.Atk < target.Ac) return r;
+        if (!crit && ctx.AutoCritOnHit) crit = true;
+        r.Hit = true; r.Crit = crit;
+        double n = c.Dmg[0];
+        if (crit) n *= (J.T(target.Evil) && J.T(c.Smite) ? JsMath.Max(2, JsMath.Round(c.Smite.Value)) : 2);
+        var dd = rng.Roll(n, c.Dmg[1]);
+        double dmg = SumOf(dd) + c.Dmg[2];
+        r.Dice = dd;
+        if (J.T(c.Rage)) { dmg += 2; r.Parts.Add(new ReplayPart { L = "Öfke", V = 2 }); }
+        if (c.Hero?.Cls == "rogue" && ctx.Sneak) { var rr = rng.Roll(Math.Ceiling(c.Hero.Level / 2.0) * (crit ? 2 : 1), 6); double v = SumOf(rr); dmg += v; r.Parts.Add(new ReplayPart { L = "Sinsi saldırı", V = v, Dd = rr, Ds = 6 }); }
+        if (c.Hero?.Cls == "ranger" && c.Hero.Level >= 2) { var rr = rng.Roll(1, 6); dmg += rr[0]; r.Parts.Add(new ReplayPart { L = "Av işareti", V = rr[0], Dd = rr, Ds = 6 }); }
+        if (c.Hero?.Cls == "paladin" && J.N(c.Uses.Get("smite")) > 0 && (J.T(target.Evil) || J.T(target.Boss) || crit))
+        {
+            c.Uses.Set("smite", J.N(c.Uses.Get("smite")) - 1); var rr = rng.Roll(2, 8); double sm = rr[0] + rr[1]; dmg += sm;
+            r.Parts.Add(new ReplayPart { L = "İlahi çarpış", V = sm, Dd = rr, Ds = 8 });
+            r.Smite = sm;
+        }
+        if (ctx.Mul is double fs1) { if (fs1 != 1) r.Mul = fs1; dmg = JsMath.Round(dmg * fs1); }
+        bool half = J.T(target.Rage);
+        if (half) dmg = Math.Ceiling(dmg / 2);
+        r.Half = half;
+        dmg = JsMath.Max(1, dmg);
+        target.Hp -= dmg;
+        r.Dmg = dmg;
+        if (target.Hp <= 0)
+        {
+            c.Kills++;
+            target.KilledBy = c;
+            r.Killed = true;
+        }
+        return r;
+    }
+
     /// <summary>Savaşı tur tur çözer (meteor, kahraman yetenekleri, moral/bozgun, süre dolması) ve tekrarı içeren Battle kaydını döndürür.</summary>
     public static Battle ResolveBattle(Rng rng, List<Combatant> A, List<Combatant> B, BattleOpts o)
     {
@@ -398,48 +477,29 @@ public static class Combat
                     if (c.Hero != null) { var boss = J.Find(fs, f => J.T(f.Boss)); target = boss != null && rng.Chance(0.6) ? boss : rng.Pick(fs); }
                     else target = rng.Pick(fs);
                     int ti = idx[target];
-                    double d20 = rng.D20();
+                    // Faz 2: tek saldırının kuralı ortak (Strike): bölgedeki gerçek zamanlı savaş da aynısını kullanır
+                    var r = Strike(rng, c, target, new StrikeCtx { Sneak = friends.Count > 1, Mul = round == 1 ? (c.Side == "A" ? o.FirstStrikeA : o.FirstStrikeB) ?? 1 : (double?)null });
+                    double d20 = r.D20;
                     bool important = c.Hero != null || target.Hero != null || J.T(c.Boss);
                     if (rolls.Count < 40 || (important && rolls.Count < 70) || ((d20 == 20 || d20 == 1) && rolls.Count < 80)) rolls.Add(new BattleRoll { D20 = d20, Side = c.Side, Who = c.Name });
-                    if (d20 == 1)
+                    if (r.Fumble)
                     {
                         ev.Add(new ReplayEv { R = round, Sp = "attack", A = ci, T = ti, D = 1, M = c.Atk, Ac = target.Ac, H = 0 });
                         if (c.Hero != null && rng.Chance(0.5)) lines.Add(new BattleLine { T = $"{c.Name} nat 1! Silahı elinden kaydı.", Fumble = true });
                         continue;
                     }
-                    double critRange = c.Hero?.Cls == "fighter" && c.Hero.Level >= 3 ? 19 : 20;
-                    bool crit = d20 >= critRange;
-                    if (!crit && d20 + c.Atk < target.Ac) { ev.Add(new ReplayEv { R = round, Sp = "attack", A = ci, T = ti, D = d20, M = c.Atk, Ac = target.Ac, H = 0 }); continue; }
-                    double n = c.Dmg[0];
-                    if (crit) n *= (J.T(target.Evil) && J.T(c.Smite) ? JsMath.Max(2, JsMath.Round(c.Smite.Value)) : 2);
-                    var dd = rng.Roll(n, c.Dmg[1]);
-                    double dmg = SumOf(dd) + c.Dmg[2];
-                    var x = new List<ReplayPart>();
-                    if (J.T(c.Rage)) { dmg += 2; x.Add(new ReplayPart { L = "Öfke", V = 2 }); }
-                    if (c.Hero?.Cls == "rogue" && friends.Count > 1) { var r = rng.Roll(Math.Ceiling(c.Hero.Level / 2.0) * (crit ? 2 : 1), 6); double v = SumOf(r); dmg += v; x.Add(new ReplayPart { L = "Sinsi saldırı", V = v, Dd = r, Ds = 6 }); }
-                    if (c.Hero?.Cls == "ranger" && c.Hero.Level >= 2) { var r = rng.Roll(1, 6); dmg += r[0]; x.Add(new ReplayPart { L = "Av işareti", V = r[0], Dd = r, Ds = 6 }); }
-                    if (c.Hero?.Cls == "paladin" && J.N(c.Uses.Get("smite")) > 0 && (J.T(target.Evil) || J.T(target.Boss) || crit))
-                    {
-                        c.Uses.Set("smite", J.N(c.Uses.Get("smite")) - 1); var r = rng.Roll(2, 8); double sm = r[0] + r[1]; dmg += sm;
-                        x.Add(new ReplayPart { L = "İlahi çarpış", V = sm, Dd = r, Ds = 8 });
-                        lines.Add(new BattleLine { T = $"{c.Name} İlahi Çarpış indirdi (+{J.S(sm)})!", Crit = true });
-                    }
-                    double? mul = null;
-                    if (round == 1) { double fs1 = (c.Side == "A" ? o.FirstStrikeA : o.FirstStrikeB) ?? 1; if (fs1 != 1) mul = fs1; dmg = JsMath.Round(dmg * fs1); }
-                    bool half = J.T(target.Rage);
-                    if (half) dmg = Math.Ceiling(dmg / 2);
-                    dmg = JsMath.Max(1, dmg);
-                    target.Hp -= dmg;
-                    var e = new ReplayEv { R = round, Sp = "attack", A = ci, T = ti, D = d20, M = c.Atk, Ac = target.Ac, H = crit ? 2 : 1, Dd = dd, Ds = c.Dmg[1], B = c.Dmg[2], V = dmg, Hp = target.Hp };
-                    if (x.Count > 0) e.X = x;
-                    if (J.T(mul)) e.Mul = mul;
-                    if (half) e.Half = true;
+                    if (!r.Hit) { ev.Add(new ReplayEv { R = round, Sp = "attack", A = ci, T = ti, D = d20, M = c.Atk, Ac = target.Ac, H = 0 }); continue; }
+                    bool crit = r.Crit;
+                    double dmg = r.Dmg;
+                    if (r.Smite > 0) lines.Add(new BattleLine { T = $"{c.Name} İlahi Çarpış indirdi (+{J.S(r.Smite)})!", Crit = true });
+                    var e = new ReplayEv { R = round, Sp = "attack", A = ci, T = ti, D = d20, M = c.Atk, Ac = target.Ac, H = crit ? 2 : 1, Dd = r.Dice, Ds = c.Dmg[1], B = c.Dmg[2], V = dmg, Hp = target.Hp };
+                    if (r.Parts.Count > 0) e.X = r.Parts;
+                    if (J.T(r.Mul)) e.Mul = r.Mul;
+                    if (r.Half) e.Half = true;
                     ev.Add(e);
                     if (crit && (c.Hero != null || target.Hero != null || J.T(target.Boss))) lines.Add(new BattleLine { T = $"{c.Name} nat 20! {target.Name} {J.S(dmg)} hasar yedi.", Crit = true });
                     if (target.Hp <= 0)
                     {
-                        c.Kills++;
-                        target.KilledBy = c;
                         if (target.Hero != null) lines.Add(new BattleLine { T = $"{target.Name} ({ClassTr(target.Hero.Cls)}) {c.Name} tarafından yere serildi!", Crit = true });
                         else if (J.T(target.Boss)) lines.Add(new BattleLine { T = $"{c.Name}, {Tr.Ek(target.Name, "i")} devirdi!", Crit = true });
                         else if (c.Hero != null && !heroLogged.Contains(c.Name)) { heroLogged.Add(c.Name); lines.Add(new BattleLine { T = $"{c.Name} ilk {J.TrLower(target.Name)} kurbanını aldı." }); }

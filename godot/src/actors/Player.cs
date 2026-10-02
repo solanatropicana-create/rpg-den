@@ -53,8 +53,23 @@ public partial class Player : CharacterBody3D
     }
     /// <summary>When false the player ignores input (dev free camera, UI).</summary>
     public bool InputEnabled = true;
+    /// <summary>Faz 2: the fight moves the body (no physics, no input); <see cref="SetPose"/> each frame</summary>
+    public bool Scripted;
+    string _scriptAnim = "Idle";
+    float _scriptSpeed;
+
+    /// <summary>Faz 2: place and animate the body from the fight (scripted mode).</summary>
+    public void SetPose(Vector3 pos, float yaw, string anim, float speed)
+    {
+        GlobalPosition = pos;
+        Velocity = Vector3.Zero;
+        _facing = Mathf.LerpAngle(_facing, yaw, 0.35f);
+        GetNode<Node3D>("Visual").Rotation = new Vector3(0, _facing, 0);
+        _scriptAnim = anim; _scriptSpeed = speed;
+    }
 
     Node3D _pitchNode;
+    string _lastScriptAnim;
     float _yaw, _pitch = -0.24f, _zoomTarget, _facing, _rigY;
     bool _rigInit;
 
@@ -141,6 +156,7 @@ public partial class Player : CharacterBody3D
 
     public override void _PhysicsProcess(double delta)
     {
+        if (Scripted) return;
         float dt = (float)delta;
         Vector2 inp = InputEnabled ? Input.GetVector("move_left", "move_right", "move_forward", "move_back") : Vector2.Zero;
         Vector3 fwd = new(-MathF.Sin(_yaw), 0, -MathF.Cos(_yaw));
@@ -190,6 +206,14 @@ public partial class Player : CharacterBody3D
         Zoom = Mathf.Lerp(Zoom, _zoomTarget, 1f - MathF.Exp(-dt * 12f));
         Arm.SpringLength = Zoom;
         UpdateRig(dt);
+        if (Scripted)
+        {
+            if (_scriptAnim == "Attack" && _lastScriptAnim == "Attack" && Body != null && !Body.IsPlaying()) Body.Restart();
+            if (!(_scriptAnim == "Die" && _lastScriptAnim == "Die")) Body?.Drive(_scriptAnim, _scriptSpeed, 0.18f);
+            _lastScriptAnim = _scriptAnim;
+            return;
+        }
+        _lastScriptAnim = null;
         var hv = new Vector2(Velocity.X, Velocity.Z).Length();
         Body?.UpdateMotion(IsOnFloor() ? hv : hv, IsOnFloor(), Velocity.Y, dt);
     }

@@ -35,8 +35,10 @@ public sealed partial class LifeSim
     /// <summary>Player (hero) position in the ground plane and whether sprinting — goblins react to it.</summary>
     public Vector2 PlayerPos;
     public bool PlayerSprinting, PlayerPresent;
-    /// <summary>Raised when a goblin reaches the player and swings (Godot shows the hit).</summary>
+    /// <summary>Raised when a goblin reaches the player and swings — Faz 2: the combat director starts a fight.</summary>
     public event Action<Person> GoblinStrike;
+    /// <summary>Faz 2: raised when a goblin first spots the player and gives chase (the director may pause and announce)</summary>
+    public event Action<Person> GoblinAlert;
     /// <summary>Raised when someone enters (true) or leaves (false) a building.</summary>
     public event Action<Person, bool> DoorUsed;
 
@@ -90,6 +92,7 @@ public sealed partial class LifeSim
 
         foreach (var p in People)
         {
+            if (p.Dead || p.InFight) continue;   // Faz 2: the fight (or death) owns them
             UpdateNeeds(p, (float)gameDt);
             if (!p.Present)
             {
@@ -109,6 +112,7 @@ public sealed partial class LifeSim
         foreach (var s in AllSpots()) s.TakenBy = -1;
         foreach (var p in People)
         {
+            if (p.Dead || p.InFight) continue;
             p.Act = null;
             p.Path.Clear();
             p.Wait = 0;
@@ -347,6 +351,7 @@ public sealed partial class LifeSim
         };
         g.AlertUntil = Now + 20;
         g.Note($"{H.Clock(Now)} bir yabancı gördü, peşine düştü");
+        GoblinAlert?.Invoke(g);
         g.Running = true;
         g.Motion = Motion.Walking;
         // alert nearby goblins too
@@ -396,7 +401,7 @@ public sealed partial class LifeSim
         if (p.Motion == Motion.Inside || p.IsVisitor && p.Role == Role.Adventurer) return;
         foreach (var o in People)
         {
-            if (o.Role != Role.Goblin || o.Act?.Kind != ActKind.Chase) continue;
+            if (o.Role != Role.Goblin || o.Dead || (o.Act?.Kind != ActKind.Chase && !o.InFight)) continue;
             if (Vector2.DistanceSquared(o.Pos, p.Pos) > 35f * 35f) continue;
             var home = p.Home >= 0 ? Places[p.Home] : null;
             if (p.Act?.Spot != null && p.Act.Spot.TakenBy == p.Id) p.Act.Spot.TakenBy = -1;
@@ -436,7 +441,7 @@ public sealed partial class LifeSim
         Person best = null; float bd = radius * radius;
         foreach (var p in People)
         {
-            if (!p.Visible) continue;
+            if (!p.Visible || p.Dead) continue;
             float d = Vector2.DistanceSquared(p.Pos, pos);
             if (d < bd) { bd = d; best = p; }
         }

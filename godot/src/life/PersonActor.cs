@@ -83,6 +83,7 @@ public partial class PersonActor : Node3D
     {
         var p = P;
         if (_bubbleT > 0) { _bubbleT -= dt; if (_bubbleT <= 0) _bubble.Visible = false; }
+        if (p.Dead || p.InFight || p.Down) { SyncFight(dt, hf, space, cam); return; }
         bool inside = p.Motion == Motion.Inside || !p.Present;
         Vector3 target = new(p.Pos.X, 0, p.Pos.Y);
 
@@ -182,6 +183,38 @@ public partial class PersonActor : Node3D
         {
             float want = MathF.Atan2(face.X, face.Y);
             _yaw = Mathf.LerpAngle(_yaw, want, 1f - MathF.Exp(-dt * (walking ? 9f : 5f)));
+            Rotation = new Vector3(0, _yaw, 0);
+        }
+    }
+
+    /// <summary>Faz 2: in a fight (the fight sets Pos, Dir, FightAnim) or lying dead/unconscious (Die clip, held on its last frame).</summary>
+    void SyncFight(float dt, Heightfield hf, PhysicsDirectSpaceState3D space, Vector3 cam)
+    {
+        var p = P;
+        _enterT = -1f;
+        if (!Visible) { Visible = true; _yInit = false; }
+        _col.CollisionLayer = p.Dead || p.Down ? 0u : App.LayerActors;
+        float gy = hf.Height(p.Pos.X, p.Pos.Y);
+        _y = _yInit ? Mathf.Lerp(_y, gy, 1f - MathF.Exp(-dt * 14f)) : gy;
+        _yInit = true;
+        Position = new Vector3(p.Pos.X, _y, p.Pos.Y);
+        string clip = p.Dead || p.Down ? "Die" : p.FightAnim ?? "Idle";
+        float speed = clip == "Run" ? p.RunSpeed : clip == "Walk" ? p.WalkSpeed : 0f;
+        string tool = p.Role == Role.Goblin && !p.Dead ? (p.IsBoss ? "tool_club" : (p.Work % 3 == 0 ? "tool_spear" : "tool_club")) : null;
+        string key = tool ?? "";
+        if (key != _outfitKey)
+        {
+            _outfitKey = key;
+            if (tool == null) Body.SetOutfit(_baseOutfit);
+            else { var o = new string[_baseOutfit.Length + 1]; _baseOutfit.CopyTo(o, 0); o[^1] = tool; Body.SetOutfit(o); }
+        }
+        if (clip == "Attack" && _lastClip == "Attack" && !Body.IsPlaying()) Body.Restart();
+        if (clip != "Die" || _lastClip != "Die") Body.Drive(clip, speed, clip == "Die" ? 0.15f : 0.2f);
+        _lastClip = clip;
+        if (!(p.Dead || p.Down))
+        {
+            float want = MathF.Atan2(p.Dir.X, p.Dir.Y);
+            _yaw = Mathf.LerpAngle(_yaw, want, 1f - MathF.Exp(-dt * 12f));
             Rotation = new Vector3(0, _yaw, 0);
         }
     }

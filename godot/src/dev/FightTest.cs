@@ -1,0 +1,140 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using Godot;
+using FD.Rpg;
+using V2 = System.Numerics.Vector2;
+using M = FD.Macro;
+
+namespace FD.Dev;
+
+/// <summary>
+/// Faz 2 (--fighttest): headless checks of the real-time d20 fight. (1) The shared attack rule (Combat.Strike): the d20 is flat,
+/// natural 20 crits and natural 1 misses come ~5 % each, hit chance follows d20 + attack vs AC. (2) Class behaviour in many
+/// simulated goblin fights: the fighter fights in melee, the wizard keeps its distance and casts, the rogue gets sneak attacks, the
+/// cleric raises the fallen, goblins break and run at their morale, fights end, the same seed gives the same fight. PASS/FAIL.
+/// </summary>
+public static class FightTest
+{
+    public static void Run(Node host)
+    {
+        bool ok = true;
+        var sb = new StringBuilder();
+        void Check(string name, bool pass, string info) { ok &= pass; sb.AppendLine($"[FightTest] {name}: {info} {(pass ? "PASS" : "FAIL")}"); }
+
+        // (1) the rule
+        var rng = new M.Rng(12345);
+        var counts = new int[21];
+        int crit = 0, fumble = 0, hits = 0, N = 40000;
+        for (int i = 0; i < N; i++)
+        {
+            var a = M.Combat.Unit(M.D.MONSTERS["goblin"], "A", "monster");
+            var b = M.Combat.Unit(M.D.MONSTERS["goblin"], "B", "monster");
+            b.Hp = 1000; b.MaxHp = 1000;
+            var r = M.Combat.Strike(rng, a, b, new M.Combat.StrikeCtx());
+            counts[(int)r.D20]++;
+            if (r.Crit) crit++;
+            if (r.Fumble) fumble++;
+            if (r.Hit) hits++;
+        }
+        double exp = N / 20.0, chi = 0;
+        for (int k = 1; k <= 20; k++) chi += (counts[k] - exp) * (counts[k] - exp) / exp;
+        Check("d20 düz", chi < 43.8, $"ki-kare {chi:F1} (19 sd, %0,1 sınırı 43,8); 1: {counts[1]}, 20: {counts[20]}");
+        Check("kritik ve ıska", Math.Abs(crit / (double)N - 0.05) < 0.006 && Math.Abs(fumble / (double)N - 0.05) < 0.006, $"doğal 20 %{100.0 * crit / N:F2}, doğal 1 %{100.0 * fumble / N:F2}");
+        // goblin +4 vs AC 15: hit on 11+ → 50 %
+        Check("isabet olasılığı", Math.Abs(hits / (double)N - 0.5) < 0.012, $"+4 vs ZS 15: %{100.0 * hits / N:F1} (beklenen %50)");
+
+        // (2) fights
+        string[] parties = { "fighter+fighter", "fighter+wizard", "rogue+fighter", "cleric+fighter", "wizard+fighter" };
+        foreach (var comp in parties)
+        {
+            var cls = comp.Split('+');
+            int wins = 0, routs = 0, n = 60, ended = 0, sneaks = 0, raises = 0, spells = 0;
+            float wizDist = 0; int wizSamples = 0; float meleeShare = 0; int meleeSamples = 0;
+            float secs = 0;
+            for (int s = 0; s < n; s++)
+            {
+                var fight = Make(cls, 5, s * 7919 + 13, out var lead);
+                float t = 0;
+                while (!fight.Over && t < 240f)
+                {
+                    fight.Update(0.05f); t += 0.05f;
+                    foreach (var f in fight.F)
+                    {
+                        if (f.Side != FSide.Party || !f.Standing || f.Char == null) continue;
+                        var near = fight.F.Where(o => o.Side == FSide.Foe && o.Standing && !o.Fleeing).OrderBy(o => V2.Distance(o.Pos, f.Pos)).FirstOrDefault();
+                        if (near == null) continue;
+                        float d = V2.Distance(near.Pos, f.Pos);
+                        if (f.Char.Cls == "wizard") { wizDist += d; wizSamples++; }
+                        if (f.Char.Cls == "fighter") { meleeShare += d < 2.2f ? 1 : 0; meleeSamples++; }
+                    }
+                }
+                secs += t;
+                if (fight.Over) ended++;
+                if (fight.Winner == FSide.Party) wins++;
+                if (fight.Log.Any(e => e.Kind == "rout")) routs++;
+                sneaks += fight.Log.Count(e => e.Kind == "attack" && e.Detail != null && e.Detail.Contains("sinsi"));
+                raises += fight.Log.Count(e => e.Kind == "up" && e.B != null);
+                spells += fight.Log.Count(e => e.Kind == "spell");
+            }
+            string extra = "";
+            bool pass = ended == n;
+            if (cls.Contains("wizard")) { float wd = wizDist / Math.Max(1, wizSamples); extra += $", büyücü en yakın goblinden ort {wd:F1} m, büyü {spells}"; pass &= wd > 4f && spells > n; }
+            if (cls.Contains("rogue")) { extra += $", sinsi saldırı {sneaks}"; pass &= sneaks > n / 2; }
+            if (cls.Contains("cleric")) { extra += $", rahibin kaldırdığı {raises}, büyü {spells}"; pass &= spells > n / 2; }
+            if (cls[0] == "fighter") { float ms = meleeShare / Math.Max(1, meleeSamples); extra += $", savaşçı yakın dövüşte %{ms * 100:F0}"; pass &= ms > 0.4f; }
+            Check($"{comp} (Sv1+Sv2) vs 5 goblin", pass, $"{n} savaş: kazanılan {wins}, bozgun {routs}, biten {ended}, ort {secs / n:F0} sn{extra}");
+        }
+        // determinism
+        var f1 = Make(new[] { "fighter", "wizard" }, 5, 777, out _); var f2 = Make(new[] { "fighter", "wizard" }, 5, 777, out _);
+        for (int i = 0; i < 2000 && !f1.Over; i++) { f1.Update(0.05f); f2.Update(0.05f); }
+        string h1 = string.Join("|", f1.Log.Select(e => e.Text)), h2 = string.Join("|", f2.Log.Select(e => e.Text));
+        Check("belirlenim", h1 == h2 && h1.Length > 0, $"aynı tohum aynı savaş ({f1.Log.Count} olay)");
+        GD.Print(sb.ToString());
+        GD.Print(ok ? "FIGHTTEST PASS" : "FIGHTTEST FAIL");
+        host.GetTree().Quit(ok ? 0 : 1);
+    }
+
+    /// <summary>Two heroes (a level-1 player and a level-2 companion with the class kit) against <paramref name="goblins"/> goblins 18 m away.</summary>
+    public static Fight Make(string[] cls, int goblins, int seed, out Fighter lead)
+    {
+        var fight = new Fight(seed) { FoeHome = new V2(0, -40) };
+        lead = null;
+        for (int i = 0; i < cls.Length; i++)
+        {
+            var c = i == 0 ? PlayerLike(cls[i]) : Companion(cls[i]);
+            var f = fight.AddCharacter(c, HeroFor(c), FSide.Party, new V2(i * 1.5f, 0), i == 0 ? "player" : "companion");
+            if (i == 0) lead = f;
+        }
+        for (int g = 0; g < goblins; g++)
+            fight.AddMonster("goblin", $"Goblin {g + 1}", FSide.Foe, new V2(-4 + g * 2f, -18 - (g % 2) * 2), g == goblins - 1 ? "archer" : "goblin", -1, g == goblins - 1 ? 18f : 0f);
+        fight.Begin("deneme");
+        return fight;
+    }
+
+    /// <summary>a fresh level-1 character with a starting kit bought (the test is about behaviour, not poverty)</summary>
+    static Character PlayerLike(string cls)
+    {
+        var c = CharacterFactory.Player("Oyuncu", "human", cls, "good", Rules.SuggestedBase(cls), new Look(), "sleep", 10);
+        switch (cls)
+        {
+            case "fighter": c.Inv.Add("longsword"); c.Weapon = "longsword"; c.Inv.Add("leather"); c.Armor = "leather"; break;
+            case "rogue": c.Inv.Add("dagger"); c.Weapon = "dagger"; c.Inv.Add("leather"); c.Armor = "leather"; break;
+            case "cleric": c.Inv.Add("mace"); c.Weapon = "mace"; c.Inv.Add("bandage", 2); break;
+            case "wizard": c.Inv.Add("staff"); c.Weapon = "staff"; break;
+        }
+        c.Recalc(true); c.Rest();
+        return c;
+    }
+
+    static Character Companion(string cls)
+    {
+        var h = new M.Hero { Id = 9000 + cls.Length, Name = "Yoldaş " + cls, Race = "human", Cls = cls, Level = 2, Xp = 300, Stats = new M.JsObj<double>(), Hp = 18, MaxHp = 18, Align = "good", Given = "Yoldaş" };
+        var pr = M.D.HERO_CLASSES[cls].Priority; int[] arr = { 15, 14, 13, 12, 10, 8 };
+        for (int i = 0; i < 6; i++) h.Stats.Set(pr[i], arr[i]);
+        return CharacterFactory.FromHero(h);
+    }
+
+    static M.Hero HeroFor(Character c) => new() { Id = 1, Name = c.Name, Cls = c.Cls, Level = c.Level, Race = c.Race, Stats = new M.JsObj<double>() };
+}

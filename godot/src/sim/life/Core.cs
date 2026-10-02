@@ -153,6 +153,11 @@ public sealed class Person
     public string Race = "human";
     /// <summary>Faz 2: camp leader (goblin boss)</summary>
     public bool IsBoss;
+    /// <summary>Faz 2 (savaş): the real-time fight drives this person (position, facing, <see cref="FightAnim"/>); LifeSim leaves them alone</summary>
+    public bool InFight;
+    public string FightAnim;
+    /// <summary>Faz 2: dead (a body on the ground; LifeSim never moves them again) — or lying unconscious (<see cref="Down"/>)</summary>
+    public bool Dead, Down;
     public Role Role;
     public int Household = -1;
     public int Home = -1;

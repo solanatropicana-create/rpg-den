@@ -51,6 +51,8 @@ public partial class Dev : Node
     public double? Seed;
     public int? Prehistory;
     public int WorldTestDays;
+    /// <summary>--fighttest: headless checks of the real-time d20 fight (no region needed)</summary>
+    public bool FightTest;
     /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
     public bool Play;
     /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
@@ -80,7 +82,10 @@ public partial class Dev : Node
         if (TimeScale.HasValue) GameClock.TimeScale = TimeScale.Value;
         if (ShotPath != null || Bench > 0) GameClock.TimeScale = TimeScale ?? 0f;   // deterministic shots
         Region.Built += OnRegionReady;
+        if (FightTest) CallDeferred(nameof(RunFightTest));
     }
+
+    void RunFightTest() => FD.Dev.FightTest.Run(this);
 
     void Parse(string[] args)
     {
@@ -112,6 +117,7 @@ public partial class Dev : Node
                     case "--prehistory": Prehistory = int.Parse(val, ci); break;
                     case "--worldtest": WorldTestDays = val == "" ? 3 : int.Parse(val, ci); break;
                     case "--play": Play = true; break;
+                    case "--fighttest": FightTest = true; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;

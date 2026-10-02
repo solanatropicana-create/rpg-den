@@ -142,7 +142,7 @@ public partial class LifeWorld : Node3D
         {
             var p = a.P;
             float d = new Vector2(p.Pos.X - camPos.X, p.Pos.Y - camPos.Z).Length();
-            if (d > 240f && p.Motion != Motion.Inside) { a.Visible = false; continue; }
+            if (d > 240f && p.Motion != Motion.Inside && !p.Dead) { a.Visible = false; continue; }
             a.Sync(dt, hf, space, camPos, Sim, playerPos);
         }
         SyncMs = SyncMs * 0.9 + _sw.Elapsed.TotalMilliseconds * 0.1;
