@@ -36,7 +36,7 @@ public static class Crisis
     /// <summary>istikrarın dinlendiği değer (her şey yolundayken)</summary>
     public const double STAB_BASE = 62;
     /// <summary>zar başına kriz olasılığı: CR_BASE + (CR_S0 − istikrar) × CR_K (CR_MIN–CR_MAX)</summary>
-    public const double CR_BASE = 0.05, CR_S0 = 70, CR_K = 0.009, CR_MIN = 0.015, CR_MAX = 0.6;
+    public const double CR_BASE = 0.06, CR_S0 = 70, CR_K = 0.009, CR_MIN = 0.015, CR_MAX = 0.6;
     /// <summary>krizin sonunda düşüş olasılığı: FALL_BASE + (FALL_S0 − istikrar) × FALL_K (FALL_MIN–FALL_MAX); güçlü garnizon × FALL_GUARD</summary>
     public const double FALL_BASE = 0.3, FALL_S0 = 60, FALL_K = 0.015, FALL_MIN = 0.08, FALL_MAX = 0.9, FALL_GUARD = 0.75;
     /// <summary>iki kriz arası en az (gün; krizin başından)</summary>

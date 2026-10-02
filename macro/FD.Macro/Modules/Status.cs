@@ -172,7 +172,8 @@ public static class Status
         double found = 0.12 + JsMath.Min(3, unworked) * 0.15;
         // göç dalgası: konutu boş, aç olmayan yerleşim; savaş göçü artırır
         double room = s.Housing(st) - P;
-        double migration = st.Starving > 0 ? 0 : 0.05 + JsMath.Min(0.25, JsMath.Max(0, room) / 30) + (war ? 0.1 : 0);
+        double migration = st.Starving > 0 ? 0 : 0.05 + JsMath.Min(0.25, JsMath.Max(0, room) / 30) + (war ? 0.1 : 0)
+            + (Sim.IsCore(st) && !Sim.IsBig(st) && s.BigCities() < Sim.BIG_MIN ? 0.8 : 0);   // Faz 1b-8: çekirdek halka azalınca düşmüş büyük şehir yeniden göç çeker
         // kıtlık (yerel kuraklık, hasat kaybı): asıl kuraklık ve boş ambar getirir (gerçek ekonomi; aç haydutlar buna bağlı, ölçüt 9f)
         double shortage = 0.06 + (Economy.Drought(s) ? 1.2 : 0) + (daysFood < 8 ? 0.8 : daysFood < 15 ? 0.3 : 0) + (Economy.LackCount(st, Economy.LACK_DAYS, true) > 0 ? 0.3 : 0);
         // canavar tehdidi: yakındaki bilinen kamp
@@ -252,7 +253,8 @@ public static class Status
 
     // ------------------------------------------------------------ göç ve basamak kayması
     /// <summary>Kademe atlamak için gereken göçmen (Kamp → Köy, Köy → Kasaba; Kasaba ve Şehir yukarı kaymaz).</summary>
-    private static double UpGap(Sim s, Settlement st) => st.Tier >= 2 ? double.PositiveInfinity : Sim.TIER_POP[st.Tier + 1] - s.Pop(st);
+    private static double UpGap(Sim s, Settlement st) =>
+        st.Tier >= Sim.BIG_TIER || (st.Tier >= 2 && !(Sim.IsCore(st) && s.BigCities() < Sim.BIG_MIN)) ? double.PositiveInfinity : Sim.TIER_POP[st.Tier + 1] - s.Pop(st);   // Faz 1b-8: çekirdek halka azalınca düşmüş çekirdek şehir geri dönebilir
 
     /// <summary>Kademeden düşmek için gidecek nüfus (Köy → Kamp, Kasaba → Köy; Şehir aşağı kaymaz; küçük kamp terk edilir).</summary>
     private static double DownGap(Sim s, Settlement st)
@@ -269,6 +271,8 @@ public static class Status
     {
         double P = s.Pop(st);
         if (P <= 0) return;
+        // Faz 1b-8: küçük köy ya da kamp kötü günde bütünüyle boşalabilir (harabe; yeniden iskân Diplomacy'de)
+        if (d.Down > 0 && st.Tier <= 1 && P <= DESERT_POP && !Sim.IsCore(st) && st.Hub == null && s.Rng.Chance(DESERT_P)) { Desert(s, st, Def(st.Status)?.Name ?? d.Name); return; }
         if (d.Push > 0)
         {
             double n = Math.Round(P * d.Push * (0.7 + s.Rng.Next() * 0.6));
@@ -286,6 +290,36 @@ public static class Status
             n = JsMath.Min(n, JsMath.Max(0, s.Housing(st) + 12 - P));   // barakalar dolunca gelen durur
             if (n >= 1) Attract(s, st, n, d.Name);
         }
+    }
+
+    /// <summary>Faz 1b-8: küçük yerleşimin bütünüyle boşalması: nüfus bu kadar ya da azsa ve kötü bir durum başlarken DESERT_P olasılıkla</summary>
+    public const double DESERT_POP = 14, DESERT_P = 0.06;
+
+    /// <summary>Yerleşim bütünüyle boşalır: halk en çok iki kafileyle komşulara gider (kalan en yakına katılır), yerleşim harabe olur.</summary>
+    public static void Desert(Sim s, Settlement st, string why)
+    {
+        var w = s.W;
+        for (int k = 0; k < 2 && s.Pop(st) >= 1; k++)
+        {
+            Settlement best = null; double bs = double.NegativeInfinity;
+            foreach (var o in w.Settlements)
+            {
+                if (!o.Alive || o.Id == st.Id || o.Civ < 0 || o.Hub != null) continue;
+                double dd = s.G.Dist(o.Tile, st.Tile);
+                if (dd > MIG_R * 1.5 || (o.Civ != st.Civ && s.AtWar(o.Civ, st.Civ))) continue;
+                double sc = -dd / 4 + (o.Civ == st.Civ ? 2 : 0) + (Pulls(o) ? 2 : 0) - (Pushes(o) ? 2 : 0) - k * (best == o ? 99 : 0);
+                if (sc > bs) { bs = sc; best = o; }
+            }
+            if (best == null) break;
+            var path = s.Path(st.Tile, best.Tile);
+            double n = k == 0 ? Math.Ceiling(s.Pop(st) * 0.6) : s.Pop(st);
+            var pop = s.RemovePop(st, n);
+            if (path == null) { s.MergePop(best, pop); continue; }
+            w.Agents.Add(new Agent { Id = s.Id(), Kind = "settlers", Civ = st.Civ, Path = path, Step = 0, Progress = 0, Speed = Pace.MIGRANTS, Pop = pop, From = st.Id, To = best.Id, Purpose = "migrants" });
+        }
+        if (s.Pop(st) > 0) s.RemovePop(st, s.Pop(st));
+        s.Metric("desert");
+        s.Abandon(st, $"{why}: halk yurdunu bıraktı");
     }
 
     /// <summary>Halk kaçar: göçmen kafileleri iyi durumdaki komşuya, yoksa kendi devletinde yeri olan yerleşime, yoksa başkente. Gerçekten

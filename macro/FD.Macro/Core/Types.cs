@@ -168,6 +168,8 @@ public sealed class Settlement
     public double? RegimeLead;
     /// <summary>fırsat merkezi (geçici halka; World.Hubs kimliği); null: kalıcı yerleşim</summary>
     public int? Hub;
+    /// <summary>Faz 1b-8: temizlenen bir kampın vadisine kuruldu (kampın kimliği; öncüler ya da verimli vadi merkezi)</summary>
+    public int? FromCamp;
 }
 
 /// <summary>Faz 1b-7: fırsat merkezi (yol haritası v3, geçici halka): söylenti → hücum → zirve → tükeniş → hayalet. Tetikleyiciler:
@@ -227,6 +229,10 @@ public sealed class Relation
     public List<RelMod> Mods = new();
     public War War;
     public string Treaty;
+    /// <summary>Faz 1b-8 (#61): antlaşmanın imzalandığı ya da yenilendiği gün (süresi Diplomacy.TREATY_TERM)</summary>
+    public double? TreatyDay;
+    /// <summary>Faz 1b-8 (#61): sınırların (9 fersah) ilk değdiği gün; sınır sürtüşmesi barış uzadıkça birikir (Diplomacy.BorderFriction)</summary>
+    public double? BorderSince;
     public JsObj<double> Tension = new();
     public double LastTalk;
     public double LastRaid;
@@ -673,6 +679,8 @@ public sealed class Agent
     public List<int> Fought;
     // ---- joint attack
     public Muster Muster;
+    /// <summary>Faz 1b-8: öncüler temizlenen bir kampın vadisine gidiyor (kampın kimliği)</summary>
+    public int? FromCamp;
 }
 
 public sealed class TradeRoute

@@ -958,6 +958,7 @@ internal static partial class StatsMode
             EvaluateDurations();   // Faz 1b-5
             EvaluatePolity();      // Faz 1b-6
             EvaluateWorld();       // Faz 1b-7
+            EvaluateHeadless();    // Faz 1b-8
         }
 
         // ------------------------------------------------------------ Faz 1b-5: v3 süre tablosu
@@ -1017,7 +1018,7 @@ internal static partial class StatsMode
             {
                 int all = Ok.Sum(r => r.Stats.Dur.CampVillage.Count), got = Ok.Sum(r => r.Stats.Dur.CampVillage.Count(x => x.End >= 0));
                 var sp = DurSpans(d => d.CampVillage);
-                DurCrits.Add(DurCrit("8e", "Temizlenen kamp → yeni köy", 10, 20, sp, $"temizlenen kara kampının {WorldStats.CAMP_VILLAGE_R} fersah yakınına {WorldStats.CAMP_VILLAGE_DAYS} gün içinde ilk yerleşimin kurulması",
+                DurCrits.Add(DurCrit("8e", "Temizlenen kamp → yeni köy", 10, 20, sp, $"temizlenen kara kampının vadisine {WorldStats.CAMP_VILLAGE_DAYS} gün içinde köy kurulması (Faz 1b-8: kampın vadisine giden öncüler ya da kalıcı köye dönen verimli vadi merkezi; yakındaki ilgisiz kuruluşlar sayılmaz)",
                     $"; temizlenen {all} kampın {got} tanesine ({Pct(all > 0 ? got / (double)all : double.NaN)}) köy kuruldu, 20 gün içinde {Pct(all > 0 ? sp.Xs.Count(x => x <= 20) / (double)all : double.NaN)}"));
             }
             // 8f. han kurulumu
@@ -1412,7 +1413,7 @@ internal static partial class StatsMode
             foreach (var w in wins)
             {
                 SpanRow("Savaş (hepsi)", w.Name, WarSpans(w.D0, w.D1));
-                foreach (var kind in new[] { "plain", "tribute", "reclaim", "crusade", "pact", "ally" })
+                foreach (var kind in new[] { "plain", "tribute", "reclaim", "opportunity", "crusade", "pact", "ally" })
                 {
                     var s = WarSpans(w.D0, w.D1, x => x.Kind == kind);
                     if (s.N > 0) SpanRow($"Savaş: {WarKindTr(kind)}", w.Name, s);
@@ -1491,7 +1492,7 @@ internal static partial class StatsMode
 
         private static string WarKindTr(string k) => k switch
         {
-            "plain" => "sıradan", "tribute" => "haraç", "reclaim" => "tarihî hak", "crusade" => "Kutsal Sefer", "pact" => "savunma paktı", "ally" => "müttefik çağrısı", _ => k,
+            "plain" => "sıradan", "tribute" => "haraç", "reclaim" => "tarihî hak", "opportunity" => "fırsat", "crusade" => "Kutsal Sefer", "pact" => "savunma paktı", "ally" => "müttefik çağrısı", _ => k,
         };
 
         // ------------------------------------------------------------ eski analizdeki sorunlar (TS v0.23)
@@ -1753,6 +1754,7 @@ internal static partial class StatsMode
             DurMd(sb);   // Faz 1b-5
             PolityMd(sb);   // Faz 1b-6
             WorldMd(sb);    // Faz 1b-7
+            HeadlessMd(sb);    // Faz 1b-8
             L("## Eski analizdeki sorunlar");
             L();
             L("Eski analiz: TS v0.23, 12 seed × 30 yıl ve 3 seed × 60 yıl (Proje: `analiz-5-ajan-oneriler.md`). \"Sürüyor mu\" kaba bir eşiktir: araştırma ağacı Faz 1b-3'te kaldırıldı; 30. yılda tam 5 kara yerleşimli medeniyet ≥ %50; kamp (30. yıl) < 0,75 × en yüksek yıl; altın (30. yıl) ≥ 10 × altın (1. yıl); boştaki iş gücü (30. yıl) ≥ %30; büyük olay (30. yıl) ≤ 0,6 × en yüksek yıl; 25. yıldan sonra doğanların ≥ %50'si Sv5+; hiç başkent kaybı yok.");

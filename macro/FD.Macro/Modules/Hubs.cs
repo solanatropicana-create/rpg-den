@@ -119,7 +119,7 @@ public static class Hubs
                 if (h.Kind == "valley" && Diplomacy.PermanentCount(s) < (w.SettleCap > 0 ? w.SettleCap : Diplomacy.WorldCap(s)) + Diplomacy.FREED_SLACK
                     && LandRoom(s, w.Civs[st.Civ]))
                 {
-                    st.Hub = null;
+                    st.Hub = null; st.FromCamp = h.Origin;
                     s.Metric("hubVillage");
                     s.Log("settle", $"{h.Name} kalıcı bir köy oldu: kalan çiftçiler vadiye yerleşti.", civ: st.Civ, tile: h.Tile, cause: "Temizlenen vadinin toprağı verimli", major: true);
                     Done(s, h, "village");

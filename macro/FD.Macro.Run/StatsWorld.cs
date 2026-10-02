@@ -124,6 +124,179 @@ internal static partial class StatsMode
             }
         }
 
+        // ------------------------------------------------------------ Faz 1b-8: başsız ölçütler (yol haritası v3, Faz 1b/8)
+        /// <summary>on yıllık pencere (gün)</summary>
+        private const int DECADE = 10 * YEAR;
+
+        private Crit Find(string id) => Crits.FirstOrDefault(c => c.Id == id);
+
+        /// <summary>Dünyanın on yıllık pencereleri: kalıcı yerleşim (günlük ortalama), el değiştiren ve durumu olan yerleşim sayısı,
+        /// büyük şehrin el değiştirmesi, savaş + iç kriz, fırsat merkezi, durum değişimi.</summary>
+        private sealed class DecW { public double Setl, Owned, Statused, Big, WarCrisis, Wars, OppWars, Hubs, Changes; }
+
+        private static List<DecW> Decades(WorldRun r)
+        {
+            var L = r.Stats.V3;
+            var o = new List<DecW>();
+            for (int d0 = 1; d0 + DECADE - 1 <= L.Days; d0 += DECADE)
+            {
+                int d1 = d0 + DECADE - 1;
+                double setl = 0;
+                for (int d = d0; d <= d1; d++) setl += L.Setl(d);
+                var x = new DecW { Setl = setl / DECADE };
+                var owned = new HashSet<int>();
+                foreach (var e in L.Events)
+                {
+                    if (e.Day < d0 || e.Day > d1) continue;
+                    if (e.Kind == "capture" || e.Kind == "secede" || e.Kind == "regime") owned.Add(e.Settlement);
+                    if (e.Kind != "found") x.Changes++;
+                }
+                x.Owned = owned.Count;
+                x.Statused = L.Statuses.Where(z => z.Start >= d0 && z.Start <= d1).Select(z => z.Settlement).Distinct().Count();
+                x.Big = L.BigFalls.Count(f => f.Day >= d0 && f.Day <= d1);
+                x.Wars = L.Wars.Count(w => w.Start >= d0 && w.Start <= d1);
+                x.OppWars = L.Wars.Count(w => w.Start >= d0 && w.Start <= d1 && w.Kind == "opportunity");
+                x.WarCrisis = x.Wars + L.Crises.Count(c => c.Start >= d0 && c.Start <= d1);
+                x.Hubs = L.Hubs.Count(h => h.Rumor >= d0 && h.Rumor <= d1);
+                o.Add(x);
+            }
+            return o;
+        }
+
+        private void EvaluateHeadless()
+        {
+            int n = Ok.Count;
+            var decs = Ok.Select(r => (R: r, D: Decades(r))).ToList();
+            var allDec = decs.SelectMany(x => x.D).ToList();
+            // H1. Dünya donmuyor
+            {
+                int frozen = allDec.Count(x => x.Owned < 1 || x.WarCrisis < 1 || x.Hubs < 1);
+                var ratio = Dist(decs.Where(x => x.D.Count >= 2).Select(x =>
+                {
+                    double early = x.D[0].Changes / Math.Max(1, x.D[0].Setl), late = x.D[x.D.Count - 1].Changes / Math.Max(1, x.D[x.D.Count - 1].Setl);
+                    return early > 0 ? late / early : double.NaN;
+                }));
+                var c1 = Find("1");
+                Crits.Add(new Crit
+                {
+                    Id = "H1", Name = "Dünya donmuyor",
+                    Rule = "her dünyanın her on yılında en az bir yerleşim el değiştirir (fetih, bölünme, komşuya geçiş, içeriden düşüş), bir savaş ya da iç kriz başlar ve bir fırsat merkezi kurulur; yerleşim başına durum değişimi son on yılda ilk on yılın en az %80'i (dünya medyanı); ölçüt 1 (büyük olay) geçer",
+                    Pass = allDec.Count > 0 && frozen == 0 && ratio.Med >= 0.8 && c1?.Pass == true,
+                    Measured = $"donmuş on yıl {frozen}/{allDec.Count}; durum değişimi son / ilk on yıl {Pct(ratio.Med)} ({Pct(ratio.P10)}–{Pct(ratio.P90)}); ölçüt 1: {c1?.Measured}",
+                    Data = new JObj { { "frozenDecades", frozen }, { "decades", allDec.Count }, { "changeRatio", ratio.Med } },
+                });
+            }
+            // H2. Yerleşim sayısı aşağı yukarı sabit, sahiplik ve durum dalgalı
+            {
+                var c6b = Find("6b") ?? Find("6a");
+                var own = Dist(allDec.Select(x => x.Owned / Math.Max(1, x.Setl)));
+                double ownMin = allDec.Count > 0 ? allDec.Min(x => x.Owned / Math.Max(1, x.Setl)) : double.NaN;
+                var st = Dist(allDec.Select(x => x.Statused / Math.Max(1, x.Setl)));
+                Crits.Add(new Crit
+                {
+                    Id = "H2", Name = "Yerleşim sayısı sabit, sahiplik ve durum dalgalı",
+                    Rule = "yerleşim sayısının değişim katsayısı ≤ %10 (6b); on yılda el değiştiren (fetih, bölünme, komşuya geçiş ya da içeriden düşüş) yerleşim payı medyanı ≥ %10, hiçbir dünya-on yılında %2'nin altında değil; on yılda en az bir durum yaşayan yerleşim / ortalama yerleşim sayısı medyanı ≥ 0,9 (on yılda kurulup terk edilenler yüzünden 1'i aşabilir)",
+                    Pass = c6b?.Pass == true && own.Med >= 0.10 && ownMin >= 0.02 && st.Med >= 0.9,
+                    Measured = $"yerleşim sayısı: {c6b?.Measured}; on yılda el değiştiren payı {Pct(own.Med)} ({Pct(own.P10)}–{Pct(own.P90)}; en az {Pct(ownMin)}); durum yaşayan yerleşim / ortalama {F(st.Med)} ({F(st.P10)}–{F(st.P90)})",
+                    Data = new JObj { { "ownedShare", own.Med }, { "ownedMin", ownMin }, { "statusShare", st.Med } },
+                });
+            }
+            // H3. Döngüler kuruluyor ve çöküyor
+            {
+                var parts = new List<string>();
+                int ok = 0;
+                var fails = new List<string>();
+                foreach (var r in Ok)
+                {
+                    var L = r.Stats.V3;
+                    int hubs = L.Hubs.Count(h => h.Phase == "done" && h.Outcome != "gone");
+                    int up = L.Events.Count(e => e.Kind == "tierUp"), down = L.Events.Count(e => e.Kind == "tierDown");
+                    int ruin = L.Events.Count(e => e.Kind == "abandon"), back = L.Events.Count(e => e.Kind == "resettle" || e.Kind == "found");
+                    int falls = L.Events.Count(e => e.Kind == "regime" || e.Kind == "capture" || e.Kind == "secede");
+                    int born = r.Stats.Civs.Count(c => c.Founded > 0), died = r.Stats.Civs.Count(c => c.ExtinctDay != null && c.ExtinctDay > 0);
+                    bool good = hubs >= 5 && up >= 20 && down >= 20 && ruin >= 1 && back >= 1 && falls >= 1;
+                    if (good) ok++; else fails.Add($"seed {S(r.Seed)} (merkez {hubs}, kademe {up}/{down}, harabe {ruin}, kuruluş {back}, el değiştirme {falls})");
+                }
+                double hubsMed = Median(Ok.Select(r => (double)r.Stats.V3.Hubs.Count(h => h.Phase == "done" && h.Outcome != "gone")));
+                double ruinMed = Median(Ok.Select(r => (double)r.Stats.V3.Events.Count(e => e.Kind == "abandon")));
+                double backMed = Median(Ok.Select(r => (double)r.Stats.V3.Events.Count(e => e.Kind == "resettle" || e.Kind == "found")));
+                double resMed = Median(Ok.Select(r => (double)r.Stats.V3.Events.Count(e => e.Kind == "resettle")));
+                double bornMed = Median(Ok.Select(r => (double)r.Stats.Civs.Count(c => c.Founded > 0)));
+                double diedMed = Median(Ok.Select(r => (double)r.Stats.Civs.Count(c => c.ExtinctDay != null && c.ExtinctDay > 0)));
+                var a9 = Find("9a");
+                Crits.Add(new Crit
+                {
+                    Id = "H3", Name = "Döngüler kuruluyor ve çöküyor",
+                    Rule = "her dünyada: ≥ 5 fırsat merkezi döngüsü tamamlanır; kademe hem yükselir hem düşer (≥ 20 / ≥ 20); en az bir yerleşim harabe olur ve en az bir yerleşim kurulur ya da harabe yeniden iskân edilir; en az bir el değiştirme; örgütler dağılıp yeniden kurulur (9a)",
+                    Pass = ok == n && a9?.Pass == true,
+                    Measured = $"{ok}/{n} dünya{(fails.Count > 0 ? $" (kalan: {string.Join("; ", fails)})" : "")}; dünya medyanı: tamamlanan merkez {F(hubsMed)}, harabe {F(ruinMed)}, kuruluş {F(backMed)} (harabeye yeniden iskân {F(resMed)}), doğan devlet {F(bornMed)}, yok olan {F(diedMed)}; örgüt: {a9?.Measured}",
+                    Data = new JObj { { "worldsOk", ok }, { "hubs", hubsMed }, { "ruins", ruinMed }, { "founded", backMed }, { "resettled", resMed }, { "statesBorn", bornMed }, { "statesDied", diedMed } },
+                });
+            }
+            // H4. Büyük şehir 100 günde 2–4 kez el değiştirir
+            {
+                var c6f = Find("6f");
+                // çekirdek halka: dünya-on yılı başına büyük şehir (günlük ortalama)
+                var bd = new List<double>();
+                foreach (var r in Ok)
+                {
+                    var L = r.Stats.V3;
+                    for (int d0 = 1; d0 + DECADE - 1 <= L.Days; d0 += DECADE) { double b = 0; for (int d = d0; d < d0 + DECADE; d++) b += L.TierDaily[Sim.BIG_TIER][d - 1]; bd.Add(b / DECADE); }
+                }
+                var bm = Dist(bd);
+                double bmin = bd.Count > 0 ? bd.Min() : double.NaN, bmax = bd.Count > 0 ? bd.Max() : double.NaN;
+                Crits.Add(new Crit
+                {
+                    Id = "H4", Name = "Büyük şehir: el değiştirme ve çekirdek halka",
+                    Rule = "büyük şehir dünyada 100 günde 2–4 kez el değiştirir (6f; içeriden düşüş dâhil, Faz 1b-7'de onaylandı); çekirdek halka 4–6 büyük şehir: dünya-on yılı ortalamalarının medyanı 4–6, hiçbiri 3'ün altında ya da 8'in üstünde değil",
+                    Pass = c6f?.Pass == true && bm.Med >= 4 && bm.Med <= 6 && bmin >= 3 && bmax <= 8,
+                    Measured = $"{c6f?.Measured}; büyük şehir (dünya-on yılı ortalaması) medyan {F(bm.Med)} ({F(bm.P10)}–{F(bm.P90)}; en az {F(bmin)}, en çok {F(bmax)})",
+                    Data = new JObj { { "bigCities", bm.Med }, { "bigMin", bmin }, { "bigMax", bmax } },
+                });
+            }
+            // H5. Spec §9
+            {
+                var ids = new[] { "9a", "9b", "9c", "9d", "9e", "9f" };
+                var cs = ids.Select(Find).ToList();
+                Crits.Add(new Crit
+                {
+                    Id = "H5", Name = "Örgüt, devriye ve esaret (spec §9)",
+                    Rule = "9a–9f'nin hepsi geçer",
+                    Pass = cs.All(c => c?.Pass == true),
+                    Measured = string.Join(", ", ids.Zip(cs, (i, c) => $"{i} {(c == null ? "—" : Mark(c))}")),
+                });
+            }
+        }
+
+        /// <summary>Faz 1b-8: başsız ölçütlerin on yıllık tablosu (dünya medyanı, p10–p90).</summary>
+        private void HeadlessMd(StringBuilder sb)
+        {
+            void L(string s = "") => sb.Append(s).Append('\n');
+            L("## Başsız ölçütler: on yıllar (Faz 1b-8)");
+            L();
+            L("Yol haritası Faz 1b/8 (H1–H5, ölçüt tablosunda). Dünya-on yılı pencereleri (400 gün; tarih öncesinden sonra); hücre: dünya medyanı (p10–p90). El değiştiren: fetih, bölünme, komşuya geçiş ya da içeriden düşüş yaşayan yerleşim payı; durum değişimi: kuruluş dışındaki bütün olaylar (kademe, yakılma, kıtlık, kuşatma, salgın, el değiştirme, terk, yeniden iskân), yerleşim başına.");
+            L();
+            var decs = Ok.Select(r => Decades(r)).ToList();
+            int nd = decs.Count > 0 ? decs.Min(d => d.Count) : 0;
+            if (nd == 0) { L("(on yıl yok)"); L(); return; }
+            L("| Ölçü | " + string.Join(" | ", Enumerable.Range(0, nd).Select(i => $"{i * 10 + 1}–{i * 10 + 10}. yıl")) + " |");
+            L("|---|" + string.Concat(Enumerable.Range(0, nd).Select(_ => "---|")));
+            void Row(string name, Func<DecW, double> f, Func<double, string> fmt)
+            {
+                L($"| {name} | " + string.Join(" | ", Enumerable.Range(0, nd).Select(i => { var d = Dist(decs.Select(x => f(x[i]))); return $"{fmt(d.Med)} ({fmt(d.P10)}–{fmt(d.P90)})"; })) + " |");
+            }
+            Row("Kalıcı yerleşim", x => x.Setl, F);
+            Row("El değiştiren payı", x => x.Owned / Math.Max(1, x.Setl), Pct);
+            Row("Durum yaşayan / yerleşim", x => x.Statused / Math.Max(1, x.Setl), F);
+            Row("Durum değişimi / yerleşim", x => x.Changes / Math.Max(1, x.Setl), F);
+            Row("Savaş + iç kriz", x => x.WarCrisis, F);
+            Row("Savaş", x => x.Wars, F);
+            Row("Fırsat savaşı", x => x.OppWars, F);
+            Row("Fırsat merkezi", x => x.Hubs, F);
+            Row("Büyük şehir el değiştirmesi", x => x.Big, F);
+            L();
+        }
+
         private static string HubOutcomeTr(string k) => k switch { "ghost" => "hayalet (terk)", "village" => "kalıcı köy", "gone" => "söylentide söndü", "lost" => "yıkıldı", _ => k ?? "sürüyor" };
 
         private void WorldMd(StringBuilder sb)

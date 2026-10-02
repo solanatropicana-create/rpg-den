@@ -392,6 +392,7 @@ public static class Agents
         string name = J.Find(Polity.Culture(c).Towns, n => !used.Contains(n)) ?? TownName(s, t, used);
         var st = WorldGen.MakeSettlement(s.Id(), c.Id, name, t, a.Pop ?? new JsObj<double>(), s.Day);
         if (a.Landing != null) st.Overseas = true;
+        st.FromCamp = a.FromCamp;   // Faz 1b-8
         w.Settlements.Add(st);
         s.UpdateTerritory();
         s.Discover();

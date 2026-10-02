@@ -51,7 +51,13 @@ public static class Diplomacy
             var dists = new List<double>();
             foreach (var x in s.CivSettlements(a)) foreach (var y in s.CivSettlements(b)) dists.Add(s.G.Dist(x.Tile, y.Tile));
             double minD = JsMath.Min(dists.ToArray());
-            if (minD <= 9) s.SetMod(a.Id, b.Id, "border", "Sınır sürtüşmesi", -8); else s.RemoveMod(a.Id, b.Id, "border");
+            // Faz 1b-8 (#61): sınır sürtüşmesi barış uzadıkça birikir (BorderFriction); savaş onu sıfırlar
+            if (minD <= 9)
+            {
+                foreach (var (x, y) in new[] { (a, b), (b, a) }) s.Rel(x.Id, y.Id).BorderSince ??= s.Day;
+                s.SetMod(a.Id, b.Id, "border", "Sınır sürtüşmesi", -JsMath.Round(BorderFriction(s, r)));
+            }
+            else { s.RemoveMod(a.Id, b.Id, "border"); s.Rel(a.Id, b.Id).BorderSince = null; s.Rel(b.Id, a.Id).BorderSince = null; }
             if (s.Day - a.LastRaidedDay < 240 / Sim.PACE && s.Day - b.LastRaidedDay < 240 / Sim.PACE) s.SetMod(a.Id, b.Id, "enemy", "Ortak düşman: canavarlar", 10); else s.RemoveMod(a.Id, b.Id, "enemy");
             // Faz 1b-6: inanç ve yemin yakınlıkları (eski sınıf yakınlıkları: paladin, rahip)
             var pair = new List<Civ> { a, b };
@@ -77,12 +83,61 @@ public static class Diplomacy
                 if ((rr.Land ?? 0) >= 8) s.SetMod(x.Id, y.Id, "land", "Toprak hırsı", -JsMath.Min(25, JsMath.Round(rr.Land.Value * 1.2)), 0, false);
                 else s.RemoveMod(x.Id, y.Id, "land", false);
             }
+            TreatyTerm(s, a, b);   // Faz 1b-8 (#61)
             Disputes(s, a, b);
             Disputes(s, b, a);
             WarPeace(s, a, b);
             WarPeace(s, b, a);
             Pacts(s, a, b);   // B1: savunma paktı kurulur ya da dağılır
         }
+    }
+
+    /// <summary>Faz 1b-8 (#61): antlaşma süresiz değil. Eskiden imzalanan antlaşma sonsuza dek sürüyordu (+15 ilişki, toprak hırsını
+    /// kapatır, yeminli devlet bozamaz); 60 yılda devlet çiftlerinin yarısından çoğu antlaşmalı oluyor, ilişki eşiğin çok üstüne çıkıyor
+    /// ve savaş on yıllar boyunca yarıya iniyordu (ölçüt H1). Şimdi: aralarında savaş çıkınca antlaşma bozulur; TREATY_TERM'de bir
+    /// yeniden pazarlık edilir: kaynağa artık iki taraf da muhtaç değilse (ya da ikisi de muhtaçsa) kendiliğinden biter, değilse yatağın
+    /// sahibi imzadaki olasılıkla (TREATY_RENEW tabanlı) yeniler; yenilemezse antlaşma biter, reddedilen teklifin kırgınlığı kalır ve
+    /// gerginlik (Disputes) yeniden birikir: yeni antlaşma ya da kavga.</summary>
+    public const double TREATY_TERM = 8 * Sim.OLD_YEAR, TREATY_RENEW = 0.35;
+
+    private static void TreatyTerm(Sim s, Civ a, Civ b)
+    {
+        var r = s.Rel(a.Id, b.Id);
+        string g = r.Treaty;
+        if (g == null) return;
+        string name = D.GOODS[g].Name;
+        if (r.War != null || s.Rel(b.Id, a.Id).War != null)
+        {
+            EndTreaty(s, a, b);
+            s.Metric("treatyBroken");
+            s.Log("diplomacy", $"{a.Name} ile {b.Name} arasındaki {name} Antlaşması savaşla bozuldu.", civ: a.Id, cause: "Savaşan devletler antlaşma tanımaz");
+            return;
+        }
+        r.TreatyDay ??= s.Day;
+        if (s.Day - r.TreatyDay.Value < TREATY_TERM) return;
+        var kinds = DepFor(g) ?? NONE;
+        bool aNeeds = !J.Some(kinds, k => s.OwnsDeposit(a, k)), bNeeds = !J.Some(kinds, k => s.OwnsDeposit(b, k));
+        if (aNeeds == bNeeds)
+        {
+            EndTreaty(s, a, b);
+            s.Metric("treatyLapsed");
+            s.Log("diplomacy", $"{a.Name} ile {b.Name} arasındaki {name} Antlaşması süresi dolunca kendiliğinden bitti.", civ: a.Id,
+                cause: aNeeds ? "Yatak artık ikisinin de elinde değil" : "İki taraf da kendi yatağını buldu");
+            return;
+        }
+        var o = aNeeds ? a : b; var h = aNeeds ? b : a;   // o: kaynağa muhtaç, h: yatağın sahibi
+        double p = TREATY_RENEW + h.Align.Good * 0.3 + h.Align.Law * 0.1 + s.RelValue(h.Id, o.Id) / 150 + (h.Gov == "republic" ? 0.15 : 0);
+        if (s.Rng.Chance(p)) { r.TreatyDay = s.Day; s.Rel(b.Id, a.Id).TreatyDay = s.Day; s.Metric("treatyRenewed"); return; }
+        EndTreaty(s, a, b);
+        s.AddMod(o.Id, h.Id, "refused", "Reddedilen teklif", -12, -24, 0.03, false);
+        s.Metric("treatyRefused");
+        s.Log("diplomacy", $"{h.Name}, {o.Name} ile yaptığı {name} Antlaşması'nı yenilemedi.", civ: h.Id, cause: "Süre doldu; kaynağı yeniden pazarlığa açtılar", major: true);
+    }
+
+    public static void EndTreaty(Sim s, Civ a, Civ b)
+    {
+        foreach (var (x, y) in new[] { (a, b), (b, a) }) { var rr = s.Rel(x.Id, y.Id); rr.Treaty = null; rr.TreatyDay = null; }
+        s.RemoveMod(a.Id, b.Id, "treaty");
     }
 
     /// <summary>o medeniyetinin, h'nin elindeki bir kaynağa duyduğu ihtiyaç</summary>
@@ -125,6 +180,7 @@ public static class Diplomacy
         if (s.Rng.Chance(p))
         {
             s.Rel(o.Id, h.Id).Treaty = gg; s.Rel(h.Id, o.Id).Treaty = gg;
+            s.Rel(o.Id, h.Id).TreatyDay = s.Day; s.Rel(h.Id, o.Id).TreatyDay = s.Day;   // Faz 1b-8
             r.Tension.Set(gg, 0);
             s.RemoveMod(o.Id, h.Id, "dispute", false);
             s.SetMod(o.Id, h.Id, "treaty", $"{D.GOODS[gg].Name} antlaşması", 15);
@@ -188,7 +244,56 @@ public static class Diplomacy
 
     private static double WarThreshold(Sim s, Civ c)
     {
-        return -32 - c.Align.Good * 22 - c.Align.Law * 10 + Polity.Aggression(c) * 28;
+        return -32 - c.Align.Good * 22 - c.Align.Law * 10 + Polity.Aggression(c) * 28 + Restless(s, c);
+    }
+
+    /// <summary>Faz 1b-8: uzun barışın huzursuzluğu (#61, ölçüt H1): son savaştan (hiç yoksa kuruluştan) RESTLESS_DAYS sonra savaş eşiği
+    /// eski yıl başına +2 gevşer (en çok RESTLESS_MAX); 5'i aşınca gerginlik ve toprak anlaşmazlığı olmadan da sınır savaşı açılabilir
+    /// (saldırganlığı ≥ 0,25 olan devlet).</summary>
+    public const double RESTLESS_DAYS = 4 * Sim.OLD_YEAR, RESTLESS_MAX = 15;
+
+    public static double Restless(Sim s, Civ c)
+    {
+        double since = s.Day - (c.LastWarEnd ?? c.Founded);
+        return since <= RESTLESS_DAYS ? 0 : JsMath.Min(RESTLESS_MAX, (since - RESTLESS_DAYS) / Sim.OLD_YEAR * 2);
+    }
+
+    /// <summary>Faz 1b-8 (#61, ölçüt H1): sınırdaş iki devlet arasında barış uzadıkça sürtüşme birikir. Son savaşlarından (ya da
+    /// sınırlarının değdiği günden) RESTLESS_DAYS sonra sınır sürtüşmesi FRICTION_BASE'ten eski yıl başına FRICTION_GROW büyür (en çok
+    /// FRICTION_MAX): ticaret ve antlaşmanın biriktirdiği dostluk sonsuza dek savaşı kapatmaz; aralarındaki savaş sürtüşmeyi sıfırlar.</summary>
+    public const double FRICTION_BASE = 8, FRICTION_GROW = 2, FRICTION_MAX = 40;
+
+    public static double BorderFriction(Sim s, Relation r)
+    {
+        double since = JsMath.Max(r.PeaceDay ?? -1e9, r.BorderSince ?? s.Day);
+        double yrs = (s.Day - since - RESTLESS_DAYS) / Sim.OLD_YEAR;
+        return JsMath.Min(FRICTION_MAX, FRICTION_BASE + JsMath.Max(0, yrs) * FRICTION_GROW);
+    }
+
+    /// <summary>Faz 1b-8: fırsat savaşı (ölçüt H1). Barış uzadıkça ticaret ve antlaşma ilişkiyi eşiğin çok üstüne taşır, savaş seyrekleşir;
+    /// komşunun içerideki karışıklığı ise dostluğu da sınar: saldırgan (≥ OPP_AGG) ya da uzun barıştan huzursuz devlet, ilişki eşiği
+    /// OPP_EASE gevşemişken, komşusunun sınıra yakın (OPP_RANGE) kriz içindeki, yeni lordlu ya da istikrarı çökmüş yerleşimine
+    /// ilişki tikinde OPP_P olasılıkla saldırır (başkentse üstünlük ister).</summary>
+    public const double OPP_EASE = 30, OPP_AGG = 0.25, OPP_P = 0.2, OPP_RANGE = 16, OPP_STAB = 30;
+
+    private static (Settlement st, string why) OpportunityCity(Sim s, Civ o, Civ t)
+    {
+        var mine = s.CivSettlements(o);
+        var oCap = s.Capital(o);
+        if (oCap == null || mine.Count == 0) return (null, null);
+        Settlement best = null; string why = null; double bd = double.PositiveInfinity;
+        foreach (var x in s.CivSettlements(t))
+        {
+            if (x.Hub != null || x.Tier < 1) continue;
+            string w = x.Crisis != null ? $"{Tr.Ek(x.Name, "da")} {J.TrLower(Crisis.Def(x.Crisis).Name)}"
+                : x.Status == "newlord" ? $"{x.Name} yeni lordunun elinde"
+                : x.Stability is double st && st < OPP_STAB ? $"{Tr.Ek(x.Name, "da")} istikrar çöktü" : null;
+            if (w == null) continue;
+            if (!J.Some(mine, y => s.G.Dist(x.Tile, y.Tile) <= OPP_RANGE)) continue;
+            double d = s.G.Dist(x.Tile, oCap.Tile);
+            if (d < bd) { bd = d; best = x; why = w; }
+        }
+        return (best, why);
     }
 
     private static void WarPeace(Sim s, Civ o, Civ t)
@@ -207,12 +312,18 @@ public static class Diplomacy
             // B1: tarihî hak: o'nun kurup kaybettiği (ya da elinden ayrılan) bir yerleşim t'nin elinde; eşik gevşer
             var claim = crusade ? null : ClaimTarget(s, o, t);
             bool reclaim = claim != null && rv <= WarThreshold(s, o) + CLAIM_EASE;
-            if (!crusade && !reclaim && (rv > WarThreshold(s, o) || (tension < 10 && land < 12))) return;
+            bool restless = Restless(s, o) > 5 && Polity.Aggression(o) >= 0.25;   // Faz 1b-8: uzun barış
+            // Faz 1b-8: fırsat savaşı: komşunun içerideki karışıklığı (iç kriz, yeni lord, çöken istikrar) dostluğu da sınar
+            bool oppOk = !crusade && !reclaim && rv <= WarThreshold(s, o) + OPP_EASE && (Polity.Aggression(o) >= OPP_AGG || Restless(s, o) > 5);
+            Settlement opp = null; string oppWhy = null;
+            if (oppOk && OpportunityCity(s, o, t) is var oc && oc.st != null && s.Rng.Chance(OPP_P)) { opp = oc.st; oppWhy = oc.why; }
+            if (!crusade && !reclaim && opp == null && (rv > WarThreshold(s, o) || (tension < 10 && land < 12 && !restless))) return;
             if (crusade && rv > 0) return;
             if (Polity.Oathbound(o) && (J.T(r.Treaty) || J.T(s.Rel(t.Id, o.Id).Treaty))) return; // yemin: antlaşma bozulmaz
             double powO = MilitaryPower(s, o), powT = MilitaryPower(s, t);
             if (powO < powT * 0.75) return;
             if (s.CivPop(o) < 22 || J.Sum(s.CivSettlements(o), x => x.Soldiers) < 4) return;
+            if (opp != null && opp.Id == s.Capital(t)?.Id && powO < powT * CAPITAL_ODDS) return;   // başkente fırsat savaşı da üstünlük ister
             // hedef: çekişilen kaynağa ya da (toprak savaşında) sınırdaki en yakın yerleşim
             bool byLand = tension < 10 && !crusade;
             string goodKey = J.At(J.Sort(r.Tension.Keys(), (x, y) => (r.Tension.Get(y) ?? 0) - (r.Tension.Get(x) ?? 0)), 0);
@@ -222,14 +333,14 @@ public static class Diplomacy
             if (dep != null) { int k = J.FindIndex(dep.Tiles, x => s.TileCiv(x) == t.Id); if (k >= 0) depTile = dep.Tiles[k]; }
             var oCap = s.Capital(o);
             var border = oCap != null ? J.At(J.Sort(J.Slice(s.CivSettlements(t)), (x, y) => s.G.Dist(x.Tile, oCap.Tile) - s.G.Dist(y.Tile, oCap.Tile)), 0) : null;
-            var target = crusade ? s.Capital(t) : reclaim ? claim : depTile != null ? s.Settlement(s.W.Tiles[depTile.Value].Owner) : byLand ? border : s.Capital(t);
+            var target = crusade ? s.Capital(t) : reclaim ? claim : opp != null ? opp : depTile != null ? s.Settlement(s.W.Tiles[depTile.Value].Owner) : byLand ? border : s.Capital(t);
             if (target == null) return;
             string goodName = (goodKey != null ? D.GOODS[goodKey]?.Name : null) ?? "Toprak";
             // B1: kaynak savaşında yatak yoksa hedef başkenttir: ordu haraç ve ganimet için gelir, şehri tutmaz (yağmalar)
-            bool tribute = !crusade && !reclaim && !byLand && depTile == null;
+            bool tribute = !crusade && !reclaim && opp == null && !byLand && depTile == null;
             // B1: başkente yürümek ezici üstünlük ister; yoksa (başka yerleşimi varsa) ordu en yakın taşra kasabasını hedefler
             var tCap = s.Capital(t);
-            if (!reclaim && !tribute && tCap != null && target.Id == tCap.Id && powO < powT * CAPITAL_ODDS && oCap != null)
+            if (!reclaim && !tribute && opp == null && tCap != null && target.Id == tCap.Id && powO < powT * CAPITAL_ODDS && oCap != null)
             {
                 var alt = J.At(J.Sort(J.Filter(s.CivSettlements(t), x => x.Id != tCap.Id), (x, y) => s.G.Dist(x.Tile, oCap.Tile) - s.G.Dist(y.Tile, oCap.Tile)), 0);
                 if (alt != null) target = alt;
@@ -238,7 +349,7 @@ public static class Diplomacy
             // yerleşime döner; yetiyorsa sıradan savaş düşmanın ulaşılabilir büyük şehirlerinden en zayıfına yürür (v3: savaşlar çekirdek
             // şehirler için yapılır, büyük şehir ancak istikrarı düşükken düşer)
             bool bigWar = false;
-            if (!reclaim && !tribute && !crusade && oCap != null)
+            if (!reclaim && !tribute && !crusade && opp == null && oCap != null)
             {
                 if (powO >= powT * BIG_ODDS)
                 {
@@ -254,16 +365,18 @@ public static class Diplomacy
             var war = new War
             {
                 Since = s.Day, Attacker = o.Id, Target = target.Id, Attacks = 0, LastArmy = -999,
-                Goal = crusade ? $"Kutsal Sefer: {Tr.Ek(t.Name, "in")} karanlık paktını yıkmak" : reclaim ? ReclaimGoal(s, o, target) : bigWar ? $"Büyük şehir {Tr.Ek(target.Name, "i")} almak"
+                Goal = crusade ? $"Kutsal Sefer: {Tr.Ek(t.Name, "in")} karanlık paktını yıkmak" : reclaim ? ReclaimGoal(s, o, target)
+                    : opp != null ? $"{Tr.Ek(t.Name, "in")} karışıklığından yararlanıp {Tr.Ek(target.Name, "i")} almak" : bigWar ? $"Büyük şehir {Tr.Ek(target.Name, "i")} almak"
                     : byLand ? $"{Tr.Ek(target.Name, "i")} ve çevresindeki toprakları almak" : $"{goodName} kaynağını ele geçirmek",
-                Kind = crusade ? "crusade" : reclaim ? "reclaim" : tribute ? "tribute" : null,
+                Kind = crusade ? "crusade" : reclaim ? "reclaim" : opp != null ? "opportunity" : tribute ? "tribute" : null,
             };
             r.War = war; s.Rel(t.Id, o.Id).War = war;
             s.Metric("war");
             if (reclaim) s.Metric("reclaimWar");
+            if (opp != null) s.Metric("oppWar");   // Faz 1b-8
             if (bigWar) s.Metric("bigWar");   // Faz 1b-4
             s.Log("war", $"{o.Name}, {Tr.Ek(t.Name, "a")} SAVAŞ İLAN ETTİ! Hedef: {target.Name}.", civ: o.Id, tile: target.Tile,
-                cause: $"İlişki {J.S(rv)}: {string.Join(", ", J.Map(J.Filter(r.Mods, m => m.Value < 0), m => J.TrLower(m.Text)))}{(reclaim ? $"; tarihî hak: {ClaimWhy(s, o, target)}" : "")}", major: true);
+                cause: $"İlişki {J.S(rv)}: {string.Join(", ", J.Map(J.Filter(r.Mods, m => m.Value < 0), m => J.TrLower(m.Text)))}{(reclaim ? $"; tarihî hak: {ClaimWhy(s, o, target)}" : "")}{(opp != null ? $"; fırsat: {oppWhy}" : "")}", major: true);
             CallAllies(s, o, t, war, target);
             // B1: pakt ortaklarının yardımı ya da ihaneti; kötü saldırgana karşı Kutsal Sefer
             OnWarDeclared(s, o, t);
@@ -476,7 +589,7 @@ public static class Diplomacy
         var pop = s.RemovePop(src, 5);
         s.Add(c, "grain", -15); s.Add(c, "wood", -10);
         c.LastExpand = s.Day;
-        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "settlers", Civ = c.Id, Path = target.Path, Step = 0, Progress = 0, Speed = Pace.SETTLERS, Pop = pop, From = src.Id, TargetTile = target.Tile, Purpose = target.Why, Hull = target.Hull?.Id });
+        s.W.Agents.Add(new Agent { Id = s.Id(), Kind = "settlers", Civ = c.Id, Path = target.Path, Step = 0, Progress = 0, Speed = Pace.SETTLERS, Pop = pop, From = src.Id, TargetTile = target.Tile, Purpose = target.Why, Hull = target.Hull?.Id, FromCamp = target.Camp });
         if (target.Hull != null)
         {
             s.Metric("seaVoyage");
@@ -507,7 +620,7 @@ public static class Diplomacy
             if (!J.T(x.Overseas) && s.Pop(x) >= FREED_POP && s.G.Dist(x.Tile, best) < fd) { fd = s.G.Dist(x.Tile, best); from = x; }
         var p = s.Path(from.Tile, best);
         if (p == null && !ReferenceEquals(from, cap)) { from = cap; p = s.Path(cap.Tile, best); }
-        return p != null ? new SettleTarget { Tile = best, Why = $"{cp.Name} temizlendi; boşalan vadi çiftçileri çekti", Path = p, From = from } : null;
+        return p != null ? new SettleTarget { Tile = best, Why = $"{cp.Name} temizlendi; boşalan vadi çiftçileri çekti", Path = p, From = from, Camp = cp.Id } : null;
     }
 
     /// <summary>TS inline type <c>{ tile; why; path; hull? }</c> of pickSettleTarget.</summary>
@@ -519,6 +632,8 @@ public static class Diplomacy
         public Settlement Hull;
         /// <summary>öncülerin çıktığı yerleşim (null = başkent)</summary>
         public Settlement From;
+        /// <summary>Faz 1b-8: temizlenen kampın vadisi (kampın kimliği)</summary>
+        public int? Camp;
     }
 
     /// <summary>TS inline type <c>{ i; sc; why; sea }</c> (pickSettleTarget candidates).</summary>
@@ -558,6 +673,8 @@ public static class Diplomacy
             if (J.Some(w.Camps, cp => cp.Alive && s.G.Dist(cp.Tile, i) < 5)) continue;
             double sc = -dOwn * (sea ? 0.3 : 0.7) + s.Rng.Next() * 2 + (sea ? 3 : 0);
             string why = sea ? "Bakir bir ada" : "Verimli topraklar"; double whyV = 0;
+            // Faz 1b-8: harabe yeniden iskân edilir (eski köyün kuyusu, tarlası, yolu hazır)
+            if (!sea && J.Some(w.Settlements, x => !x.Alive && x.Hub == null && s.G.Dist(x.Tile, i) <= 2)) { sc += 4; why = "Eski bir köyün harabesi"; whyV = 4; }
             // liman kurulabilecek kıyı yeri, denizci medeniyetler için değerli
             if (coastal) sc += 1.5 * Polity.Culture(c).Sea;
             var seenDep = new HashSet<int>();
@@ -832,7 +949,7 @@ public static class Diplomacy
     /// <summary>Faz 1b-5 (v3: temizlenen kamp → yeni köy 10–20 gün): bir kara kampı temizlendikten FREED_MIN–FREED_DAYS gün sonra
     /// (haber yayılır, çiftçiler toplanır) yakındaki medeniyet boşalan vadiye öncü yollar; bunun için öncü arası (EXPAND_GAP) beklemez,
     /// yerleşim tavanı (LandCap) geçerli: dünya büyümez, öncüler boşalan vadiye yönelir. Vadi medeniyetin bir yerleşimine en çok FREED_REACH fersah.</summary>
-    public const double FREED_MIN = 1, FREED_DAYS = 10, FREED_REACH = 18;
+    public const double FREED_MIN = 6, FREED_DAYS = 16, FREED_REACH = 18;   // Faz 1b-8: 1–10 → 6–16 (haber yayılır, vadi güvenli mi diye beklenir)
     /// <summary>boşalan vadiye öncü yollayabilecek yerleşimin en az nüfusu (vadiye en yakın böyle yerleşimden çıkarlar; yoksa başkentten)</summary>
     public const double FREED_POP = 15;
 

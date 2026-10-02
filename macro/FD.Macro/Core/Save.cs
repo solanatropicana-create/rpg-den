@@ -138,10 +138,11 @@ public static class SaveCodec
     /// açılmaz (alan adları değişti). 3: Faz 1b-5 (40 günlük takvim: gün sayaçlarının, zamanlayıcıların ve ajan ilerlemesinin
     /// anlamı değişti; Agent.Progress artık gün cinsinden). Sürüm 2 kayıtlar açılmaz. 4: Faz 1b-6 (devlet, inanç, örgüt, esaret;
     /// Civ.Cls kalktı). Sürüm 3 kayıtlar açılmaz. 5: Faz 1b-7 (yerleşim durumu, istikrar, iç kriz, fırsat merkezleri; sürüm 4 kayıtlar
-    /// açılır ama yeni alanlar boş başlar, birebir devam garantisi yok: MinVersion 5).</summary>
-    public const int Version = 5;
+    /// açılır ama yeni alanlar boş başlar, birebir devam garantisi yok: MinVersion 5). 6: Faz 1b-8 (kampın yerine kurulan köy
+    /// Settlement/Agent.FromCamp; kurallar değişti, sürüm 5 kayıtlar açılmaz).</summary>
+    public const int Version = 6;
     /// <summary>bu yapının açabildiği en eski sürüm</summary>
-    public const int MinVersion = 5;
+    public const int MinVersion = 6;
 
     internal static readonly JsonWriterOptions WriterOptions = new()
     {

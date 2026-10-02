@@ -829,8 +829,10 @@ public sealed class WorldStats
         bool ruin = false;
         foreach (var x in Sim.W.Settlements) if (x.Id != st.Id && !x.Alive && Sim.G.Dist(x.Tile, st.Tile) <= 2) { ruin = true; break; }
         Ev(ruin ? "resettle" : "found", st, st.Tier, day);
+        // Faz 1b-8: yalnız kampın vadisine kurulan köy (öncüler ya da verimli vadi merkezi; Settlement.FromCamp): yakındaki ilgisiz kuruluşlar
+        // (harabenin yeniden iskânı) sayılmaz
         foreach (var (sp, tile) in _clearedCamps)
-            if (sp.End < 0 && sp.Start <= day && day - sp.Start <= CAMP_VILLAGE_DAYS && Sim.G.Dist(tile, st.Tile) <= CAMP_VILLAGE_R) { sp.End = day; break; }
+            if (sp.End < 0 && sp.Start <= day && day - sp.Start <= CAMP_VILLAGE_DAYS && st.FromCamp == sp.Id) { sp.End = day; break; }
     }
 
     // ------------------------------------------------------------ Faz 1b-5: süre tablosu

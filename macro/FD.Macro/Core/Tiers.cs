@@ -96,7 +96,35 @@ public sealed partial class Sim
         int t = 0;
         for (int i = 1; i < 4; i++) if (P >= TIER_POP[i]) t = i;
         for (int k = s.Tier; k > t; k--) if (P >= TIER_POP[k] * TIER_KEEP) return k;
+        // Faz 1b-8: çekirdek halka 4–6 büyük şehir (yol haritası v3): dünyada BIG_MAX büyük şehir varken hiçbir yerleşim Şehir kademesine
+        // çıkamaz (nüfusu 100'ü aşsa da Kasaba kalır); büyük şehir histerezisle (85) kademesini korur. Düşmüş çekirdek şehir dünyada
+        // BIG_MIN'den az büyük şehir kalınca göç çeker (Status)
+        if (t >= BIG_TIER && s.Tier < BIG_TIER && BigCount(s) >= BIG_MAX) t = BIG_TIER - 1;
+        // çekirdek halka BIG_MIN'in altına düştüyse düşmüş çekirdek şehir histerezis eşiğinde (85) yeniden Şehir sayılır
+        else if (t < BIG_TIER && IsCore(s) && P >= TIER_POP[BIG_TIER] * TIER_KEEP && BigCount(s) < BIG_MIN) t = BIG_TIER;
         return t;
+    }
+
+    /// <summary>Faz 1b-8: çekirdek halkanın alt sınırı (altında düşmüş çekirdek şehirler göç çeker)</summary>
+    public const int BIG_MIN = 4;
+
+    /// <summary>Dünyada yaşayan büyük şehir sayısı.</summary>
+    public int BigCities()
+    {
+        int n = 0;
+        foreach (var x in W.Settlements) if (x.Alive && x.Tier >= BIG_TIER) n++;
+        return n;
+    }
+
+    /// <summary>Faz 1b-8: çekirdek halkanın üst sınırı (yeni büyük şehir ancak dünyada bundan az büyük şehir varken doğar)</summary>
+    public const int BIG_MAX = 6;
+
+    /// <summary>Dünyada (s hariç) yaşayan büyük şehir sayısı.</summary>
+    private int BigCount(Settlement except)
+    {
+        int n = 0;
+        foreach (var x in W.Settlements) if (x.Alive && x.Id != except.Id && x.Tier >= BIG_TIER) n++;
+        return n;
     }
 
     /// <summary>Medeniyetin kademesi: en büyük (en yüksek kademeli) yerleşiminin kademesi; yerleşimi yoksa 0.</summary>

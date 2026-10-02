@@ -146,9 +146,9 @@ public static class Patrol
     /// <summary>aç haydut kampının adı ve büyüklüğü</summary>
     public const double BANDIT_MIN = 3, BANDIT_SHARE = 0.06;
     /// <summary>aç yerleşimden WORLD_DAYS başına haydut çıkma olasılığı (Faz 1b-6: 0,12)</summary>
-    public const double BANDIT_P = 0.2;
+    public const double BANDIT_P = 0.12;
     /// <summary>bir seferde haydut olan en çok (Faz 1b-7: aç büyük şehirden de çıkar)</summary>
-    public const double BANDIT_MAX = 6;
+    public const double BANDIT_MAX = 5;
 
     /// <summary>Her WORLD_DAYS günde: açlık ya da ekmek yokluğu çeken yerleşimden halk haydut olur (yakında aç haydut kampı); aç haydutlar
     /// en yakın yerleşimden yiyecek ister (verilirse dağılır, halk döner); aç kalan kamp erir.</summary>

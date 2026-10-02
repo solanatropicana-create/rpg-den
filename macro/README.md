@@ -55,7 +55,8 @@ dotnet FD.Macro.Run/bin/Release/net8.0/FD.Macro.Run.dll stats --seeds 1-16 (--ye
   (salgın, onarım, sur ve büyük proje, kamp → köy, han kurulumu, han doğumu, efsaneye yükseliş, ilan ömrü; `DurLog`), devlet, inanç ve örgüt
   bölümü (9: spec §9; örgütler, devriye profili, çöküş nedenleri hükümet tipine göre, esaret, aç haydutlar), dünyanın durumu bölümü
   (Faz 1b-7, 6k–6n: durumlar ve süreleri, göç, iç krizler tipe göre, istikrar dağılımı, içeriden düşüş yolları, tip değişimi,
-  fırsat merkezleri türe göre, tepki inşaatı), eski analizdeki
+  fırsat merkezleri türe göre, tepki inşaatı), başsız ölçütler (Faz 1b-8, H1–H5: yol haritası Faz 1b/8'in beş maddesi; dünya-on yılı
+  pencereleri: donma, sahiplik ve durum dalgası, döngüler, çekirdek halka, spec §9), eski analizdeki
   sorunların durumu, on yıllık özet, kademe dağılımı (yerleşim ve başkent),
   kahraman seviye dağılımları, olay/muharebe/ölüm nedeni türleri, dünya tablosu, her ölçü için yıllık medyan (p10–p90);
 - `report.json`: aynı veriler (yıllık medyan/p10/p90 dizileri, on yıllık değerler, ölçütler);
@@ -103,7 +104,7 @@ sim.Save(stream);                       // akış sürümleri: Save(Stream, comp
 - `Save`'i iki `Step` arasında çağırın, bir `Cp`/`OnEvent` kancasının içinden değil. `Save` simülasyonda hiçbir şeyi değiştirmez.
 - Kancalar kaydedilmez: `OnEvent`, `Cp` ve `Rng.Trace` yüklemeden sonra yeniden bağlanır (ör. `new WorldStats(sim2)`).
 
-**Dosyada ne var.** `{"format":"fd-macro-save","version":5,"day":…,"seed":…,"state":{…}}` (sürüm 5: Faz 1b-7, yerleşim durumu, istikrar, iç kriz, fırsat merkezleri; sürüm 1–4 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
+**Dosyada ne var.** `{"format":"fd-macro-save","version":6,"day":…,"seed":…,"state":{…}}` (sürüm 5: Faz 1b-7, yerleşim durumu, istikrar, iç kriz, fırsat merkezleri; sürüm 6: Faz 1b-8, kampın yerine kurulan köy; sürüm 1–5 kayıtlar açılmaz). `state` (`SaveState`) şunları tutar:
 `World`, RNG durumu ve `Rng.Calls`, kara yol önbelleği, deniz yol önbelleği (`NavCache`) ve `ShoreW`. Önbellekler sonucu etkiler
 (bayat girdiler bilerek yeniden kullanılır, boyut sınırında temizlenir), o yüzden onlar da kaydedilir. RNG durumu ayrı saklanır:
 `new Sim(seed)`'ten hemen sonra `World.RngState` henüz dünya üretiminin durumunu tutar. İlk `Step`'ten sonra ikisi hep eşittir.
