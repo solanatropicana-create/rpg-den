@@ -139,8 +139,9 @@ public static class SaveCodec
     /// anlamı değişti; Agent.Progress artık gün cinsinden). Sürüm 2 kayıtlar açılmaz. 4: Faz 1b-6 (devlet, inanç, örgüt, esaret;
     /// Civ.Cls kalktı). Sürüm 3 kayıtlar açılmaz. 5: Faz 1b-7 (yerleşim durumu, istikrar, iç kriz, fırsat merkezleri; sürüm 4 kayıtlar
     /// açılır ama yeni alanlar boş başlar, birebir devam garantisi yok: MinVersion 5). 6: Faz 1b-8 (kampın yerine kurulan köy
-    /// Settlement/Agent.FromCamp; kurallar değişti, sürüm 5 kayıtlar açılmaz).</summary>
-    public const int Version = 6;
+    /// Settlement/Agent.FromCamp; kurallar değişti, sürüm 5 kayıtlar açılmaz). 7: Faz 2 (World.Region: 1:1 bölgenin bağı, oyuncunun
+    /// kahraman kaydı; sürüm 6 kayıtlar açılır, bölgesiz dünya olarak).</summary>
+    public const int Version = 7;
     /// <summary>bu yapının açabildiği en eski sürüm</summary>
     public const int MinVersion = 6;
 

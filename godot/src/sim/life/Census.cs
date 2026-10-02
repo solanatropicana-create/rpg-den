@@ -28,7 +28,34 @@ public static class TR
     }
 }
 
-/// <summary>Who lives where and does what. Fixed household templates (varied, believable) filled with names.</summary>
+/// <summary>
+/// Faz 2: what the macro world says about the village (<c>FD.Macro.Local.Info</c>), in LifeSim terms. The 1:1 village keeps its
+/// ten houses; who lives in them comes from here: resident count, race mix, the work they do, whether a priest serves the
+/// chapel, the inn folk's race and the goblins of the camp. No children (Faz 2 karar: çocuk ve köpek kalkar).
+/// </summary>
+public sealed class VillageSpec
+{
+    /// <summary>adult residents of the village (spread over the ten houses)</summary>
+    public int Residents = 34;
+    /// <summary>race id → weight (macro population)</summary>
+    public readonly List<(string race, float w)> Races = new() { ("human", 1f) };
+    /// <summary>work weights: Farmer, Woodcutter, Smith, Shepherd (others are derived)</summary>
+    public readonly Dictionary<Role, float> Work = new() { [Role.Farmer] = 20, [Role.Woodcutter] = 4, [Role.Smith] = 2, [Role.Shepherd] = 2 };
+    public bool Priest = true;
+    public string InnRace = "human";
+    public int Goblins = 6;
+    public bool GoblinBoss;
+    /// <summary>(race, female, rng) → given name; null: built-in pools</summary>
+    public Func<string, bool, Rng, string> Given;
+    /// <summary>(race, rng) → family name; null: built-in pools</summary>
+    public Func<string, Rng, string> Surname;
+    /// <summary>race → (adult from, old from, max) in years; null: human (17, 60, 85)</summary>
+    public Func<string, (int adult, int old, int max)> Ages;
+
+    public static VillageSpec Default() => new();
+}
+
+/// <summary>Who lives where and does what. Faz 2: households are built from <see cref="VillageSpec"/> (the macro village).</summary>
 public static class Census
 {
     static readonly string[] Male =
@@ -46,91 +73,166 @@ public static class Census
         "Karataş", "Değirmenci", "Tepeli", "Dereli", "Söğüt", "Bağcı", "Kuyucu", "Akbaba", "Ormanlı", "Yıldırım", "Ekinci", "Kestane",
     };
 
-    record Tmpl(Role Role, bool Female, int Age);
-
-    /// <summary>Household templates in home order: 0 headman (large house), 1 smith, 2 shepherd, 3 woodcutter, 4+ farmers.</summary>
-    static readonly (string trade, Tmpl[] members)[] Houses =
+    /// <summary>Population plan: how many of each role, in house order. House 0 is the headman's large house; 1 smith, 2 shepherd,
+    /// 3 woodcutter, the rest farmers (the brain finds the workplaces by role).</summary>
+    public static List<Role>[] Plan(VillageSpec spec, int homeCount)
     {
-        ("Muhtar", new Tmpl[] { new(Role.Headman, false, 52), new(Role.Homemaker, true, 48), new(Role.Farmer, false, 19), new(Role.Child, true, 10), new(Role.Elder, true, 74) }),
-        ("Demirci", new Tmpl[] { new(Role.Smith, false, 41), new(Role.Homemaker, true, 38), new(Role.Apprentice, false, 15), new(Role.Child, true, 7) }),
-        ("Çoban", new Tmpl[] { new(Role.Shepherd, false, 45), new(Role.Homemaker, true, 40), new(Role.Shepherd, false, 13), new(Role.Child, true, 6) }),
-        ("Oduncu", new Tmpl[] { new(Role.Woodcutter, false, 38), new(Role.Woodcutter, false, 18), new(Role.Homemaker, true, 36), new(Role.Child, false, 8) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, false, 35), new(Role.Farmer, true, 33), new(Role.Child, false, 9), new(Role.Child, true, 6), new(Role.Elder, false, 70) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, false, 29), new(Role.Homemaker, true, 27), new(Role.Child, false, 4) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, false, 47), new(Role.Farmer, true, 44), new(Role.Farmer, false, 20), new(Role.Child, true, 12) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, false, 58), new(Role.Homemaker, true, 55), new(Role.Elder, true, 80), new(Role.Farmer, true, 24) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, false, 31), new(Role.Farmer, true, 30), new(Role.Child, false, 7), new(Role.Child, true, 5), new(Role.Child, false, 3) }),
-        ("Çiftçi", new Tmpl[] { new(Role.Farmer, true, 42), new(Role.Farmer, false, 17), new(Role.Child, true, 11), new(Role.Elder, false, 69) }),
-    };
+        int n = Math.Clamp(spec.Residents, 8, 46);
+        float W(Role r) => spec.Work.TryGetValue(r, out var v) ? MathF.Max(0, v) : 0;
+        float total = MathF.Max(1, W(Role.Farmer) + W(Role.Woodcutter) + W(Role.Smith) + W(Role.Shepherd));
+        int smiths = W(Role.Smith) > 0 || n >= 20 ? 1 : 0;
+        int apprentices = smiths > 0 && n >= 24 && W(Role.Smith) / total > 0.06f ? 1 : 0;
+        int shepherds = 1 + (n >= 22 && W(Role.Shepherd) / total > 0.08f ? 1 : 0);
+        int woodcutters = Math.Clamp((int)MathF.Round(n * W(Role.Woodcutter) / total), 1, 3);
+        int elders = (int)MathF.Round(n * 0.12f);
+        int homemakers = (int)MathF.Round(n * 0.17f);
+        int farmers = Math.Max(2, n - 1 - smiths - apprentices - shepherds - woodcutters - elders - homemakers);
+        var houses = new List<Role>[Math.Max(1, homeCount)];
+        for (int i = 0; i < houses.Length; i++) houses[i] = new List<Role>();
+        void Put(int h, Role r, int k = 1) { for (int i = 0; i < k; i++) houses[Math.Min(h, houses.Length - 1)].Add(r); }
+        Put(0, Role.Headman);
+        if (smiths > 0) { Put(1, Role.Smith); Put(1, Role.Apprentice, apprentices); }
+        Put(2, Role.Shepherd, shepherds);
+        Put(3, Role.Woodcutter, woodcutters);
+        // farmers: two per farm house first, then round robin over all houses except the smithy's
+        var order = new List<int>();
+        for (int i = 4; i < houses.Length; i++) order.Add(i);
+        order.Add(0);
+        for (int i = 1; i < Math.Min(4, houses.Length); i++) order.Add(i);
+        int k2 = 0;
+        for (int i = 0; i < farmers; i++) { Put(order[k2 % order.Count], Role.Farmer); k2++; }
+        // homemakers and elders into the houses with the most working members
+        for (int i = 0; i < homemakers; i++) Put(Smallest(houses, true), Role.Homemaker);
+        for (int i = 0; i < elders; i++) Put(Smallest(houses, false), Role.Elder);
+        return houses;
+    }
 
-    public static void Populate(LifeSim w, ulong seed)
+    static int Smallest(List<Role>[] houses, bool workersFirst)
     {
-        var rng = new Rng(seed);
-        var usedM = new HashSet<string>();
-        var usedF = new HashSet<string>();
-        string First(bool female)
+        int best = 0; float bs = float.MaxValue;
+        for (int i = 0; i < houses.Length; i++)
         {
-            var pool = female ? Female : Male;
-            var used = female ? usedF : usedM;
-            for (int i = 0; i < 50; i++) { var n = rng.Pick(pool); if (used.Add(n)) return n; }
-            return rng.Pick(pool);
+            int c = houses[i].Count;
+            if (c == 0) continue;
+            float s = c + (workersFirst && houses[i].Contains(Role.Homemaker) ? 2.5f : 0) + (!workersFirst && houses[i].Contains(Role.Elder) ? 2.5f : 0) + i * 0.01f;
+            if (s < bs) { bs = s; best = i; }
         }
+        return best;
+    }
+
+    public static void Populate(LifeSim w, ulong seed, VillageSpec spec = null)
+    {
+        spec ??= VillageSpec.Default();
+        var rng = new Rng(seed);
+        var used = new HashSet<string>();
+        string Given(string race, bool female)
+        {
+            for (int i = 0; i < 40; i++)
+            {
+                string n = spec.Given != null ? spec.Given(race, female, rng) : rng.Pick(female ? Female : Male);
+                if (used.Add(n)) return n;
+            }
+            return spec.Given != null ? spec.Given(race, female, rng) : rng.Pick(female ? Female : Male);
+        }
+        var famUsed = new HashSet<string>();
+        string Family(string race)
+        {
+            for (int i = 0; i < 30; i++)
+            {
+                string n = spec.Surname != null ? spec.Surname(race, rng) : rng.Pick(Surnames);
+                if (famUsed.Add(n)) return n;
+            }
+            return spec.Surname != null ? spec.Surname(race, rng) : rng.Pick(Surnames);
+        }
+        string Race()
+        {
+            float tot = 0; foreach (var (_, wt) in spec.Races) tot += MathF.Max(0, wt);
+            if (tot <= 0) return "human";
+            float x = rng.Next01() * tot;
+            foreach (var (r, wt) in spec.Races) { x -= MathF.Max(0, wt); if (x <= 0) return r; }
+            return spec.Races[^1].race;
+        }
+        (int adult, int old, int max) AgesOf(string race) => spec.Ages?.Invoke(race) ?? (17, 60, 85);
+        int AgeFor(string race, Role role)
+        {
+            var (ad, old, mx) = AgesOf(race);
+            if (role == Role.Elder) return old + (int)(rng.Next01() * Math.Max(1, (mx - old) * 0.8f));
+            if (role == Role.Apprentice) return ad + (int)(rng.Next01() * Math.Max(1, (old - ad) * 0.12f));
+            if (role == Role.Headman) return ad + (int)((old - ad) * (0.55f + rng.Next01() * 0.4f));
+            return ad + (int)(rng.Next01() * Math.Max(1, (old - ad) * 0.9f));
+        }
+
         var homes = w.PlacesOf(PlaceKind.Home);
         var fields = w.PlacesOf(PlaceKind.Field);
-        var surnames = new List<string>(Surnames);
-        // trade-matching surnames first so the smith is a Demirci etc.
-        string Surname(string trade)
-        {
-            // trades carry their trade name (the smith's family are the Demircis …); others draw from the list
-            if (trade is "Demirci" or "Çoban" or "Oduncu") return trade;
-            if (surnames.Count == 0) surnames.AddRange(Surnames);
-            var pick = surnames[rng.Int(surnames.Count)];
-            surnames.Remove(pick);
-            return pick;
-        }
+        var plan = Plan(spec, homes.Count);
+        // race tokens matching the macro mix (largest remainder), grouped by race so households stay mostly of one people
+        int nPeople = 0; foreach (var hl in plan) nPeople += hl.Count;
+        var tokens = RaceTokens(spec, nPeople);
+        int tok = 0;
+        string[] trade = { "Muhtar", "Demirci", "Çoban", "Oduncu" };
         int fieldIdx = 0;
-        for (int hIdx = 0; hIdx < Houses.Length && hIdx < homes.Count; hIdx++)
+        for (int hIdx = 0; hIdx < plan.Length && hIdx < homes.Count; hIdx++)
         {
-            var (trade, members) = Houses[hIdx];
-            var hh = new Household { Id = w.Households.Count, Surname = Surname(trade), Home = homes[hIdx].Id, Trade = trade };
+            var roles = plan[hIdx];
+            if (roles.Count == 0) { homes[hIdx].Name = "boş ev"; continue; }
+            string race = tok < tokens.Count ? tokens[tok] : Race();
+            string tr = hIdx < trade.Length && (hIdx != 1 || roles.Contains(Role.Smith)) ? trade[hIdx] : "Çiftçi";
+            var hh = new Household { Id = w.Households.Count, Surname = Family(race), Home = homes[hIdx].Id, Trade = tr };
             w.Households.Add(hh);
             homes[hIdx].Owner = hh.Id;
             homes[hIdx].Name = $"{hh.Surname} hanesi";
-            foreach (var m in members)
+            bool firstFemale = rng.Chance(0.3f);
+            for (int m = 0; m < roles.Count; m++)
             {
-                var p = NewPerson(w, m.Role, m.Female, m.Age, First(m.Female), hh.Surname, rng);
+                var role = roles[m];
+                string r = tok < tokens.Count ? tokens[tok] : race;
+                tok++;
+                bool female = role == Role.Homemaker ? rng.Chance(0.8f) : m == 0 ? firstFemale : rng.Chance(0.45f);
+                var p = NewPerson(w, role, female, AgeFor(r, role), Given(r, female), hh.Surname, rng);
+                p.Race = r;
                 p.Household = hh.Id;
                 p.Home = homes[hIdx].Id;
                 hh.Members.Add(p.Id);
             }
-            // fields: headman 2, farmers 1–2 (round robin), others none
-            int want = trade == "Muhtar" ? 2 : trade == "Çiftçi" ? 1 : 0;
-            for (int k = 0; k < want && fields.Count > 0; k++) { hh.Fields.Add(fields[fieldIdx % fields.Count].Id); fields[fieldIdx % fields.Count].Owner = hh.Id; fieldIdx++; }
+            // fields: headman 2, farm houses 1 (round robin), others none
+            int want = hIdx == 0 ? 2 : roles.Contains(Role.Farmer) && hIdx >= 4 ? 1 : 0;
+            for (int k = 0; k < want && fields.Count > 0 && fieldIdx < fields.Count; k++) { hh.Fields.Add(fields[fieldIdx].Id); fields[fieldIdx].Owner = hh.Id; fieldIdx++; }
         }
-        // leftover fields go to the biggest farming families
-        for (int hIdx = 4; fieldIdx < fields.Count && hIdx < w.Households.Count; hIdx++, fieldIdx++)
+        // leftover fields go to the houses with the most farmers
+        for (int guard = 0; fieldIdx < fields.Count && guard < 100; guard++)
         {
-            w.Households[hIdx].Fields.Add(fields[fieldIdx].Id);
-            fields[fieldIdx].Owner = w.Households[hIdx].Id;
+            Household best = null; int bf = 0;
+            foreach (var h in w.Households)
+            {
+                int f = 0; foreach (int id in h.Members) if (w.People[id].Role == Role.Farmer) f++;
+                f -= h.Fields.Count;
+                if (best == null || f > bf) { best = h; bf = f; }
+            }
+            if (best == null) break;
+            best.Fields.Add(fields[fieldIdx].Id); fields[fieldIdx].Owner = best.Id; fieldIdx++;
         }
 
         // priest lives in the chapel
         var chapel = w.PlaceOf(PlaceKind.Chapel);
-        if (chapel != null)
+        if (chapel != null && spec.Priest)
         {
-            var pr = NewPerson(w, Role.Priest, false, 61, "Anselm", "", rng);
-            pr.Name = "Rahip Anselm";
+            string race = Race();
+            var pr = NewPerson(w, Role.Priest, false, AgeFor(race, Role.Headman), Given(race, false), "", rng);
+            pr.Race = race;
+            pr.Name = "Rahip " + pr.Name;
             pr.Home = chapel.Id;
         }
         // inn folk
         var inn = w.PlaceOf(PlaceKind.Inn);
         if (inn != null)
         {
-            var hh = new Household { Id = w.Households.Count, Surname = "Taşkın", Home = inn.Id, Trade = "Hancı" };
+            var hh = new Household { Id = w.Households.Count, Surname = Family(spec.InnRace), Home = inn.Id, Trade = "Hancı" };
             w.Households.Add(hh);
-            foreach (var (role, fem, age) in new[] { (Role.Innkeeper, false, 50), (Role.InnServant, true, 47), (Role.InnServant, true, 22), (Role.StableHand, false, 16) })
+            foreach (var (role, fem) in new[] { (Role.Innkeeper, false), (Role.InnServant, true), (Role.InnServant, true), (Role.StableHand, false) })
             {
-                var p = NewPerson(w, role, fem, age, First(fem), hh.Surname, rng);
+                string race = role == Role.Innkeeper || rng.Chance(0.7f) ? spec.InnRace : Race();
+                var p = NewPerson(w, role, fem, role == Role.StableHand ? AgeFor(race, Role.Apprentice) : AgeFor(race, role), Given(race, fem), hh.Surname, rng);
+                p.Race = race;
                 p.Household = hh.Id; p.Home = inn.Id;
                 hh.Members.Add(p.Id);
             }
@@ -143,17 +245,49 @@ public static class Census
         var camp = w.PlaceOf(PlaceKind.Camp);
         if (camp != null)
         {
-            string[] gn = { "Snik", "Grubb", "Yazz", "Morg", "Kıtır", "Pıskı" };
-            for (int i = 0; i < 6; i++)
+            string[] gn = { "Snik", "Grubb", "Yazz", "Morg", "Kıtır", "Pıskı", "Zıbık", "Gırtlak", "Nuk", "Pöt", "Hırk", "Zort" };
+            int count = Math.Clamp(spec.Goblins, 0, gn.Length);
+            for (int i = 0; i < count; i++)
             {
                 var g = NewPerson(w, Role.Goblin, false, 9 + i, gn[i], "", rng);
+                g.Race = "goblin";
                 g.Work = i;
                 g.Home = camp.Id;
                 g.WalkSpeed = 1.1f; g.RunSpeed = 3.8f;
                 g.Post = camp.Center;
             }
+            if (spec.GoblinBoss)
+            {
+                var b = NewPerson(w, Role.Goblin, false, 30, "Kara Gırnak", "", rng);
+                b.Race = "goblin"; b.IsBoss = true;
+                b.Work = 0;   // a guard's day; stays near the fire
+                b.Home = camp.Id;
+                b.WalkSpeed = 1.1f; b.RunSpeed = 3.6f;
+                b.Post = camp.Center;
+            }
         }
         w.Flock.Init(w, 11, seed + 5);
+    }
+
+    /// <summary>n race ids in the macro proportions (largest remainder), majority first.</summary>
+    static List<string> RaceTokens(VillageSpec spec, int n)
+    {
+        var o = new List<string>();
+        float tot = 0; foreach (var (_, wt) in spec.Races) tot += MathF.Max(0, wt);
+        if (tot <= 0 || n <= 0) return o;
+        var rem = new List<(string r, float frac)>();
+        foreach (var (r, wt) in spec.Races)
+        {
+            float exact = n * MathF.Max(0, wt) / tot;
+            int k = (int)MathF.Floor(exact);
+            for (int i = 0; i < k; i++) o.Add(r);
+            rem.Add((r, exact - k));
+        }
+        rem.Sort((a, b) => b.frac.CompareTo(a.frac));
+        for (int i = 0; o.Count < n && i < rem.Count; i++) o.Add(rem[i].r);
+        var order = new List<string>(); foreach (var (r, _) in spec.Races) order.Add(r);
+        o.Sort((a, b) => order.IndexOf(a).CompareTo(order.IndexOf(b)));
+        return o;
     }
 
     static Person NewPerson(LifeSim w, Role role, bool female, int age, string first, string surname, Rng rng)
@@ -181,7 +315,7 @@ public static class Census
     public static string RoleName(Person p) => p.Role switch
     {
         Role.Farmer => p.Female ? "Çiftçi (kadın)" : "Çiftçi",
-        Role.Homemaker => "Ev hanımı",
+        Role.Homemaker => p.Female ? "Ev hanımı" : "Evin işlerini gören",
         Role.Woodcutter => "Oduncu",
         Role.Smith => "Demirci ustası",
         Role.Apprentice => "Demirci çırağı",
@@ -196,7 +330,7 @@ public static class Census
         Role.Merchant => "Gezgin tüccar",
         Role.Pilgrim => "Hacı",
         Role.Adventurer => "Maceracı (korucu)",
-        Role.Goblin => "Goblin",
+        Role.Goblin => p.IsBoss ? "Goblin şefi" : "Goblin",
         _ => p.Role.ToString(),
     };
 }

@@ -31,6 +31,9 @@ public partial class Humanoid : Node3D
     /// Accessories: hair_short, hair_long, hair_bun, beard, hat_straw, hood, helmet, apron;
     /// tools: tool_axe, tool_hoe, tool_hammer, tool_pitchfork, tool_spear, tool_lantern, tool_sack, tool_bucket.</summary>
     public string[] Outfit = { "hair_short", "beard" };
+    /// <summary>Faz 2 (ırklar): 0 insan kulağı (modelde), 1 küçük sivri (yarımşık, cüce-gnom, buçukluk), 2 uzun sivri (elf).
+    /// Kafa kemiğine bağlı ten renkli koniler.</summary>
+    public int Ears;
 
     AnimationPlayer _anim;
     string _idle, _walk, _run, _jump, _current;
@@ -51,6 +54,7 @@ public partial class Humanoid : Node3D
             foreach (var n in model.FindChildren("*", "GeometryInstance3D", true, false)) _geoms.Add((GeometryInstance3D)n);
             ApplyOutfit();
             if (_anim != null) BindAnimations();
+            if (Ears > 0) AddEars(model);
         }
         if (model == null || _anim == null)
         {
@@ -60,6 +64,33 @@ public partial class Humanoid : Node3D
         ApplyColors();
     }
 
+    /// <summary>Faz 2: pointed ears on the head bone (skin slot, so they take the skin colour).</summary>
+    void AddEars(Node model)
+    {
+        var skel = FindFirst<Skeleton3D>(model);
+        if (skel == null || skel.FindBone("head") < 0) return;
+        var att = new BoneAttachment3D { Name = "Ears", BoneName = "head" };
+        skel.AddChild(att);
+        var mat = Models.MaterialFor(MatKind.Character);
+        Color skin = new(1, 1, 1, 0.25f);
+        bool longEar = Ears >= 2;
+        float len = longEar ? 0.11f : 0.06f, rad = longEar ? 0.026f : 0.022f;
+        foreach (float side in new[] { -1f, 1f })
+        {
+            var k = new MeshKit();
+            // cone axis: out, up and back from the side of the head (head bone local: +y up, +z front)
+            Vector3 dir = new Vector3(side * 0.72f, longEar ? 0.6f : 0.5f, -0.38f).Normalized();
+            Vector3 x = dir.Cross(Vector3.Forward).Normalized();
+            if (x.LengthSquared() < 1e-4f) x = Vector3.Right;
+            Vector3 z = x.Cross(dir).Normalized();
+            k.Transform = new Transform3D(new Basis(x, dir, z), new Vector3(side * 0.098f, 0.115f, -0.012f));
+            k.Cone(Vector3.Zero, rad, len, 5, skin);
+            var mi = new MeshInstance3D { Name = side < 0 ? "EarL" : "EarR", Mesh = k.ToMesh(mat) };
+            att.AddChild(mi);
+            _geoms.Add(mi);
+        }
+    }
+
     /// <summary>Show "body" plus the <see cref="Outfit"/> parts, hide every other accessory/tool mesh.</summary>
     public void ApplyOutfit()
     {
@@ -67,7 +98,7 @@ public partial class Humanoid : Node3D
         foreach (var g in _geoms)
         {
             string n = g.Name.ToString();
-            bool show = n == "body" || n.StartsWith("body") || Array.IndexOf(Outfit, n) >= 0;
+            bool show = n == "body" || n.StartsWith("body") || n.StartsWith("Ear") || Array.IndexOf(Outfit, n) >= 0;
             g.Visible = show;
         }
     }

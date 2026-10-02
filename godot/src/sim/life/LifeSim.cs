@@ -25,6 +25,9 @@ public sealed partial class LifeSim
     public readonly Rng Rng;
     public double Now;
     double _last = double.NaN;
+    /// <summary>Faz 2: game seconds per real second (GameClock.TimeScale; 48 → 30-minute day). People walk at real speed, so the
+    /// brain converts walking distance into game hours with it (leave early enough to be home by bedtime, lunch at the field…).</summary>
+    public float TimeScale = 48f;
     public string VillageName = "Sessiztepe";
     public string InnName = "Yorgun Katır";
     public string CampName = "Kırık Diş kampı";

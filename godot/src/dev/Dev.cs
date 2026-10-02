@@ -27,6 +27,8 @@ namespace FD.Dev;
 /// --hold=a,b              keep input actions pressed (e.g. --hold=move_forward,sprint) to film motion
 /// --noassets              ignore all glb files (procedural placeholders everywhere)
 /// --probe=x,z;x,z…        print height, slope, ground cover and distances at points, then quit
+/// --seed=N --prehistory=N  macro world seed and prehistory days (Faz 2; default 1 and 1600)
+/// --worldtest=N           headless: macro link + N local days (macro steps, names, census from the sim), PASS/FAIL
 /// </code>
 /// </summary>
 public partial class Dev : Node
@@ -45,6 +47,10 @@ public partial class Dev : Node
     public float? PlayerYawDeg;
     public bool SelfTest;
     public int LifeTestDays;
+    /// <summary>Faz 2: macro world seed (--seed=N) and prehistory length (--prehistory=N days; shorter for quick dev shots)</summary>
+    public double? Seed;
+    public int? Prehistory;
+    public int WorldTestDays;
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
     public float FollowDist = 5f, FollowHeight = 1.9f, FollowAngle = 35f;
@@ -93,6 +99,9 @@ public partial class Dev : Node
                     case "--bench": Bench = int.Parse(val, ci); break;
                     case "--selftest": SelfTest = true; break;
                     case "--lifetest": LifeTestDays = val == "" ? 2 : int.Parse(val, ci); break;
+                    case "--seed": Seed = double.Parse(val, ci); break;
+                    case "--prehistory": Prehistory = int.Parse(val, ci); break;
+                    case "--worldtest": WorldTestDays = val == "" ? 3 : int.Parse(val, ci); break;
                     case "--follow": Follow = val; break;
                     case "--followcam":
                     {
@@ -211,11 +220,13 @@ public partial class Dev : Node
         if (Exposure.HasValue) region.DayNight.ExposureScale = Exposure.Value;
         if (SelfTest) CallDeferred(nameof(RunSelfTest));
         if (LifeTestDays > 0) CallDeferred(nameof(RunLifeTest));
+        if (WorldTestDays > 0) CallDeferred(nameof(RunWorldTest));
         if (DebugHud) region.Hud?.SetDebug(true);
         if (OpenMap) region.Hud?.ToggleMap();
     }
 
     void RunLifeTest() => FD.Dev.LifeTest.Run(this, Region.Current, LifeTestDays);
+    void RunWorldTest() => FD.Dev.WorldTest.Run(this, Region.Current, WorldTestDays);
 
     /// <summary>--follow=Name: keep the free camera (or the player) near that person, looking at them.</summary>
     void FollowPerson()

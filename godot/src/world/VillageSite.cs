@@ -358,7 +358,7 @@ public sealed class VillageSite : IRegionFeature
                         }
                     FenceRect(small, b.LocalToWorld(0, -8.35f), 2.9f, 3.05f, b.Yaw, gateSide: 0);
                     if (b.HomeIndex % 3 == 0) small.Batch("village", "clothesline", At(b.LocalToWorld(4.6f, -2.5f)), b.Yaw + MathF.PI / 2);
-                    if (b.HomeIndex % 4 == 1) small.Batch("village", "dog_house", At(b.LocalToWorld(3.4f, 1.4f)), b.Yaw + 0.3f);
+                    // Faz 2: köpek kulübesi kalktı (çocuk ve köpek yok)
                     // bench along the side wall
                     Vector2 sideFace = -new Vector2(b.Face.Y, -b.Face.X);
                     small.Batch("village", "bench", At(b.LocalToWorld(-3.05f, 1.8f)), RegionSpec.YawFacing(sideFace));

@@ -149,6 +149,10 @@ public sealed class Person
     public string Name = "", Surname = "";
     public int Age;
     public bool Female;
+    /// <summary>Faz 2: race id from the macro world (human, dwarf, elf, halfling, gnome, halfelf, halforc, dragonborn, tiefling, goblin)</summary>
+    public string Race = "human";
+    /// <summary>Faz 2: camp leader (goblin boss)</summary>
+    public bool IsBoss;
     public Role Role;
     public int Household = -1;
     public int Home = -1;

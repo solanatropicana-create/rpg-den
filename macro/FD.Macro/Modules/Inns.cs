@@ -28,7 +28,8 @@ public static class Inns
 
     /// <summary>Yuvası bu han olan, bağımsız ve hayattaki (emekli olmayan) kahramanlar.</summary>
     public static List<Hero> InnPool(Sim s, Inn inn) =>
-        J.Filter(s.W.Heroes, h => h.BaseInn && h.Base == inn.Id && h.Civ == -1 && h.State != "dead" && h.State != "gone" && h.State != "retired" && h.State != "captive");
+        J.Filter(s.W.Heroes, h => h.BaseInn && h.Base == inn.Id && h.Civ == -1 && h.State != "dead" && h.State != "gone" && h.State != "retired" && h.State != "captive"
+            && h.State != "player" && h.State != "party");   // Faz 2: oyuncu ve ekibindekiler handa beklemez
 
     /// <summary>Medeniyetin handan sözleşmeyle tuttuğu (hayattaki) kahramanlar.</summary>
     public static List<Hero> InnHeroesOf(Sim s, Civ c) =>

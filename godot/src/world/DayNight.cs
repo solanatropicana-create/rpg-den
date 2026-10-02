@@ -5,7 +5,7 @@ using FD.Core;
 namespace FD.World;
 
 /// <summary>
-/// Global game clock. Default speed: 1 game day = 24 real minutes (<see cref="TimeScale"/> = 60 game seconds per
+/// Global game clock. Default speed (Faz 2): 1 game day = 30 real minutes (<see cref="TimeScale"/> = 48 game seconds per
 /// real second). Read <see cref="Hour"/>, <see cref="Day"/>, <see cref="IsNight"/> anywhere; advanced by
 /// <see cref="DayNight"/> every frame. Sun position is a pure function of the hour (see <see cref="SunDirection"/>),
 /// so simulation code can reason about light without the scene.
@@ -14,9 +14,9 @@ public static class GameClock
 {
     /// <summary>Game hours since day 0, 00:00. Starts on day 0 at 09:00.</summary>
     public static double TotalHours { get; private set; } = 9.0;
-    /// <summary>Game seconds per real second (20 → a 72-minute day, so walking distances and schedules fit:
-    /// 100 m on foot ≈ 25 game minutes). Settable (dev: --timescale=K).</summary>
-    public static float TimeScale = 20f;
+    /// <summary>Game seconds per real second. Faz 2: 48 → a 30-minute day (yol haritası: 1 gün = 30 dk; makro dünyanın bir günü),
+    /// night ≈ 8 real minutes. Settable (dev: --timescale=K).</summary>
+    public static float TimeScale = 48f;
     public static bool Paused;
 
     public static float Hour => (float)(TotalHours % 24.0);
@@ -48,9 +48,9 @@ public static class GameClock
 
     public static string TimeString => $"Gün {Day + 1}, {(int)Hour:00}:{(int)(Hour % 1f * 60f):00}";
 
-    // Sun path: latitude 40°N, midsummer-ish declination 20°, local clock 0.8 h ahead of solar time
-    // → sunrise ≈ 05:35, noon ≈ 12:48, sunset ≈ 20:00.
-    const float Latitude = 40f, Declination = 20f, ClockOffset = 0.8f;
+    // Sun path (Faz 2: kısa gece): latitude 50°N, midsummer declination 23°, local clock 0.8 h ahead of solar time
+    // → sunrise ≈ 04:47, noon ≈ 12:48, sunset ≈ 20:50; night (sun < −6°) 21:41–03:56 ≈ 6,25 h ≈ 8 real minutes at TimeScale 48.
+    const float Latitude = 50f, Declination = 23f, ClockOffset = 0.8f;
 
     /// <summary>Unit vector pointing TO the sun (x east, y up, z south) for a clock hour.</summary>
     public static Vector3 SunDirection(float hour)

@@ -875,6 +875,30 @@ public sealed class World
     public List<Hub> Hubs = new();
     /// <summary>sonraki fırsat merkezi tetikleyicisinin en erken günü</summary>
     public double NextHub;
+    // ---- Faz 2: 1:1 bölge (Godot dilimi; Modules/Local.cs)
+    /// <summary>oyuncunun bölgesi: bağlı köy, han ve goblin kampı, oyuncunun kahraman kaydı; null: başsız (ölçüm) dünya</summary>
+    public RegionLink Region;
+}
+
+/// <summary>Faz 2: 1:1 bölgenin (Godot dilimi) makro dünyadaki karşılığı (<see cref="Local"/>). Bölgedeki köy, han ve kamp simdeki
+/// birer yerleşime, hana ve kampa bağlıdır: adları, devleti, nüfusu, iş ve inanç dağılımı, fiyatlar, ilanlar ve kahramanlar simden
+/// gelir; bölgede olanlar (kamp temizlendi, goblin öldü, alışveriş, oyuncu bayıldı…) sime olay olarak yazılır.</summary>
+public sealed class RegionLink
+{
+    /// <summary>bağlı köy (Settlement id)</summary>
+    public int Village;
+    /// <summary>bağlı han (Inn id; -1: dünyada han yok)</summary>
+    public int Inn = -1;
+    /// <summary>bağlı goblin kampı (Camp id)</summary>
+    public int Camp;
+    /// <summary>bağlandığı gün</summary>
+    public double Since;
+    /// <summary>kamp bağlanırken bölgeye yakın kuruldu mu (dünyada yakında goblin kampı yoktu)</summary>
+    public bool SpawnedCamp;
+    /// <summary>oyuncunun kahraman kaydı (Hero id; State "player"); null: henüz yaratılmadı</summary>
+    public int? Player;
+    /// <summary>oyuncunun ekibindeki kahramanlar (Hero id; State "party")</summary>
+    public List<int> Party = new();
 }
 
 // ---- Faz 1, B2: anlatıcı (gerilim bütçesi, kriz ve rahatlama) ve ejderha

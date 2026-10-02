@@ -128,6 +128,7 @@ public partial class LifeWorld : Node3D
             Sim.PlayerSprinting = player.Velocity.Length() > 5.5f;
         }
         _sw.Restart();
+        Sim.TimeScale = GameClock.TimeScale;
         Sim.Update(dt, GameClock.TotalHours * 60.0);
         SimMs = SimMs * 0.9 + _sw.Elapsed.TotalMilliseconds * 0.1;
         _sw.Restart();

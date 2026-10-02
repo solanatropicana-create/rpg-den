@@ -1,4 +1,51 @@
-# Fantastik Dünya — açık dünya dikey dilimi (durum, 30 Eylül 2026)
+# Fantastik Dünya — açık dünya dikey dilimi (durum, 2 Ekim 2026, Faz 2)
+
+## Faz 2 · Oyuncu, ekip ve d20 savaş (sürüyor)
+
+Brief: `claude/faz2-brief.md` (proje). Sıra: A simülasyon bağlantısı → B karakter yaratma → C duraklatmalı d20 savaş →
+D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano → H Demir mod kaydı → kabul testleri.
+
+### A · Simülasyon bağlantısı (bitti: A1)
+
+- **FD.Macro Godot'ya bağlı** (`FantastikDunya.csproj` → `../macro/FD.Macro`). İkisi de hata ayıklama yapılandırmasında bile
+  eniyilenmiş derlenir (`<Optimize>`): tarih öncesi (1600 gün) ~18–25 sn (eniyilemesiz ~38 sn).
+- **Oyun başı** (`src/game/Session.cs`, `macro/FD.Macro/Modules/Local.cs`): `Session.NewWorld(seed)` → `new Sim(seed)` (tarih
+  öncesi, ilerleme geri çağrısıyla) → `Local.Bind`: bir krallığın orta halkasından (Köy kademesi, taht şehri değil) köy seçilir;
+  puan: krallık, hana ve goblin kampına yakınlık, istikrar, 22–45 kişilik nüfus (1:1 köyün on evi var). En yakın han ve en yakın
+  kara goblin kampı bağlanır; 14 fersahta goblin kampı yoksa köyün 4–9 fersah çevresine kurulur (dünya olayı). Gizli kamp ortaya
+  çıkar. Bağ `World.Region`'da (`RegionLink`: köy, han, kamp, oyuncu, ekip; kayıtta, sürüm 7).
+- **Simden 1:1'e:** köyün, hanın ve kampın adı (`LifeSim.VillageName/InnName/CampName`); köylüler `Census.Populate(…,
+  RegionBind.Spec)`: sim nüfusunun %90'ı (12–42 kişi) on eve dağılır, ırklar simdeki oranla (en büyük kalan yöntemi, hane
+  çoğunlukla tek ırk), işler simin iş dağılımından (tahıl/balık/toplayıcı → çiftçi, odun/taş/maden → oduncu, et/deri → çoban,
+  atölyeler → demirci ve çırak), rahip Güneş inancı ≥ %12 ise, hancı hanın sahibinin ırkından, adlar ve yaşlar simin ırk
+  tablolarından (`HERO_NAMES`, `HERO_SURNAMES`, `HERO_AGE`: cüce köyünde Örsdövenler ve uzun ömürler). Goblin sayısı kampın
+  kalabalığı (2–10; şef varsa ayrıca büyük, miğferli "Goblin şefi").
+- **Irkların görünüşü** (insan modeli; `Appearance.Look`): boy, en (cüce ve yarı-ork tıknaz, elf ince), ten (yarı-ork gri-yeşil,
+  ejderdoğan pullu renkler ve saçsız, tiefling kızıl-mor), kulak (`Humanoid.Ears`: elf uzun sivri, yarı-elf, buçukluk, gnom,
+  yarı-ork, tiefling kısa sivri; kafa kemiğine bağlı ten renkli koniler), sakal (cüce erkeklerin hepsi, kadınların %20'si; elf
+  hiç). Gerçek ırk modelleri sonra.
+- **Çocuk ve köpek yok** (karar): `Census` çocuk üretmez, köpek kulübesi kalktı.
+- **Saat:** `GameClock.TimeScale` 20 → **48** (1 gün = 30 gerçek dakika = makronun bir günü). Güneş yolu enlem 50°, eğim 23°:
+  doğuş ~04:47, batış ~20:50, gece (güneş −6°'nin altında) 21:41–03:56 ≈ 6,25 saat ≈ **8 gerçek dakika**.
+- **Makro gün adımı** (`src/game/Director.cs`): yerel gece yarısı makro `Sim.Step()` bir kez (~35–45 ms; atlanan gece
+  yetişir), ardından `Local.DayTick` (kampa ilan yoksa köy asar). `Session.MacroDayFor(yerel gün)`.
+- **Yaşam simi 30 dakikalık güne uyarlandı** (`Brain`): insanlar gerçek hızda yürür, saat 2,4 kat hızlı akar; yürüme süresi
+  `LifeSim.TimeScale` ile oyun saatine çevrilir (`Brain.TravelH`): eve yatma saatine yetişecek kadar erken çıkılır, akşam
+  etkinliği eve dönüşe yer bırakır (yoksa evde oturulur), öğle yemeği evde ancak yol 12 oyun dakikasından kısaysa, handa içmeye
+  ancak gidip dönmeye vakit varsa gidilir (köyden hana ~5 oyun saati: köylüler artık akşam hana pek gitmez); işe çıkış kişiye
+  göre ±25 dk yayılır (herkes 07:00'de yola dökülmesin). Goblin rolleri 6'lık döngüde (en çok 10 goblin).
+- **Testler:** `--worldtest=N` (bağ, adlar, nüfus/ırk/iş/goblin simden, ilan, N gün = N makro adım), `--lifetest=N`'e
+  çocuk = 0 ve köylü sayısı = simden beklenen eklendi; kalabalık ölçütü goblin ateşini saymaz. Tohum 1–6'da lifetest PASS
+  (gündüz dışarıda ort %35–39, gece %0, öbek ≤ 7), worldtest tohum 1–3 PASS, selftest PASS.
+- Makroda bağdan bağımsız iki değişiklik: kamp adları yalnız yaşayan ve yakın zamanda temizlenmiş kamplarda "kullanılıyor"
+  sayılır (uzun tarihte "Kırıkdiş Kampı 269" gibi adlar çıkıyordu; eski boyun adı yıllar sonra geri dönebilir); oyuncu ve
+  ekibindekiler han havuzuna (`Inns.InnPool`) sayılmaz.
+- **Açık:** bağlı kampın ilanını simdeki bir kahraman alıp kampa yürüyebilir (makro kampı uzaktan çözer); bunun bölgede yerel
+  savaşla çözülmesi G'de. Karar: G'ye dek makro yolu (`Agents.FightCamp`) sürer.
+
+---
+
+# Açık dünya dikey dilimi (30 Eylül 2026)
 
 **Dilim tamam:** 1:1 ölçekte 1200 × 1200 m'lik "Bölge"de üçüncü şahıs yürünür. Sessiztepe köyü (10 hane, 43 kişi),
 yolun 500 m ötesinde Yorgun Katır Hanı, ormanda Kırık Diş goblin kampı, tepede Eski Gözcü Kulesi. Herkesin evi,

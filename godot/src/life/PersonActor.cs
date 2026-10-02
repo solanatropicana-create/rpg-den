@@ -45,11 +45,11 @@ public partial class PersonActor : Node3D
         {
             Name = "Body", ModelName = P.Role == Role.Goblin ? "goblin" : "human",
             Skin = look.Skin, Cloth1 = look.Cloth1, Cloth2 = look.Cloth2, Hair = look.Hair,
-            Outfit = look.Outfit,
+            Outfit = look.Outfit, Ears = look.Ears,
         };
         if (P.Role == Role.Goblin) { Body.WalkAnimSpeed = 1.1f; Body.RunAnimSpeed = 3.8f; }
         _baseOutfit = look.Outfit;
-        Body.Scale = Vector3.One * Scale01;
+        Body.Scale = new Vector3(Scale01 * look.Wide, Scale01, Scale01 * look.Wide);
         AddChild(Body);
         Body.SpeedMul = 0.93f + H.Hash(P.Id, 5) * 0.14f;
 
@@ -200,6 +200,29 @@ public struct Appearance
     public Color Skin, Cloth1, Cloth2, Hair;
     public string[] Outfit;
     public float Scale;
+    /// <summary>Faz 2: width multiplier (stocky dwarves and half-orcs, slender elves) and ear shape (see Humanoid.Ears)</summary>
+    public float Wide;
+    public int Ears;
+
+    /// <summary>Faz 2: how a people looks on the shared human model: height, build, skin, ears, beard (gerçek modeller sonra).</summary>
+    public readonly struct RaceLook
+    {
+        public readonly float Height, Wide; public readonly int Ears; public readonly int[] Skins; public readonly float BeardMale, BeardFemale; public readonly bool Hair;
+        public RaceLook(float h, float w, int ears, int[] skins, float bm, float bf, bool hair = true) { Height = h; Wide = w; Ears = ears; Skins = skins; BeardMale = bm; BeardFemale = bf; Hair = hair; }
+    }
+
+    public static RaceLook Look(string race) => race switch
+    {
+        "dwarf" => new(0.8f, 1.16f, 0, new[] { 0xe8b896, 0xd9a27c, 0xc68a63, 0xb07450 }, 1f, 0.2f),
+        "elf" => new(1.05f, 0.9f, 2, new[] { 0xf2d6be, 0xe8c4a4, 0xd4a888, 0x9a7a6a }, 0f, 0f),
+        "halfling" => new(0.62f, 1.06f, 1, new[] { 0xf0c8a8, 0xe0b48f, 0xd9a27c, 0xc68a63 }, 0.15f, 0f),
+        "gnome" => new(0.58f, 1.02f, 1, new[] { 0xf0c8a8, 0xe0b48f, 0xd9a27c }, 0.5f, 0f),
+        "halfelf" => new(1.0f, 0.95f, 1, new[] { 0xf0c8a8, 0xe0b48f, 0xd9a27c, 0xc68a63, 0xa8704f }, 0.25f, 0f),
+        "halforc" => new(1.07f, 1.14f, 1, new[] { 0x8a9a74, 0x7a8a68, 0x9aa080, 0x6f7f5c }, 0.3f, 0f),
+        "dragonborn" => new(1.09f, 1.14f, 0, new[] { 0xa87a3c, 0xb89448, 0x8a3a2a, 0x4a7a4a, 0x3a5a8a, 0x9a9a9a }, 0f, 0f, false),
+        "tiefling" => new(1.0f, 0.98f, 1, new[] { 0xa84a44, 0x8a3a5a, 0x7a3a6a, 0xb05a4a }, 0.3f, 0f),
+        _ => new(1f, 1f, 0, null, 0.45f, 0f),
+    };
 
     static readonly int[] SkinTones = { 0xf0c8a8, 0xe0b48f, 0xd9a27c, 0xc68a63, 0xa8704f, 0x8a5a3c };
     static readonly int[] HairCols = { 0x2b1a10, 0x4a2e1a, 0x6b4424, 0xa0683a, 0xc9a060, 0x1a1a1a, 0x7a2e1a };
@@ -243,14 +266,22 @@ public struct Appearance
             ap.Skin = FMath.Hex(Pick(gskin));
             ap.Cloth1 = FMath.Hex(0x5a4030u); ap.Cloth2 = FMath.Hex(0x4a3a2au); ap.Hair = FMath.Hex(0x2a2a1au);
             if (p.Work is 0 or 1) o.Add("helmet"); else if (r.Chance(0.5f)) o.Add("hood");
+            if (p.IsBoss) { o.Clear(); o.Add("helmet"); ap.Cloth1 = FMath.Hex(0x7a2a1au); }
             ap.Outfit = o.ToArray();
-            ap.Scale = 0.95f + r.Next01() * 0.12f;
+            ap.Scale = p.IsBoss ? 1.22f : 0.95f + r.Next01() * 0.12f;
+            ap.Wide = p.IsBoss ? 1.15f : 1f;
             return ap;
         }
-        if (p.Female) o.Add(r.Chance(0.5f) ? "hair_long" : "hair_bun");
+        var rl = Look(p.Race);
+        if (rl.Skins != null) ap.Skin = FMath.Hex(Pick(rl.Skins));
+        ap.Wide = rl.Wide;
+        ap.Ears = rl.Ears;
+        if (!rl.Hair) { }
+        else if (p.Female) o.Add(r.Chance(0.5f) ? "hair_long" : "hair_bun");
         else if (p.Age >= 18 && r.Chance(0.3f) && p.Age > 50) { /* bald-ish */ }
         else o.Add("hair_short");
-        if (!p.Female && p.Age >= 20 && r.Chance(0.45f)) o.Add("beard");
+        bool adult = p.Role is not (Role.Child or Role.Apprentice or Role.StableHand);
+        if (adult && r.Chance(p.Female ? rl.BeardFemale : rl.BeardMale)) o.Add("beard");
         switch (p.Role)
         {
             case Role.Farmer: if (r.Chance(0.45f)) o.Add("hat_straw"); break;
@@ -263,14 +294,8 @@ public struct Appearance
             case Role.StableHand: if (r.Chance(0.5f)) o.Add("hat_straw"); break;
         }
         ap.Outfit = o.ToArray();
-        ap.Scale = p.Age switch
-        {
-            < 6 => 0.56f,
-            < 10 => 0.65f,
-            < 13 => 0.75f,
-            < 16 => 0.87f,
-            _ => (p.Female ? 0.95f : 1.0f) + (r.Next01() - 0.5f) * 0.07f - (p.Age > 70 ? 0.03f : 0f),
-        };
+        var ages = FD.Game.RegionBind.Ages(p.Race);
+        ap.Scale = rl.Height * ((p.Female ? 0.95f : 1.0f) + (r.Next01() - 0.5f) * 0.07f - (p.Age > ages.old + 10 ? 0.03f : 0f));
         return ap;
     }
 }

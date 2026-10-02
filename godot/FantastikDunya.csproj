@@ -5,5 +5,11 @@
     <RootNamespace>FD</RootNamespace>
     <LangVersion>12</LangVersion>
     <Nullable>disable</Nullable>
+    <!-- OYNA.bat hata ayıklama yapılandırmasıyla derler; oyun kodu yine de eniyilenir (Faz 2) -->
+    <Optimize>true</Optimize>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Faz 2: makro dünya simülasyonu (Godot'dan bağımsız, deterministik) -->
+    <ProjectReference Include="../macro/FD.Macro/FD.Macro.csproj" />
+  </ItemGroup>
 </Project>

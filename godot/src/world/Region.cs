@@ -44,6 +44,9 @@ public partial class Region : Node3D
     public LifeWorld LifeWorld { get; private set; }
     public Hud Hud { get; private set; }
     public VillageSite Village { get; private set; }
+    /// <summary>Faz 2: the macro world and its link to this region (village, inn, camp)</summary>
+    public FD.Game.Session Session { get; private set; }
+    public FD.Game.Director Director { get; private set; }
     public readonly List<IRegionFeature> Features = new();
     public bool IsReady { get; private set; }
 
@@ -67,10 +70,14 @@ public partial class Region : Node3D
         var sw = Stopwatch.StartNew();
         void Step(string what) { GD.Print($"[Region] {what}: {sw.ElapsedMilliseconds} ms"); sw.Restart(); }
 
+        Session = FD.Game.Session.Current ??= FD.Game.Bootstrap.DevSession();
+        Step("session");
         Heightfield = new Heightfield();
         Step("heightfield");
         // life simulation: the path network starts with the road and the forest trail; features add lanes/places
         Life = new LifeSim((ulong)RegionSpec.Seed);
+        // Faz 2: names from the macro world (village, inn, camp)
+        (Life.VillageName, Life.InnName, Life.CampName) = Session.Names();
         Life.Graph.AddPolyline(ToSim(RegionSpec.Road.Points), 6f, 2.0f);
         Life.Graph.AddPolyline(ToSim(RegionSpec.Trail.Points), 5f, 1.2f);
         Life.Graph.AddPolyline(ToSim(RegionSpec.CampSpur.Points), 4f, 0.8f);
@@ -107,7 +114,7 @@ public partial class Region : Node3D
         Player.Teleport(RegionSpec.PlayerStart, RegionSpec.YawFacing(RegionSpec.PlayerStartFacing), Heightfield);
 
         // people
-        Census.Populate(Life, (ulong)RegionSpec.Seed + 11);
+        Census.Populate(Life, (ulong)RegionSpec.Seed + 11, FD.Game.RegionBind.Spec(Session));
         Life.FinishLayout();
         LifeWorld = new LifeWorld();
         AddChild(LifeWorld);
@@ -115,6 +122,9 @@ public partial class Region : Node3D
         Hud = new Hud { Name = "Hud" };
         AddChild(Hud);
         Hud.Init(this, LifeWorld);
+        Director = new FD.Game.Director();
+        AddChild(Director);
+        Director.Init(Session);
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

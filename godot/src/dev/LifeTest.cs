@@ -21,6 +21,7 @@ public static class LifeTest
         var sim = region.Life;
         var sw = System.Diagnostics.Stopwatch.StartNew();
         float ts = GameClock.TimeScale;
+        sim.TimeScale = ts;
         double start = Math.Floor(GameClock.TotalHours / 24.0) * 1440.0 + 5 * 60;   // day start 05:00
         const float dt = 0.2f;
         double now = start;
@@ -55,7 +56,7 @@ public static class LifeTest
             if ((h >= 23 || h < 4) && ratio > maxNight)
             {
                 maxNight = ratio;
-                nightWho = string.Join(", ", sim.People.Where(p => p.Visible && !p.IsVisitor && p.Role != Role.Goblin && V2.Distance(p.Pos, center) < 95f).Select(p => $"{p.Name}:{p.Act?.Label}").Take(6));
+                nightWho = string.Join(", ", sim.People.Where(p => p.Visible && !p.IsVisitor && p.Role != Role.Goblin && V2.Distance(p.Pos, center) < 95f).Select(p => $"{p.Name}:{p.Role}/{p.Act?.Label}/{p.Motion}/ev {(p.Home >= 0 ? V2.Distance(p.Pos, sim.Places[p.Home].Door) : -1):F0} m [{string.Join("; ", p.Log)}]").Take(6));
             }
             foreach (var p in sim.People)
             {
@@ -83,8 +84,15 @@ public static class LifeTest
             {
                 if (!p.Visible) continue;
                 int n = 0;
-                foreach (var q2 in sim.People) if (q2.Visible && V2.DistanceSquared(q2.Pos, p.Pos) < 25f) n++;
-                if (n > maxCluster) { maxCluster = n; clusterAt = $"{H.Clock(now)} ({p.Pos.X:F0},{p.Pos.Y:F0}) {p.Act?.Label}"; }
+                // Faz 2: the goblin band (up to 10) crowds its own fire; the crowding rule is about people of the village and the road
+                if (p.Role != Role.Goblin) foreach (var q2 in sim.People) if (q2.Visible && q2.Role != Role.Goblin && V2.DistanceSquared(q2.Pos, p.Pos) < 25f) n++;
+                if (n > maxCluster)
+                {
+                    maxCluster = n;
+                    var who = sim.People.Where(q2 => q2.Visible && q2.Role != Role.Goblin && V2.DistanceSquared(q2.Pos, p.Pos) < 25f)
+                        .GroupBy(q2 => q2.Motion == Motion.Walking ? "yürüyor" : q2.Act?.Label ?? "?").Select(g => $"{g.Key}×{g.Count()}");
+                    clusterAt = $"{H.Clock(now)} ({p.Pos.X:F0},{p.Pos.Y:F0}): {string.Join(", ", who)}";
+                }
                 if (p.Act == null || string.IsNullOrEmpty(p.Act.Reason)) aimless++;
             }
             int hh = (int)h, mm = (int)((h - hh) * 60 + 0.5f);
@@ -105,6 +113,11 @@ public static class LifeTest
         }
         bool okDay = avgDay <= 0.45f, okNight = maxNight <= 0.10f, okStuck = stuck.Count == 0, okWall = samples == 0 || wallHits < samples * 0.002f;
         bool okCluster = maxCluster <= 8, okAim = aimless == 0;
+        // Faz 2: çocuk ve köpek yok; köyün nüfusu simden (RegionBind.Spec)
+        int children = sim.People.Count(p => p.Role == Role.Child);
+        int residents = sim.People.Count(p => p.Household >= 0 && p.Home >= 0 && sim.Places[p.Home].Kind == PlaceKind.Home);
+        int want = region.Session != null ? Math.Clamp(FD.Game.RegionBind.Spec(region.Session).Residents, 8, 46) : residents;
+        bool okKids = children == 0, okPop = residents == want;
         var r = new StringBuilder();
         r.AppendLine($"[LifeTest] {days} gün, {sim.People.Count} kişi, {sim.Places.Count} yer, ağ {sim.Graph.Nodes.Count} düğüm / {nComp} parça, süre {sw.ElapsedMilliseconds} ms");
         r.AppendLine($"[LifeTest] köyde gündüz (09–17) dışarıda: ort %{avgDay * 100:F0} (≤45), en çok %{maxDay * 100:F0} {(okDay ? "PASS" : "FAIL")}");
@@ -116,8 +129,9 @@ public static class LifeTest
         r.AppendLine($"[LifeTest] düz çizgi yedek rota: {sim.DirectFallbacks} {string.Join(" | ", sim.FallbackLog)}");
         var walked = dist.Where(k => !sim.People[k.Key].IsVisitor && sim.People[k.Key].Role != Role.Goblin).Select(k => k.Value).ToList();
         if (walked.Count > 0) r.AppendLine($"[LifeTest] köylü günlük yürüme: ort {walked.Average() / days:F0} m, en çok {walked.Max() / days:F0} m");
+        r.AppendLine($"[LifeTest] çocuk: {children} {(okKids ? "PASS" : "FAIL")} · köylü {residents} (simden {want}{(region.Session != null ? $"; köyün sim nüfusu {region.Session.Village()?.Pop:F0}" : "")}) {(okPop ? "PASS" : "FAIL")}");
         r.Append(snapshots);
-        bool pass = okDay && okNight && okStuck && okWall && okCluster && okAim && sim.DirectFallbacks == 0 && nComp == 1;
+        bool pass = okDay && okNight && okStuck && okWall && okCluster && okAim && okKids && okPop && sim.DirectFallbacks == 0 && nComp == 1;
         r.AppendLine($"[LifeTest] {(pass ? "PASS" : "FAIL")}");
         GD.Print(r.ToString());
         host.GetTree().Quit(pass ? 0 : 1);

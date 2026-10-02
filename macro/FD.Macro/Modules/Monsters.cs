@@ -296,8 +296,7 @@ public static class Monsters
     /// <summary>Kullanılmamış adlardan zarla (hiç kalmadıysa <see cref="FreshName"/>: Roma rakamıyla).</summary>
     private static string FreshPick(Sim s, List<string> list)
     {
-        var used = new HashSet<string>();
-        foreach (var c in s.W.Camps) used.Add(c.Name);
+        var used = UsedNames(s);
         var free = J.Filter(list, n => !used.Contains(n));
         return free.Count > 0 ? s.Rng.Pick(free) : FreshName(s, list);
     }
@@ -401,10 +400,19 @@ public static class Monsters
 
     private static readonly string[] ROMAN = { "II", "III", "IV", "V", "VI", "VII", "VIII" };
 
-    private static string FreshName(Sim s, List<string> list)
+    /// <summary>Faz 2: adı kullanımda olan kamplar: yaşayanlar ve harabesi hâlâ bilinen (temizleneli <see cref="Will.LAIR_YEARS"/> eski
+    /// yıldan az) olanlar. Eskiden ölmüş bütün kamplar sayılıyordu; uzun tarihte ad havuzu tükenip "Kırıkdiş Kampı 269" gibi adlar
+    /// çıkıyordu. Artık eski bir kampın adı yıllar sonra yeniden doğabilir (aynı boy geri döner).</summary>
+    private static HashSet<string> UsedNames(Sim s)
     {
         var used = new HashSet<string>();
-        foreach (var c in s.W.Camps) used.Add(c.Name);
+        foreach (var c in s.W.Camps) if (c.Alive || (c.ClearedDay is double cd && s.Day - cd < Will.LAIR_YEARS * Sim.OLD_YEAR)) used.Add(c.Name);
+        return used;
+    }
+
+    private static string FreshName(Sim s, List<string> list)
+    {
+        var used = UsedNames(s);
         var free = J.Find(list, n => !used.Contains(n));
         if (J.T(free)) return free;
         foreach (var r in ROMAN) foreach (var n in list) if (!used.Contains($"{n} {r}")) return $"{n} {r}";

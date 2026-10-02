@@ -9,6 +9,8 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Faz 2: Godot projesi hata ayıklama yapılandırmasıyla derler (OYNA.bat); simülasyon her zaman eniyilenmiş (tarih öncesi ~2,5 kat hızlı) -->
+    <Optimize>true</Optimize>
     <NoWarn>CS1591;CS0162;CS0168;CS0219</NoWarn>
   </PropertyGroup>
   <ItemGroup>

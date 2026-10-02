@@ -22,6 +22,8 @@ public sealed class Brain
     float _h;
 
     float R(int salt) => H.Hash(_p.Id, _day, salt);
+    /// <summary>Faz 2: game hours to walk from a to b (path ≈ 1.25 × straight line) at this person's pace and the clock's time scale.</summary>
+    float TravelH(Vector2 a, Vector2 b) => Vector2.Distance(a, b) * 1.25f / MathF.Max(0.5f, _p.WalkSpeed) * MathF.Max(0f, _w.TimeScale) / 3600f;
     double At(float hour) => _day * 1440.0 + hour * 60.0;
     double Mins(float m) => _now + m;
 
@@ -34,7 +36,9 @@ public sealed class Brain
         if (p.Role == Role.Goblin) return Goblin();
 
         float wake = WakeHour(), bed = BedHour();
-        if (_h >= bed || _h < wake) return Sleep(_h >= bed ? At(24 + wake) : At(wake));
+        // Faz 2: leave for home early enough to be in bed by bedtime (a 30-minute day makes every walk long in game hours)
+        float homeWalk = Home != null ? MathF.Min(12f, TravelH(_p.Pos, Home.Door)) : 0f;
+        if (_h >= bed - homeWalk || _h < wake) return Sleep(_h >= bed - homeWalk ? At(24 + wake) : At(wake));
         // just drew water → carry the bucket home first
         if (p.Act?.Kind == ActKind.FetchWater && Home != null && !(p.Act.Place >= 0 && _w.Places[p.Act.Place].Kind == PlaceKind.InnYard))
         {
@@ -44,7 +48,7 @@ public sealed class Brain
         }
         if (_h < wake + 0.55f) return HomeAct("Kahvaltı ediyor", "Güne başlıyor: evde kahvaltı.", At(wake + 0.55f + R(3) * 0.2f));
 
-        return p.Role switch
+        var act = p.Role switch
         {
             Role.Farmer => Farmer(),
             Role.Homemaker => Homemaker(),
@@ -59,6 +63,16 @@ public sealed class Brain
             Role.Elder => Elder(),
             _ => Leisure(bed),
         };
+        // Faz 2: whatever they do in the evening ends early enough to walk home by bedtime
+        if (act != null && Home != null && act.Kind != ActKind.Sleep && !(act.Inside && act.Place == Home.Id))
+        {
+            double latest = At(bed - MathF.Min(12f, TravelH(act.Target, Home.Door)));
+            // no time to get there, do it and walk home: stay in instead
+            if (latest < _now + TravelH(_p.Pos, act.Target) * 60 + 20)
+                return HomeAct("Evde oturuyor", "Akşam; yatma vakti yaklaştı, evde vakit geçiriyor.", At(bed));
+            if (act.Until > latest) act.Until = latest;
+        }
+        return act;
     }
 
     // ------------------------------------------------------------------------------------------------ clocks
@@ -142,7 +156,7 @@ public sealed class Brain
     Activity Lunch(Place work, float start, float end)
     {
         var home = Home;
-        if (home != null && (work == null || Vector2.Distance(work.Door, home.Door) < 90f))
+        if (home != null && (work == null || TravelH(work.Door, home.Door) < 0.2f))
             return HomeAct("Öğle yemeği yiyor", "Öğle arası; evde yemek.", At(end), "Öğle yemeği için eve gidiyor");
         var seat = FreeSpot(work, "sit", 2);
         if (seat != null)
@@ -167,12 +181,13 @@ public sealed class Brain
         float r = R(50 + (int)(_h * 2));
         bool lateInn = _p.Age >= 18 && _p.Role is not (Role.Elder or Role.Priest) && R(77) < (_p.Social < 0.4f ? 0.3f : 0.1f);
         var inn = _w.PlaceOf(PlaceKind.Inn);
-        // the inn is a long walk (~500 m ≈ 2 game hours at the default clock): only go if there is time for it
-        if (lateInn && inn != null && _h < bed - 4.2f)
+        // the inn is a long walk (~500 m ≈ 5 game hours at the 30-minute day): only go if there is time for there and back
+        float innWalk = inn != null ? TravelH(_p.Pos, inn.Door) : 99f;
+        if (lateInn && inn != null && _h < bed - 2 * innWalk - 1f)
         {
             var seat = FreeSpot(inn, "sit", 5);
             if (seat != null)
-                return AtSpot(ActKind.Drink, inn, seat, "Sit", null, At(bed - 2.1f), $"{_w.InnName} hanında içiyor", "Hana gidiyor",
+                return AtSpot(ActKind.Drink, inn, seat, "Sit", null, At(bed - innWalk), $"{_w.InnName} hanında içiyor", "Hana gidiyor",
                     $"Günün yorgunluğunu atmak ve sohbet için hana gitti{(_p.Social < 0.4f ? " (yalnız hissediyordu)" : "")}.");
         }
         if (r < 0.45f && home != null)
@@ -200,7 +215,7 @@ public sealed class Brain
         Place field = null;
         if (hh != null && hh.Fields.Count > 0) field = _w.Places[hh.Fields[(int)(R(12) * hh.Fields.Count) % hh.Fields.Count]];
         if (field == null) { var all = _w.PlacesOf(PlaceKind.Field); if (all.Count > 0) field = all[_p.Id % all.Count]; }
-        if (_h < 7f) return Chores(7f);
+        { float st = 7f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 12f && _h < 12.9f) return Lunch(field, 12f, 12.9f);
         if (_h >= 17.6f) return Evening(BedHour());
         // work segment: move along the furrows every 35–70 min
@@ -278,7 +293,7 @@ public sealed class Brain
     Activity Woodcutter()
     {
         var site = _w.PlaceOf(PlaceKind.Logging);
-        if (_h < 6.8f) return Chores(6.8f);
+        { float st = 6.8f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 12f && _h < 12.8f) return Lunch(site, 12f, 12.8f);
         if (_h >= 16.8f && _h < 17.6f)
         {
@@ -305,7 +320,7 @@ public sealed class Brain
     Activity Smith(bool apprentice)
     {
         var smithy = _w.PlaceOf(PlaceKind.Smithy);
-        if (_h < 7f) return Chores(7f);
+        { float st = 7f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 12f && _h < 12.9f) return Lunch(smithy, 12f, 12.9f);
         if (_h >= 18f) return Evening(BedHour());
         if (smithy == null) return Leisure(BedHour());
@@ -331,7 +346,7 @@ public sealed class Brain
     {
         var pasture = _w.PlaceOf(PlaceKind.Pasture);
         var pen = _w.PlaceOf(PlaceKind.Pen);
-        if (_h < 6.6f) return Chores(6.6f);
+        { float st = 6.6f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 18f) return Evening(BedHour());
         if (_h >= 17.4f && pen != null)
             return InArea(ActKind.Herd, pen, pen.Door, pen.DoorFace, "Idle", null, At(18f), "Sürüyü ağıla kapatıyor", "Koyunları ağıla getiriyor", "Akşam; sürü geceyi ağılda geçirir.");
@@ -350,7 +365,7 @@ public sealed class Brain
     Activity Headman()
     {
         var plaza = _w.PlaceOf(PlaceKind.Plaza);
-        if (_h < 7.2f) return Chores(7.2f);
+        { float st = 7.2f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 11.8f && _h < 13f) return HomeAct("Öğle yemeği yiyor", "Öğle arası.", At(13f), "Öğle yemeğine gidiyor");
         if (_h >= 17.5f) return Evening(BedHour());
         float r = R((int)(_h * 2) + 60);
@@ -606,7 +621,7 @@ public sealed class Brain
         var camp = _w.PlaceOf(PlaceKind.Camp);
         var lurk = _w.PlaceOf(PlaceKind.Lurk);
         if (camp == null) return null;
-        int slot = _p.Work;  // 0,1 guards · 2 cook · 3,4 loafers · 5 sleeper (day shift inverted)
+        int slot = _p.Work % 6;  // 0,1 guards · 2 cook · 3,4 loafers · 5 sleeper (day shift inverted); Faz 2: up to 12 goblins, roles repeat
         bool raider = slot is 2 or 3 or 4;
         bool night = _h >= 22.5f || _h < 4f;
         // raiders lurk by the trail at night, sleep in the morning
@@ -620,7 +635,7 @@ public sealed class Brain
         }
         if (raider && _h >= 4f && _h < 11f)
         {
-            var tent = FreeSpot(camp, "tent", 121);
+            var tent = FreeSpot(camp, "tent", 121 + _p.Work);
             return new Activity { Kind = ActKind.Sleep, Inside = true, Place = camp.Id, Spot = tent, Target = tent?.Pos ?? camp.Center, Until = At(11f), Label = "Çadırda uyuyor", GoLabel = "Çadırına giriyor", Reason = "Gece pusudaydı; gündüz uyuyor." };
         }
         if (!raider && slot == 5 && _h >= 6f && _h < 14f)
@@ -633,7 +648,7 @@ public sealed class Brain
             // patrol inside the palisade and along the spur
             var pts = new List<Spot>(camp.SpotsTagged("patrol"));
             if (pts.Count == 0) return InArea(ActKind.Guard, camp, camp.Center, Vector2.Zero, "Idle", "tool_spear", Mins(20), "Nöbet tutuyor", "Nöbet yerine geçiyor", "Kampın nöbetçisi.", 10f);
-            int k = (int)((_now / 3.0 + slot * 3) % pts.Count);
+            int k = (int)((_now / 3.0 + _p.Work * 3) % pts.Count);
             var s = pts[k];
             return InArea(ActKind.Patrol, camp, s.Pos, s.Face, "Idle", "tool_spear", Mins(2.5f), "Devriye geziyor", "Devriye geziyor", "Kampın çevresini kolluyor; yabancı görürse saldırır.");
         }
@@ -642,7 +657,7 @@ public sealed class Brain
             var s = FreeSpot(camp, "spit", 123);
             if (s != null) return AtSpot(ActKind.Work, camp, s, "Idle", null, Mins(30), "Şişte et çeviriyor", "Ateşin başına geçiyor", "Kampın aşçısı; çaldıkları koyunu kızartıyor.");
         }
-        var seat = FreeSpot(camp, "sit", 124 + slot);
+        var seat = FreeSpot(camp, "sit", 124 + _p.Work);
         if (seat != null) return AtSpot(ActKind.Socialize, camp, seat, R((int)(_h * 2) + slot) < 0.5f ? "Sit" : "Talk", null, Mins(30), "Ateş başında hırlaşıyor", "Ateşe yaklaşıyor", "Goblinler boş vakitlerinde ateş başında kavga eder, zar atar.");
         return InArea(ActKind.Wander, camp, camp.Center, Vector2.Zero, "Idle", "tool_club", Mins(20), "Kampta dolanıyor", "Kampta dolanıyor", "Goblin.", 8f);
     }

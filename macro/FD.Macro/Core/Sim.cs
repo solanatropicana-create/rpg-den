@@ -41,7 +41,7 @@ public sealed partial class Sim
 
     /// <summary>Seed'den dünya: coğrafya ve devletler (WorldGen), yöneticiler (States.InitCiv), <paramref name="prehistory"/> gün tarih öncesi
     /// (varsayılan <see cref="PREHISTORY_DAYS"/>; 0: dünya ilk kamplarla döner, örgütler hemen kurulur).</summary>
-    public Sim(double seed, int prehistory = PREHISTORY_DAYS)
+    public Sim(double seed, int prehistory = PREHISTORY_DAYS, Action<int, int> progress = null)
     {
         Polity.InitUnits();
         W = WorldGen.GenerateWorld(seed);
@@ -54,7 +54,7 @@ public sealed partial class Sim
         States.FaithTick(this);
         W.Epoch = prehistory;   // Faz 1b-7: planlanan başlangıç (ejderha oyunun başından sayılır); tarih öncesinin sonunda yeniden yazılır
         Log("world", $"Dünya uyandı. {W.Civs.Count} topluluk ilk kamplarını kurdu: {string.Join(", ", W.Civs.Select(c => $"{c.Name} ({D.RACES[c.Race].Plural}, {Polity.Gov(c).Name}; {States.RulerTitle(this, c)})"))}.", major: true);
-        for (int d = 0; d < prehistory; d++) Step();
+        for (int d = 0; d < prehistory; d++) { Step(); progress?.Invoke(d + 1, prehistory); }   // Faz 2: oyunun açılış ekranı için ilerleme
         W.Epoch = W.Day;
         foreach (var st in W.Settlements) if (st.Alive && st.Hub == null) W.SettleCap++;   // Faz 1b-7: fırsat merkezleri hariç
         W.SettleCap = Math.Max(W.SettleCap, 8);
