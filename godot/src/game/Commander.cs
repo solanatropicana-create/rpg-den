@@ -100,6 +100,7 @@ public partial class Commander : Node
         if (Instance == this) Instance = null;
         Engine.TimeScale = 1;
         Player.WasdDrives = null;
+        CursorKit.Set(CursorKit.Kind.Arrow);
     }
 
     Vector3? CameraTarget()
@@ -229,6 +230,7 @@ public partial class Commander : Node
         var cd = _r.Combat;
         if (e is InputEventKey k && k.Pressed && !k.Echo)
         {
+            if (PanelLayer.OpenPanel is GameMenu) return;   // the menu keeps the game paused
             if (cd?.Summary == true && k.PhysicalKeycode is Key.Space) { cd.Continue(); GetViewport().SetInputAsHandled(); return; }
             if (k.PhysicalKeycode == Key.Space) { TogglePause(); GetViewport().SetInputAsHandled(); return; }
             if (k.Unicode == '+' || k.Keycode is Key.Plus or Key.KpAdd) { SetSpeed(Speed + 1); GetViewport().SetInputAsHandled(); return; }

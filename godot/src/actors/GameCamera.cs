@@ -34,6 +34,7 @@ public partial class GameCamera : Camera3D
     bool _rotating, _snap = true;
     Heightfield _hf;
     Rid _exclude;
+    readonly bool _headless = DisplayServer.GetName() == "headless";
 
     public override void _Ready()
     {
@@ -96,7 +97,7 @@ public partial class GameCamera : Camera3D
         if (Input.IsPhysicalKeyPressed(Key.Down) || (wasd && Input.IsPhysicalKeyPressed(Key.S))) pan.Y += 1;
         if (Input.IsPhysicalKeyPressed(Key.Left) || (wasd && Input.IsPhysicalKeyPressed(Key.A))) pan.X -= 1;
         if (Input.IsPhysicalKeyPressed(Key.Right) || (wasd && Input.IsPhysicalKeyPressed(Key.D))) pan.X += 1;
-        if (FD.Game.Settings.Current.EdgeScroll && !_rotating && DisplayServer.WindowIsFocused() && FD.UI.PanelLayer.OpenPanel == null)
+        if (FD.Game.Settings.Current.EdgeScroll && !_rotating && !_headless && DisplayServer.WindowIsFocused() && FD.UI.PanelLayer.OpenPanel == null)
         {
             var vp = GetViewport().GetVisibleRect().Size;
             var m = GetViewport().GetMousePosition();

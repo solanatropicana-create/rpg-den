@@ -270,8 +270,10 @@ public partial class DayNight : Node3D
         Env.FogSunScatter = (0.05f + 0.2f * dusk) * (1f - grey * 0.7f);
         // haze always; fog thickest at dawn and dusk, in rain and on foggy mornings (valleys and forest: Atmosphere's fog volumes)
         float fogK = 1f + 0.5f * dusk + 2.4f * fogW * fogW + 0.8f * rain;
-        Env.FogDensity = 0.0017f * fogK * FMath.Lerp(1.15f, 1f, day);
-        Env.VolumetricFogDensity = 0.0012f * (1f + 0.6f * dusk + 6f * fogW * fogW + rain);
+        // Tur 1 A: from high up (the tactical end of the zoom) the haze thins so the field stays readable
+        float high = FMath.Lerp(1f, 0.4f, FMath.Smoothstep(0.55f, 0.95f, FD.Actors.GameCamera.Instance?.Current == true ? FD.Actors.GameCamera.Instance.Zoom01 : 0f));
+        Env.FogDensity = 0.0017f * fogK * FMath.Lerp(1.15f, 1f, day) * high;
+        Env.VolumetricFogDensity = 0.0012f * (1f + 0.6f * dusk + 6f * fogW * fogW + rain) * high;
         Env.VolumetricFogAlbedo = fogCol;
         Env.TonemapExposure = ExposureScale * FMath.Lerp(0.82f, NightExposure, night) * FMath.Lerp(1f, 1.08f, dusk) * FMath.Lerp(1f, 1.06f, grey * day);
         Env.GlowIntensity = FMath.Lerp(0.4f, 1.0f, night);

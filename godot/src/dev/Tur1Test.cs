@@ -187,8 +187,21 @@ public partial class Tur1Test : Node
                     var c = Cmd.CursorAt(ScreenOf(herb.Pos + Vector3.Up * 0.25f));
                     Check("imleç: el (topla)", c == CursorKit.Kind.Hand, $"ot öbeğinde imleç {c}");
                 }
+                // an open spot near the player: nobody within 4 m, no wall, no herb or door
                 var open = _r.Player.GlobalPosition + new Vector3(4f, 0, 4f);
-                Look(_r.Player.GlobalPosition, 12f); Cam._Process(0.016);
+                for (int k = 0; k < 24; k++)
+                {
+                    float ang = k * MathF.Tau / 24f, rad = 5f + (k % 3) * 2f;
+                    var c = _r.Player.GlobalPosition + new Vector3(MathF.Cos(ang) * rad, 0, MathF.Sin(ang) * rad);
+                    var c2 = new V2(c.X, c.Z);
+                    if (_r.Life.People.Any(p => p.Visible && !p.Dead && V2.Distance(p.Pos, c2) < 7f)) continue;
+                    if (V2.Distance(new V2(_r.Player.GlobalPosition.X, _r.Player.GlobalPosition.Z), c2) < 4f || _r.Companions.Any(cp => new Vector2(cp.GlobalPosition.X - c.X, cp.GlobalPosition.Z - c.Z).Length() < 4f)) continue;
+                    if (_r.Life.ObstacleAt(c2, -1.5f) != null) continue;
+                    if (_r.Gathering.ClickTargets().Any(t => new Vector2(t.Pos.X - c.X, t.Pos.Z - c.Z).Length() < 4f)) continue;
+                    if (_r.Life.Places.Any(pl => V2.Distance(pl.Door, c2) < 4f)) continue;
+                    open = c; break;
+                }
+                Look(new Vector3(open.X, _r.Heightfield.Height(open.X, open.Z), open.Z), 12f); Cam._Process(0.016);
                 var osp = ScreenOf(new Vector3(open.X, _r.Heightfield.Height(open.X, open.Z), open.Z));
                 var gc = Cmd.CursorAt(osp);
                 GD.Print($"[Tur1Test] açık arazi ekranda {osp}, zemin {Cam.Ground(osp)}");
@@ -203,7 +216,12 @@ public partial class Tur1Test : Node
                 foreach (var comp in _r.Companions) comp.SnapToLeader();
                 Look(_r.Player.GlobalPosition, 16f); Cam._Process(0.016);
                 GD.Print($"[Tur1Test] ekran {GetViewport().GetVisibleRect().Size}, oyuncu {Cam.Screen(_r.Player.GlobalPosition + Vector3.Up * 0.9f)}, yoldaşlar {string.Join(" ", _r.Companions.Select(c => Cam.Screen(c.GlobalPosition + Vector3.Up * 0.9f)))}");
-                Cmd.BoxAt(new Rect2(0, 0, 1600, 900));
+                // a box around where they stand on the screen (as a drag would)
+                var pts = new List<Vector2>();
+                foreach (var n in new Node3D[] { _r.Player }.Concat(_r.Companions)) if (Cam.Screen(n.GlobalPosition + Vector3.Up * 0.9f) is Vector2 sp) pts.Add(sp);
+                var box = pts.Count > 0 ? new Rect2(pts[0], Vector2.Zero) : new Rect2(0, 0, 1600, 900);
+                foreach (var p in pts) box = box.Expand(p);
+                Cmd.BoxAt(box.Grow(30f));
                 int boxed = Cmd.Sel.Count;
                 var me = _r.Player.Character;
                 Key(Godot.Key.Key2);

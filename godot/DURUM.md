@@ -24,6 +24,27 @@ ilk dakika → kabul.
 - Hava çoğu gün kapalı, sık yağmur, sabahları sis; geceler karanlık (elinde fener). Gün 30 gerçek dakika (1× hızda).
 
 
+### Kabul (Tur 1 brief'inin ölçütleri)
+
+1. **Yalnız tıklamayla:** konuşma (sağ tık kişi → yanına gider, kart açılır), ticaret/kiralama/oda/ödül (kartın düğmeleri;
+   uzaksa önce yürür), saldırı (sağ tık goblin), yağma (sağ tık ceset, sandık, ot). E gerekmiyor (`--t1test`).
+2. **Kamera:** omuzdan (2,2 m) yükseğe (75 m, 64° aşağı) 41 adımda tekdüze, sıçramasız; savaşta kamera değişmiyor (`--t1test`).
+3. **Kaçma ve kovalanma:** yere sağ tıkla koşan ekip 60 savaşın 60'ında kurtuldu; Kaç duruşunda 60/60, ekibin hiç vuruşu yok;
+   topuğuna yetişen goblin "yakalar", karakter dönüp dövüşür (`--fighttest`).
+4. **Savaşı oyuncu başlatır:** 30 m'deki goblini sağ tıkla → yürüdü, 18 m'de savaş başladı, saldırı emri o goblinde; saldırgan
+   duruştaki yoldaş goblini görünce savaşı kendisi açtı (`--t1test`).
+5. **Dört kişilik ekip, tek tek emirsiz:** oyuncu + 3 yoldaş; Pasif hiç vurmadı, Yerini koru hiç kıpırdamadı, büyücü kitabının
+   sırasına uydu (Ateş Oku başta → yalnız Ateş Oku; Uyku kapalı → hiç uyutmadı) (`--fighttest`, `--t1test`).
+6. **Hız ve duraklatma her yerde aynı:** Boşluk (savaşta da, dışında da), + / − 1×–3×, tehlikede 1×'e düşüş, savaş başında
+   durmama (`--t1test`).
+7. **Atmosfer:** aynı açıdan önce/sonra (öğle, akşam, gece, sabah sisi, yağmur) ve hedef karelerle yan yana:
+   `docs/shots/tur1/karsilastirma.png` (bilgisayardaki RPG Den klasöründe; tek tek kareler aynı klasörde: `once_*`, `sonra_*`;
+   oyundan: `oyun_omuz_ekip`, `oyun_savas_duraklatilmis`, `oyun_savas_sonu`, `oyun_uzak_taktik`).
+8. **Testler ve ölçüm:** `--selftest`, `--fighttest`, `--worldtest`, `--lifetest`, `--camptest` (ve `--fate=rob|capture`),
+   `--partytest`, `--econtest`, `--gtest`, `--savetest --seed=2`, `--scenario` (tohum 3), `--t1test` hepsi PASS. Makro bu turda
+   değişmedi: `hash 1 2400` = 59308e383f41fe8f, SaveCheck 72/72 (ölçüm aracı yeniden koşulmadı: sim kodu aynı).
+9. **Oynanış:** değişen bütün dosyalar RPG Den klasörüne yazıldı; `OYNA.bat` ile oynanır. Tur, kullanıcının "tamam"ıyla kapanır.
+
 ### D · Kasvetli atmosfer (bitti)
 
 Hedef kareler `docs/stil/valheim_kasvet_v2.png` (gündüz), `valheim_gece.png` (gece); değerler brief'in D+ bölümünden. Modellere
@@ -58,7 +79,8 @@ dokunulmadı (beyaz sıva, mor/yeşil panjur, saksı Tur 2).
   sis ve yağmurun "önce"si aynı saatin açık hâlidir.
 
 #### D kararları
-- Hacimsel sis yalnız kameranın 140 m önüne kadar hesaplanır; ötesi üstel pus. Değerler Blender'ın "yoğunluk/m"sinin birebir
+- Hacimsel sis yalnız kameranın 140 m önüne kadar hesaplanır; ötesi üstel pus. Kamera kuş bakışına çıktıkça pus %60'a kadar
+  incelir (taktik görünüm okunaklı kalsın). Değerler Blender'ın "yoğunluk/m"sinin birebir
   karşılığı değil (Godot'nun sisi iki katman); kare karşılaştırarak ayarlandı.
 - Güneşin ışık yüksekliğini kırpmak, "hep karşıdan alçak güneş" yerine seçildi: oyunda kamera döner, güneş kameraya bağlanamaz.
 - Yağmur ve toz her makinede çizilir; zayıf kartta F3 ile bakılmalı (hacimsel sis en pahalı kalem).
@@ -109,7 +131,8 @@ dışında da aynı; "taktik mod" yok. Bu yüzden tek adımda yazıldı ve birli
   sıra: iyileştirme, Uyku, Yanan Eller, Sihirli Füze, basit büyüler.
 - **Zaman:** **Boşluk** her yerde duraklatır/sürdürür (sahne ağacı durur, saat durur; duraklıyken emir verilir), **+ / −**
   hız 1×·2×·3× her yerde (saatin yanındaki düğmeler de), tehdit görüş alanına girince (26 m, kovalarsa 40 m) hız kendiliğinden
-  1×'e düşer (ayar). Oyun menüsü (Esc) açıkken oyun durur.
+  1×'e düşer (ayar). Oyun menüsü (Esc) açıkken oyun durur (Boşluk ve hız tuşları menüdeyken işlemez). HUD duraklıyken de
+  güncellenir; bildirim süreleri gerçek saniyedir (3× hızda da okunur).
 - **Zar:** başların üstünde küçük ve soluk sayılar (hasar; kritik altın ve büyük, ıska silik; ayardan kapanır); zar günlüğü
   **L** ile açılır/kapanır (duraklıyken ayrıntılı). "Geri çekil" kalktı (yerine Kaç duruşu ve yere sağ tık).
 - Savaşın bir paneli yok: ekip çubuğu, saat ve hız HUD'un (savaşta da aynı). Üstte küçük bir "Savaş · 0:12 · ayakta 3 düşman"

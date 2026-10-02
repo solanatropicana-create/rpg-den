@@ -61,6 +61,7 @@ public partial class Hud : CanvasLayer
         _region = region;
         _life = life;
         Layer = 5;
+        ProcessMode = ProcessModeEnum.Always;   // Tur 1: the clock, PAUSED and the party bar keep updating while paused
         var theme = new Theme();
         theme.DefaultFontSize = 17;
         var root = new Control { Name = "Root", MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -306,7 +307,7 @@ public partial class Hud : CanvasLayer
 
     public override void _Process(double delta)
     {
-        float dt = (float)delta;
+        float dt = (float)delta / MathF.Max(0.05f, (float)Engine.TimeScale);   // real seconds (toasts, flashes) at any game speed
         if (_life == null) return;
         var sim = _life.Sim;
         var player = _region.Player;
@@ -335,7 +336,7 @@ public partial class Hud : CanvasLayer
             foreach (var pr in Prompts) { var r = pr(); if (r != null) { _extra = r; break; } }
         _prompt.Text = _promptPerson != null && _cardPerson != _promptPerson ? $"[E]  {_promptPerson.FullName} — {Census.RoleName(_promptPerson)}"
             : _extra != null ? $"[E]  {_extra.Value.text}" : "";
-        if (_reportT > 0) { _reportT -= dt / MathF.Max(0.05f, (float)Engine.TimeScale); if (_reportT <= 0) _report.Visible = false; }
+        if (_reportT > 0) { _reportT -= dt; if (_reportT <= 0) _report.Visible = false; }
         if (_toastT > 0) { _toastT -= dt; _toast.Modulate = new Color(1, 1, 1, Math.Clamp(_toastT, 0, 1)); if (_toastT <= 0) _toast.Text = ""; }
         if (_cardPerson != null) FillCard(_cardPerson);
 
