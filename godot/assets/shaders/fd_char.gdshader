@@ -11,6 +11,7 @@ instance uniform vec3 cloth2_color = vec3(0.16, 0.13, 0.10);
 instance uniform vec3 hair_color = vec3(0.10, 0.05, 0.02);
 
 uniform float roughness : hint_range(0.0, 1.0) = 0.85;
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 void fragment() {
 	int slot = int(round(COLOR.a * 4.0));
@@ -19,7 +20,7 @@ void fragment() {
 	else if (slot == 2) t = cloth1_color;
 	else if (slot == 3) t = cloth2_color;
 	else if (slot == 4) t = hair_color;
-	ALBEDO = COLOR.rgb * t;
-	ROUGHNESS = roughness;
+	ALBEDO = fd_grade(COLOR.rgb * t);
+	ROUGHNESS = fd_wet_rough(roughness);
 	SPECULAR = slot == 1 ? 0.35 : 0.25;
 }

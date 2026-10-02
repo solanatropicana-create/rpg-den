@@ -74,10 +74,15 @@ public static class GameClock
     }
 }
 
+
 /// <summary>
-/// Sky, sun/moon lights, fog and post-processing driven by <see cref="GameClock"/>. Also owns the global shader
-/// parameters: <c>night_light</c> (0 day … 1 night, windows glow), <c>fd_cam_pos</c> (active camera position,
-/// used by vegetation LOD fades), <c>fd_wind</c> (xy = direction, z = strength, w = gust).
+/// Sky, sun/moon lights, fog and post-processing driven by <see cref="GameClock"/> and <see cref="Weather"/>. Also owns the global
+/// shader parameters: <c>night_light</c> (0 day … 1 night, windows glow), <c>fd_cam_pos</c> (active camera position, used by
+/// vegetation LOD fades), <c>fd_wind</c> (xy = direction, z = strength, w = gust), <c>fd_wet</c> (rain-soaked surfaces).
+/// <para>Tur 1 D (art direction Valheim, the style frames in docs/stil): a grey-blue overcast sky most days, a low pale sun from the
+/// side (its light never climbs above <see cref="SunMaxElevation"/>, so shadows stay long), haze everywhere and volumetric fog
+/// thickest in the valleys, at dawn and at dusk; truly dark nights with a weak blue moon where lamps, the forge and fires carry the
+/// scene; a cold-earth colour grade (see also fd_grade.gdshaderinc: every albedo ×0.60 saturation, ×0.88 brightness, dirtied).</para>
 /// </summary>
 public partial class DayNight : Node3D
 {
@@ -87,12 +92,24 @@ public partial class DayNight : Node3D
     public Godot.Environment Env { get; private set; }
     public ShaderMaterial SkyMaterial { get; private set; }
 
-    /// <summary>Extra exposure multiplier at night so moonlit scenes stay readable.</summary>
-    [Export] public float NightExposure = 1.45f;
+    /// <summary>Extra exposure multiplier at night (1: the night stays dark; lamps and fires carry it).</summary>
+    [Export] public float NightExposure = 1.0f;
     /// <summary>Global exposure multiplier (look-dev / settings).</summary>
     [Export] public float ExposureScale = 1f;
+    /// <summary>The sunlight never comes from higher than this (degrees): a low pale sun and long shadows all day.</summary>
+    public const float SunMaxElevation = 24f;
 
-    float _skyTimer = 999f, _lastSkyHour = -100f;
+    // style frame values (docs/stil, brief D+), as sRGB colours (the frame's linear values converted)
+    static readonly Color SunDay = new(1.0f, 0.92f, 0.81f);          // linear (1.0, 0.82, 0.62)
+    static readonly Color MoonCol = new(0.77f, 0.83f, 1.0f);         // linear (0.55, 0.65, 1.0)
+    static readonly Color FogDay = new(0.70f, 0.72f, 0.75f);         // style frame: linear (0.62, 0.65, 0.70), toned to the frame's look
+    static readonly Color FogNight = new(0.54f, 0.57f, 0.63f);       // linear (0.25, 0.28, 0.35)
+    static readonly Color SkyGrey = new(0.60f, 0.615f, 0.635f);      // style frame: linear (0.48, 0.50, 0.53) at strength 0.9
+    static readonly Color SkyGreyTop = new(0.50f, 0.52f, 0.555f);
+    static readonly Color NightTop = new(0.075f, 0.09f, 0.135f);     // linear (0.03, 0.04, 0.07) × 0.6
+    static readonly Color NightHor = new(0.11f, 0.13f, 0.18f);
+
+    float _skyTimer = 999f, _lastSkyHour = -100f, _lastCloud = -1f;
     double _time;
 
     public override void _Ready()
@@ -109,14 +126,18 @@ public partial class DayNight : Node3D
             ReflectedLightSource = Godot.Environment.ReflectionSource.Sky,
             TonemapMode = Godot.Environment.ToneMapper.Filmic,
             TonemapExposure = 1.0f,
-            SsaoEnabled = true, SsaoRadius = 1.4f, SsaoIntensity = 1.6f, SsaoPower = 1.4f, SsaoDetail = 0.5f,
-            SsaoLightAffect = 0.12f,
-            GlowEnabled = true, GlowIntensity = 0.45f, GlowStrength = 1.0f, GlowBloom = 0.03f, GlowHdrThreshold = 1.2f,
+            SsaoEnabled = true, SsaoRadius = 1.4f, SsaoIntensity = 1.8f, SsaoPower = 1.5f, SsaoDetail = 0.5f,
+            SsaoLightAffect = 0.15f,
+            GlowEnabled = true, GlowIntensity = 0.45f, GlowStrength = 1.0f, GlowBloom = 0.02f, GlowHdrThreshold = 1.1f,
             GlowBlendMode = Godot.Environment.GlowBlendModeEnum.Softlight,
             FogEnabled = true, FogMode = Godot.Environment.FogModeEnum.Exponential,
-            FogDensity = 0.0009f, FogAerialPerspective = 0.55f, FogSkyAffect = 0.25f,
-            FogHeight = -7f, FogHeightDensity = 0.0f, FogSunScatter = 0.1f,
-            AdjustmentEnabled = true, AdjustmentSaturation = 1.0f, AdjustmentContrast = 1.03f,
+            FogDensity = 0.0024f, FogAerialPerspective = 0.35f, FogSkyAffect = 0.55f,
+            FogHeight = -7f, FogHeightDensity = 0.0f, FogSunScatter = 0.08f,
+            VolumetricFogEnabled = true, VolumetricFogDensity = 0.0035f, VolumetricFogAnisotropy = 0.35f,
+            VolumetricFogLength = 140f, VolumetricFogDetailSpread = 2.0f, VolumetricFogAmbientInject = 0.9f,
+            VolumetricFogSkyAffect = 0.15f, VolumetricFogTemporalReprojectionEnabled = true,
+            AdjustmentEnabled = true, AdjustmentSaturation = 0.9f, AdjustmentContrast = 1.1f,
+            AdjustmentColorCorrection = GradeLut(),
         };
         WorldEnv = new WorldEnvironment { Name = "WorldEnvironment", Environment = Env };
         AddChild(WorldEnv);
@@ -128,8 +149,8 @@ public partial class DayNight : Node3D
             DirectionalShadowMaxDistance = 300f,
             DirectionalShadowSplit1 = 0.06f, DirectionalShadowSplit2 = 0.18f, DirectionalShadowSplit3 = 0.45f,
             DirectionalShadowBlendSplits = true, DirectionalShadowFadeStart = 0.85f,
-            ShadowBias = 0.04f, ShadowNormalBias = 1.2f, ShadowBlur = 1.2f,
-            LightAngularDistance = 0f,
+            ShadowBias = 0.04f, ShadowNormalBias = 1.2f, ShadowBlur = 1.6f,
+            LightAngularDistance = 0f, LightVolumetricFogEnergy = 1.2f,
             SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
         };
         AddChild(Sun);
@@ -139,10 +160,11 @@ public partial class DayNight : Node3D
             DirectionalShadowMode = DirectionalLight3D.ShadowMode.Parallel2Splits,
             DirectionalShadowMaxDistance = 160f, DirectionalShadowSplit1 = 0.2f,
             ShadowBias = 0.05f, ShadowNormalBias = 1.5f, ShadowBlur = 2.0f,
-            LightColor = FMath.Hex(0x8fa6ff), LightEnergy = 0f, Visible = false,
+            LightColor = MoonCol, LightEnergy = 0f, Visible = false, LightVolumetricFogEnergy = 0.6f,
             SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly,
         };
         AddChild(Moon);
+        AddChild(new Atmosphere { Name = "Atmosphere" });
         Apply(true);
     }
 
@@ -155,13 +177,40 @@ public partial class DayNight : Node3D
         if (cam != null) RenderingServer.GlobalShaderParameterSet("fd_cam_pos", cam.GlobalPosition);
     }
 
+    /// <summary>Cold-earth grade (applied after tonemapping): cool blue-grey in the shadows, warm grey-brown in the highlights,
+    /// a slightly lifted, desaturated film look.</summary>
+    static ImageTexture3D GradeLut()
+    {
+        const int N = 17;
+        var imgs = new Godot.Collections.Array<Image>();
+        for (int b = 0; b < N; b++)
+        {
+            var img = Image.CreateEmpty(N, N, false, Image.Format.Rgb8);
+            for (int g = 0; g < N; g++)
+                for (int r = 0; r < N; r++)
+                {
+                    var c = new Vector3(r, g, b) / (N - 1);
+                    float l = c.Dot(new Vector3(0.2126f, 0.7152f, 0.0722f));
+                    c = new Vector3(l, l, l).Lerp(c, 0.9f);
+                    float sh = (1 - l) * (1 - l), hi = l * l;
+                    c += sh * new Vector3(-0.012f, 0.0f, 0.03f) + hi * new Vector3(0.018f, 0.006f, -0.03f);
+                    c = c * 0.965f + new Vector3(0.016f, 0.017f, 0.02f);
+                    img.SetPixel(r, g, new Color(Math.Clamp(c.X, 0, 1), Math.Clamp(c.Y, 0, 1), Math.Clamp(c.Z, 0, 1)));
+                }
+            imgs.Add(img);
+        }
+        var tex = new ImageTexture3D();
+        tex.Create(Image.Format.Rgb8, N, N, N, false, imgs);
+        return tex;
+    }
+
     // ---------------------------------------------------------------------------------------------- keyframes
 
     static readonly float[] Keys = { -18f, -10f, -4f, 0f, 5f, 15f, 35f };
-    static readonly uint[] Zenith = { 0x040914, 0x0b1430, 0x26335e, 0x3d5688, 0x4670ac, 0x3d7cc8, 0x3778c9 };
-    static readonly uint[] Horizon = { 0x0a1122, 0x182040, 0x4b4a70, 0x9d8f9e, 0xc6c2bd, 0xb5cde4, 0xa9c9e7 };
-    static readonly uint[] HorizonSun = { 0x0a1122, 0x2a2442, 0xb2625a, 0xf49256, 0xf7c38c, 0xe9dcc2, 0xc9ddef };
-    static readonly uint[] SunCol = { 0xff6a30, 0xff6a30, 0xff7438, 0xff8a46, 0xffb472, 0xffe2bc, 0xfff4e6 };
+    static readonly uint[] Zenith = { 0x060a14, 0x0e1428, 0x2a3350, 0x45516e, 0x55657f, 0x5a6f8c, 0x5c7393 };
+    static readonly uint[] Horizon = { 0x0b1020, 0x161c32, 0x4a4a5e, 0x8f8a90, 0xa8a8aa, 0xa9b4c0, 0xa6b5c4 };
+    static readonly uint[] HorizonSun = { 0x0b1020, 0x262438, 0x9c6658, 0xd29a70, 0xd8b896, 0xd2cbbd, 0xc0c8d0 };
+    static readonly uint[] SunCol = { 0xff6a30, 0xff6a30, 0xff7c40, 0xff9a5a, 0xffc890, 0xffe9cf, 0xffebce };
 
     static Color Key(uint[] table, float e)
     {
@@ -179,74 +228,97 @@ public partial class DayNight : Node3D
     /// <summary>Update lights/fog/exposure every frame, the sky material only when it visibly changes.</summary>
     void Apply(bool force, float dt = 0f)
     {
+        Weather.Update();
         float hour = GameClock.Hour;
         Vector3 sunDir = GameClock.SunDirection(hour);
         Vector3 moonDir = GameClock.MoonDirection(hour);
         float e = Mathf.RadToDeg(MathF.Asin(sunDir.Y));
         float em = Mathf.RadToDeg(MathF.Asin(moonDir.Y));
+        float cloud = Weather.Cloud, rain = Weather.Rain, fogW = Weather.Fog;
+        Vector3 lightDir = LowSun(sunDir);
 
-        // --- sun
-        float sunE = FMath.Smoothstep(-1.5f, 3f, e) * FMath.Lerp(0.7f, 1.5f, FMath.Smoothstep(2f, 30f, e));
-        Sun.LightColor = Key(SunCol, e);
+        float day = FMath.Smoothstep(-8f, 8f, e);
+        float night = 1f - FMath.Smoothstep(-12f, -3f, e);
+        float dusk = 1f - FMath.Smoothstep(4f, 14f, MathF.Abs(e - 1f));
+        float grey = Math.Clamp(cloud * 1.1f - 0.1f, 0f, 1f);
+
+        // --- sun: pale and warm, low; clouds swallow most of it (overcast light is the sky's)
+        float sunE = FMath.Smoothstep(-1.5f, 3f, e) * FMath.Lerp(0.8f, 1.65f, FMath.Smoothstep(2f, 22f, e)) * FMath.Lerp(1f, 0.2f, grey) * (1f - 0.6f * rain);
+        Sun.LightColor = Key(SunCol, e).Lerp(SunDay, FMath.Smoothstep(6f, 18f, e));
         Sun.LightEnergy = sunE;
+        Sun.ShadowOpacity = FMath.Lerp(1f, 0.55f, grey);
         Sun.Visible = sunE > 0.002f;
-        if (Sun.Visible) Sun.Basis = Basis.LookingAt(-SafeLightDir(sunDir), Vector3.Up);
+        if (Sun.Visible) Sun.Basis = Basis.LookingAt(-SafeLightDir(lightDir), Vector3.Up);
 
-        // --- moon (fades in after dusk)
-        float moonE = 0.26f * FMath.Smoothstep(-2f, -9f, e) * FMath.Smoothstep(2f, 14f, em);
+        // --- moon: weak and blue, hidden by clouds
+        float moonE = 0.11f * FMath.Smoothstep(-2f, -9f, e) * FMath.Smoothstep(2f, 14f, em) * FMath.Lerp(1f, 0.35f, grey);
         Moon.LightEnergy = moonE;
         Moon.Visible = moonE > 0.002f;
         if (Moon.Visible) Moon.Basis = Basis.LookingAt(-SafeLightDir(moonDir), Vector3.Up);
 
         // --- ambient, fog, exposure
-        float day = FMath.Smoothstep(-8f, 8f, e);
-        float night = 1f - FMath.Smoothstep(-12f, -3f, e);
         Color hor = Key(Horizon, e), horSun = Key(HorizonSun, e);
-        Env.AmbientLightColor = FMath.Hex(0x2a3a64).Lerp(FMath.Hex(0x8a9bb0), day);
-        Env.AmbientLightSkyContribution = FMath.Lerp(0.35f, 0.9f, day);
-        float dusk = 1f - FMath.Smoothstep(4f, 14f, MathF.Abs(e - 1f));
-        Env.AmbientLightEnergy = FMath.Lerp(0.55f, 0.8f, day) * (1f - 0.25f * dusk);
-        Env.FogLightColor = hor.Lerp(horSun, 0.25f + 0.3f * dusk).Darkened(0.05f);
-        Env.FogLightEnergy = FMath.Lerp(0.5f, 1.0f, day);
-        Env.FogSunScatter = 0.08f + 0.22f * dusk;
-        Env.FogDensity = FMath.Lerp(0.0012f, 0.0009f, day);
-        // a little ground mist around sunrise
-        float morning = hour > 3f && hour < 10f ? 1f - FMath.Smoothstep(2f, 12f, MathF.Abs(e - 2f)) : 0f;
-        // Godot's height fog is a constant amount below FogHeight (not integrated along the view ray), so keep it
-        // to a thin dawn mist in the lowest hollows (stream valley) only.
-        Env.FogHeightDensity = 0.035f * morning;
-        Env.TonemapExposure = ExposureScale * FMath.Lerp(0.8f, NightExposure, night) * FMath.Lerp(1f, 1.12f, dusk);
-        Env.GlowIntensity = FMath.Lerp(0.45f, 0.9f, night);
-        Env.GlowHdrThreshold = FMath.Lerp(1.2f, 0.75f, night);
-        // full midday sun pushes the greens toward lime under Filmic: ease saturation a little when the sun is high
-        Env.AdjustmentSaturation = FMath.Lerp(1.0f - 0.08f * FMath.Smoothstep(20f, 50f, e), 0.72f, night);
+        Color dayHor = SkyGrey.Darkened(0.12f * rain);
+        hor = hor.Lerp(dayHor, grey * day).Lerp(NightHor, night);
+        horSun = horSun.Lerp(dayHor.Lerp(horSun, 0.25f * dusk), grey * day).Lerp(NightHor, night);
+        Env.AmbientLightColor = FMath.Hex(0x1c2438).Lerp(FMath.Hex(0x8a929c), day);
+        Env.AmbientLightSkyContribution = FMath.Lerp(0.5f, 0.85f, day);
+        Env.AmbientLightEnergy = FMath.Lerp(0.32f, FMath.Lerp(0.75f, 0.95f, grey), day) * (1f - 0.2f * dusk);
+        Color fogCol = FogNight.Lerp(FogDay, day).Lerp(horSun, 0.35f * dusk * (1f - grey));
+        Env.FogLightColor = fogCol;
+        Env.FogLightEnergy = FMath.Lerp(0.16f, 0.74f - 0.2f * rain, day);
+        Env.FogSunScatter = (0.05f + 0.2f * dusk) * (1f - grey * 0.7f);
+        // haze always; fog thickest at dawn and dusk, in rain and on foggy mornings (valleys and forest: Atmosphere's fog volumes)
+        float fogK = 1f + 0.5f * dusk + 1.3f * fogW + 0.8f * rain;
+        Env.FogDensity = 0.0017f * fogK * FMath.Lerp(1.15f, 1f, day);
+        Env.VolumetricFogDensity = 0.0012f * (1f + 0.6f * dusk + 2.6f * fogW + rain);
+        Env.VolumetricFogAlbedo = fogCol;
+        Env.TonemapExposure = ExposureScale * FMath.Lerp(0.82f, NightExposure, night) * FMath.Lerp(1f, 1.08f, dusk) * FMath.Lerp(1f, 1.06f, grey * day);
+        Env.GlowIntensity = FMath.Lerp(0.4f, 1.0f, night);
+        Env.GlowHdrThreshold = FMath.Lerp(1.1f, 0.6f, night);
+        Env.AdjustmentSaturation = FMath.Lerp(0.92f - 0.06f * grey, 0.58f, night);
 
-        // window lights: on from sunset to dawn
-        RenderingServer.GlobalShaderParameterSet("night_light", 1f - FMath.Smoothstep(-3f, 7f, e));
+        // window lights: on from sunset to dawn (and a little under heavy cloud)
+        RenderingServer.GlobalShaderParameterSet("night_light", Math.Max(1f - FMath.Smoothstep(-3f, 7f, e), 0.25f * rain * day));
         float gust = 0.5f + 0.5f * MathF.Sin((float)_time * 0.23f) * MathF.Sin((float)_time * 0.071f + 1.3f);
-        RenderingServer.GlobalShaderParameterSet("fd_wind", new Vector4(0.83f, 0.55f, 0.55f + 0.35f * gust, gust));
+        float w = Weather.Wind;
+        RenderingServer.GlobalShaderParameterSet("fd_wind", new Vector4(0.83f, 0.55f, (0.35f + 0.55f * w) * (0.75f + 0.45f * gust), gust * w));
+        RenderingServer.GlobalShaderParameterSet("fd_wet", Weather.Wet);
 
         // --- sky material: throttle (every radiance update is expensive)
         _skyTimer += dt;
-        if (force || MathF.Abs(hour - _lastSkyHour) > 0.02f || _skyTimer > 2f)
+        if (force || MathF.Abs(hour - _lastSkyHour) > 0.02f || _skyTimer > 2f || MathF.Abs(cloud - _lastCloud) > 0.02f)
         {
-            _skyTimer = 0; _lastSkyHour = hour;
-            SkyMaterial.SetShaderParameter("zenith_color", Key(Zenith, e));
+            _skyTimer = 0; _lastSkyHour = hour; _lastCloud = cloud;
+            Color zen = Key(Zenith, e).Lerp(SkyGreyTop.Darkened(0.18f * rain), grey * day).Lerp(NightTop, night);
+            SkyMaterial.SetShaderParameter("zenith_color", zen);
             SkyMaterial.SetShaderParameter("horizon_color", hor);
             SkyMaterial.SetShaderParameter("horizon_sun_color", horSun);
             SkyMaterial.SetShaderParameter("ground_color", hor.Darkened(0.35f));
-            SkyMaterial.SetShaderParameter("sun_dir", sunDir);
+            SkyMaterial.SetShaderParameter("sun_dir", lightDir);
             SkyMaterial.SetShaderParameter("sun_color", Key(SunCol, e).Lerp(new Color(1, 1, 1), 0.15f));
-            SkyMaterial.SetShaderParameter("sun_glow", FMath.Smoothstep(-8f, 0f, e) * FMath.Lerp(1.4f, 0.7f, FMath.Smoothstep(3f, 30f, e)));
-            SkyMaterial.SetShaderParameter("sun_disk", FMath.Smoothstep(-1.5f, 0.5f, e));
+            SkyMaterial.SetShaderParameter("sun_glow", FMath.Smoothstep(-8f, 0f, e) * FMath.Lerp(1.2f, 0.55f, FMath.Smoothstep(3f, 30f, e)) * (1f - 0.8f * grey));
+            SkyMaterial.SetShaderParameter("sun_disk", FMath.Smoothstep(-1.5f, 0.5f, e) * (1f - grey));
             SkyMaterial.SetShaderParameter("moon_dir", moonDir);
-            SkyMaterial.SetShaderParameter("moon_amount", FMath.Smoothstep(-2f, -8f, e) * FMath.Smoothstep(-2f, 4f, em));
-            SkyMaterial.SetShaderParameter("star_amount", FMath.Smoothstep(-5f, -13f, e) * 1.4f);
+            SkyMaterial.SetShaderParameter("moon_amount", FMath.Smoothstep(-2f, -8f, e) * FMath.Smoothstep(-2f, 4f, em) * (1f - 0.85f * grey));
+            SkyMaterial.SetShaderParameter("star_amount", FMath.Smoothstep(-5f, -13f, e) * 0.7f * (1f - grey) * (1f - grey));
             SkyMaterial.SetShaderParameter("sky_time", (float)(_time % 10000.0));
-            SkyMaterial.SetShaderParameter("cloud_lit", Key(HorizonSun, e).Lerp(new Color(1, 1, 1), 0.55f * day));
-            SkyMaterial.SetShaderParameter("cloud_dark", Key(Horizon, e).Darkened(FMath.Lerp(0.55f, 0.25f, day)));
-            SkyMaterial.SetShaderParameter("cloud_alpha", FMath.Lerp(0.55f, 0.85f, day));
+            SkyMaterial.SetShaderParameter("cloud_cover", FMath.Lerp(0.38f, 0.97f, cloud));
+            SkyMaterial.SetShaderParameter("cloud_lit", Key(HorizonSun, e).Lerp(new Color(0.86f, 0.86f, 0.86f), 0.6f * day).Lerp(SkyGrey, grey * day).Lerp(NightHor.Lightened(0.05f), night));
+            SkyMaterial.SetShaderParameter("cloud_dark", Key(Horizon, e).Darkened(FMath.Lerp(0.5f, 0.3f, day)).Lerp(SkyGreyTop.Darkened(0.25f + 0.2f * rain), grey * day).Lerp(NightTop, night));
+            SkyMaterial.SetShaderParameter("cloud_alpha", FMath.Lerp(0.6f, FMath.Lerp(0.8f, 0.92f, grey), day));
         }
+    }
+
+    /// <summary>The direction the sunlight comes from: the sun's own azimuth, never higher than <see cref="SunMaxElevation"/>.</summary>
+    public static Vector3 LowSun(Vector3 sunDir)
+    {
+        float maxY = MathF.Sin(Mathf.DegToRad(SunMaxElevation));
+        if (sunDir.Y <= maxY) return sunDir;
+        var flat = new Vector3(sunDir.X, 0, sunDir.Z);
+        if (flat.LengthSquared() < 1e-6f) flat = new Vector3(0, 0, 1);
+        flat = flat.Normalized() * MathF.Cos(Mathf.DegToRad(SunMaxElevation));
+        return new Vector3(flat.X, maxY, flat.Z).Normalized();
     }
 
     /// <summary>Keep light directions a few degrees above the horizon so shadows don't stretch to infinity.</summary>

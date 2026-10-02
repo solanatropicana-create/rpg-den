@@ -155,6 +155,7 @@ public partial class Dev : Node
                     case "--gtest": GTest = true; break;
                     case "--savetest": SaveTest = true; break;
                     case "--mood": Mood = val; break;
+                    case "--weather": Weather.Force = val; break;
                     case "--scenario": Scenario = true; break;
                     case "--ui": UiScreen = val; break;
                     case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;

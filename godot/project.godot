@@ -62,3 +62,19 @@ fd_wind={
 "type": "vec4",
 "value": Vector4(0.83, 0.55, 0.6, 0)
 }
+fd_sat={
+"type": "float",
+"value": 0.6
+}
+fd_bright={
+"type": "float",
+"value": 0.88
+}
+fd_dirt={
+"type": "float",
+"value": 0.55
+}
+fd_wet={
+"type": "float",
+"value": 0.0
+}

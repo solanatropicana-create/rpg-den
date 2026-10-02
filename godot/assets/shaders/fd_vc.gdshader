@@ -8,6 +8,7 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 
 global uniform float night_light;
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 instance uniform vec3 tint = vec3(0.434, 0.042, 0.027);   // linear (sRGB #b03a2e)
 instance uniform float lit = 1.0;
@@ -21,8 +22,8 @@ void fragment() {
 	float mask = smoothstep(0.7, 0.9, a);
 	float glass = 1.0 - smoothstep(0.08, 0.16, abs(a - 0.5));
 	vec3 c = COLOR.rgb;
-	ALBEDO = mix(c, c * tint, mask);
-	ROUGHNESS = mix(roughness, 0.25, glass);
+	ALBEDO = fd_grade(mix(c, c * tint, mask));
+	ROUGHNESS = fd_wet_rough(mix(roughness, 0.25, glass));
 	SPECULAR = mix(0.3, 0.55, glass);
 	EMISSION = glass * night_light * lit * window_color * window_energy;
 }

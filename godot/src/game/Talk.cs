@@ -88,7 +88,7 @@ public partial class Talk : Node
             string st = vi.Status ?? vi.Crisis;
             string sl = st switch
             {
-                "festival" => "Festival var! Akşam meydanda müzik, bira bedava.",
+                "festival" => _r.Life.Mood == "festival" ? "Bu akşam meydanda ateş yakacaklar; biraz neşe iyi gelir." : "Festival dediler ama kimsenin içinden gelmiyor.",
                 "prosper" => "Bu yıl bereketli; ambarlar dolu, yüzler gülüyor.",
                 "boom" => "Tüccarlar akın akın geliyor; pazar hiç bu kadar kalabalık olmamıştı.",
                 "shortage" or "hunger" => "Ambar boş, ekmek pahalı. Kış zor geçecek.",

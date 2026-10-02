@@ -211,7 +211,21 @@ public partial class Region : Node3D
         AddChild(Menu);
         Menu.Init(this);
         // Faz 2 A: the village's state in the sim makes the street scene (festival at the plaza, a queue at the headman's door…)
-        string MoodNow() { var vi = Session.Village(); return FD.Dev.Dev.Instance?.Mood ?? vi?.Status ?? vi?.Crisis; }
+        // Tur 1 D: gloomier days — while the sim says "festival", the plaza celebrates only on one day in three (the first day always)
+        string MoodNow()
+        {
+            if (FD.Dev.Dev.Instance?.Mood is string dev) return dev;
+            var vi = Session.Village();
+            string m = vi?.Status ?? vi?.Crisis;
+            if (m == "festival")
+            {
+                int d = GameClock.Day;
+                if (!Session.Flags.TryGetValue("festivalFrom", out var from) || d - from > 12) Session.Flags["festivalFrom"] = from = d;
+                if (d != (int)from && FD.Sim.Life.H.Hash((int)Session.Seed, d, 41) > 0.33f) m = null;
+            }
+            else Session.Flags.Remove("festivalFrom");
+            return m;
+        }
         Life.Mood = MoodNow();
         Director.NewDay += _ => Life.Mood = MoodNow();
         Step("life");

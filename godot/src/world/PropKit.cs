@@ -187,17 +187,23 @@ public partial class NightLight : OmniLight3D
     {
         _seed = Position.X * 0.37f + Position.Z * 0.11f;
         DistanceFadeEnabled = true;
-        DistanceFadeBegin = 70f;
-        DistanceFadeLength = 30f;
+        DistanceFadeBegin = 90f;
+        DistanceFadeLength = 40f;
         OmniAttenuation = 1.4f;
+        // Tur 1 D: the nights are dark now; lamps, torches and the forge carry them (brighter and wider pools of warm light)
+        OmniRange *= 1.25f;
+        LightVolumetricFogEnergy = 1.5f;
     }
+
+    /// <summary>Tur 1 D: night light multiplier (dark nights: the warm lights stand out)</summary>
+    public const float NightBoost = 1.8f;
 
     public override void _Process(double delta)
     {
         _t += (float)delta;
         float night = AlwaysOn ? 1f : 1f - GameClock.Daylight;
         float f = Flicker ? 0.82f + 0.1f * MathF.Sin(_t * 11f + _seed) + 0.08f * MathF.Sin(_t * 23.7f + _seed * 3f) : 1f;
-        float e = BaseEnergy * (AlwaysOn ? MathF.Max(0.35f, night) : night) * f;
+        float e = BaseEnergy * (AlwaysOn ? MathF.Max(0.35f, night) : night) * f * FMath.Lerp(1f, NightBoost, night);
         LightEnergy = e;
         Visible = e > 0.02f;
     }

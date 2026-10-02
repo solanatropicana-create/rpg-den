@@ -54,6 +54,7 @@ varying vec3 v_world;
 varying vec3 v_wnormal;
 
 #include "res://assets/shaders/ground_color.gdshaderinc"
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -179,12 +180,12 @@ void fragment() {
 	col *= mix(1.0, 0.75, sc.b * (1.0 - rw));
 	col *= mix(0.72, 1.07, smoothstep(0.18, 0.72, cav));
 
-	ALBEDO = col;
+	ALBEDO = fd_grade(col);
 	// clumpy micro-relief (grass tufts, pebbles): two scales of a cellular normal map, near the camera only
 	vec3 n1 = texture(detail_normal, wp / 3.3).rgb;
 	vec3 n2 = texture(detail_normal, wp / 1.15 + vec2(0.31, 0.77)).rgb;
 	NORMAL_MAP = normalize(mix(n1, n2, 0.4));
 	NORMAL_MAP_DEPTH = detail_normal_strength * detail * (1.0 - 0.6 * dw) * (1.0 - sb.r * 0.3);
-	ROUGHNESS = mix(0.95, 0.55, sc.b * 0.8);
+	ROUGHNESS = fd_wet_rough(mix(0.95, 0.55, sc.b * 0.8));
 	SPECULAR = 0.22;
 }

@@ -29,6 +29,7 @@ uniform float tip_light = 1.18;
 uniform float backlight = 0.3;
 
 #include "res://assets/shaders/ground_color.gdshaderinc"
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 varying vec3 v_tint;
 varying float v_h;
@@ -65,8 +66,8 @@ void fragment() {
 	// masked parts: RGB is a grey gradient (base → tip); remap so the tip is a bit lighter than the ground
 	vec3 shade = mix(vec3(base_dark), vec3(tip_light), smoothstep(0.4, 1.0, COLOR.r));
 	vec3 c = mix(COLOR.rgb, v_tint * shade, mask);
-	ALBEDO = c;
-	ROUGHNESS = 0.9;
+	ALBEDO = fd_grade(c);
+	ROUGHNESS = fd_wet_rough(0.9);
 	SPECULAR = 0.15;
 	BACKLIGHT = vec3(backlight) * c;
 }

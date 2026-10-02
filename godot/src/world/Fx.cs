@@ -32,7 +32,8 @@ public static class Fx
         };
         _smokeMat = new StandardMaterial3D
         {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            // Tur 1 D: lit by the sky (dark at night, grey under clouds) instead of glowing
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.PerVertex, Roughness = 1f, DisableReceiveShadows = true,
             BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             VertexColorUseAsAlbedo = true,

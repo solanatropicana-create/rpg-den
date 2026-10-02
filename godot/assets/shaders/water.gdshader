@@ -15,6 +15,7 @@ uniform bool flowing = true;
 uniform sampler2D normal_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D normal_b : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 varying vec3 v_world;
 
@@ -53,7 +54,7 @@ void fragment() {
 	float foam = 1.0 - smoothstep(0.0, foam_width * (0.7 + 0.6 * wob), thickness);
 	foam *= 0.85;
 
-	ALBEDO = mix(col, foam_color, foam);
+	ALBEDO = fd_grade(mix(col, foam_color, foam));
 	ALPHA = clamp(mix(0.55, 0.93, smoothstep(0.0, 0.7, dk)) + foam * 0.5, 0.0, 1.0);
 	ROUGHNESS = mix(0.04, 0.5, foam);
 	SPECULAR = 0.55;

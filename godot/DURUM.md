@@ -1,4 +1,50 @@
-# Fantastik Dünya — açık dünya dikey dilimi (durum, 2 Ekim 2026, Faz 2)
+# Fantastik Dünya — açık dünya dikey dilimi (durum, 2 Ekim 2026, Tur 1)
+
+## Tur 1 · Kontrol ve atmosfer (sürüyor)
+
+Brief: `claude/tur1-kontrol-atmosfer-brief.md` (proje). Faz 2'nin geri bildirimi: ayrı taktik mod "başka oyun" gibi, saldırı
+başlatılamıyor, E ile yanaşmak kötü, büyük ekipte tek tek emir yönetilemez, hız her yerde olsun, atmosfer fazla neşeli. Sıra:
+D atmosfer (önce/sonra kareleri için önce) → A tek kamera + C savaş + B bağlam tıklaması (tek kumanda; iç içe) → E demirci ve
+ilk dakika → kabul.
+
+### D · Kasvetli atmosfer (bitti)
+
+Hedef kareler `docs/stil/valheim_kasvet_v2.png` (gündüz), `valheim_gece.png` (gece); değerler brief'in D+ bölümünden. Modellere
+dokunulmadı (beyaz sıva, mor/yeşil panjur, saksı Tur 2).
+
+- **Renk (gölgelendirici):** `assets/shaders/fd_grade.gdshaderinc` — her dünya malzemesinin (yapılar ve ağaçlar `fd_vc`/`fd_vc_mm`,
+  karakterler `fd_char`, arazi, çimen, su) albedosu: doygunluk ×**0,60**, parlaklık ×**0,88**, parlak yüzeyler toprak-griye
+  (0,30; 0,27; 0,22) doğru, oran = parlaklık × **0,55**. Genel uniform'lar `fd_sat`, `fd_bright`, `fd_dirt` (project.godot) —
+  brief'in "iki uniform"u üçe çıktı: kir karışımı da ayarlanabilsin. `fd_wet`: yağmurda yüzeyler koyulaşır ve parlar.
+- **Işık (`src/world/DayNight.cs`):** güneş solgun sıcak (1,0; 0,82; 0,62), ışığı hiçbir saatte **24°**'den yukarı çıkmaz
+  (`SunMaxElevation`; gölgeler gün boyu uzun; yön saatin güneşinden, yalnız yükseklik kırpılır — gece/gündüz ve sim saatleri
+  aynı). Kapalı havada güneş %80'e kadar söner, gölge soluklaşır, ışık gökten gelir. Gece: ay çok zayıf ve mavi (0,55; 0,65; 1,0;
+  ~0,11), gece pozlama artışı kaldırıldı (gece gerçekten karanlık), sokak lambaları, meşaleler, ocak ve pencereler ×1,8 ve
+  %25 geniş (sıcak turuncu havuzlar); oyuncunun kontrol ettiği karakterin elinde gece bir fener (7,5 m).
+- **Gök:** gündüz gri-mavi (0,48; 0,50; 0,53), gece lacivert (0,03; 0,04; 0,07 × 0,6); kapalı günde bulut örtüsü %97, yıldızlar
+  bulutun ardında. Duman artık ışıkla boyanıyor (gece parlamıyor).
+- **Sis:** her yerde pus (üstel sis ~0,0017/m) + Godot hacimsel sis (yoğunluk ~0,0012/m tabanda, renk gündüz (0,62; 0,65; 0,70)
+  ton, gece (0,25; 0,28; 0,35), anizotropi **0,35**); şafakta ve alacakaranlıkta, sisli sabahlarda ve yağmurda kalınlaşır. Vadide
+  (dere boyunca 38 m'de bir), gölde ve sık ormanda (en sık 18 hücre) **sis kümeleri** (`FogVolume`): sabah ve akşam belirgin.
+- **Renk düzeltme:** filmik ton eşleme + 3B LUT (gölgeler soğuk mavi-gri, açıklar sıcak toprak-gri, hafif kalkık siyah), düşük
+  doygunluk (gündüz 0,86–0,92, gece 0,58), kontrast 1,1; hafif **film greni** ve **vinyet** (gece daha belirgin).
+- **Hava (`src/world/Weather.cs`):** 8 saatlik dilimler, sonuncu 1,5 saatte karışır; tohumdan ve saatten, kayıt gerekmez. Kapalı
+  %45, puslu %17, açık %10, yağmur %20, fırtına %8 (yağmur sık ve koyu); beş sabahtan ikisi kalın sisli. Yağmur kameranın
+  çevresinde 3200 çizgi, ıslak zemin; kuru ve rüzgârlı havada toz ve yaprak savrulur. Saatin yanında "Hava: kapalı".
+  Geliştirici: `--weather=clear|hazy|overcast|rain|storm|fog`.
+- **Ses (`AmbientSound`, ses dosyası yok, anında üretilir):** baskın rüzgâr (esintiyle kabaran gürültü bandı, gece biraz daha
+  güçlü), yağmurun hışırtısı ve tıpırtısı, ateşe yaklaşınca çıtırtı. Neşeli ezgi yok; gece ıssız. Duraklatınca da sürer.
+- **Festival seyreldi:** sim "festival" dese de meydanda ateş ve dans yalnız ilk gün ve sonra üç günden birinde; köylünün lafı da
+  ona göre ("Festival dediler ama kimsenin içinden gelmiyor").
+- **Önce/sonra:** aynı açıdan (`--vcam=50,@7,-9:8,@1.5,8`: köy yolu, solda demirhane, ortada kuyu ve meydan) öğle, akşam,
+  gece, sabah sisi ve yağmur; `docs/shots/tur1/` (önce: `once_*.png`, sonra: `sonra_*.png`). Önceki hâlde hava ve yağmur yoktu:
+  sis ve yağmurun "önce"si aynı saatin açık hâlidir.
+
+#### D kararları
+- Hacimsel sis yalnız kameranın 140 m önüne kadar hesaplanır; ötesi üstel pus. Değerler Blender'ın "yoğunluk/m"sinin birebir
+  karşılığı değil (Godot'nun sisi iki katman); kare karşılaştırarak ayarlandı.
+- Güneşin ışık yüksekliğini kırpmak, "hep karşıdan alçak güneş" yerine seçildi: oyunda kamera döner, güneş kameraya bağlanamaz.
+- Yağmur ve toz her makinede çizilir; zayıf kartta F3 ile bakılmalı (hacimsel sis en pahalı kalem).
 
 ## Faz 2 · Oyuncu, ekip ve d20 savaş (bitti)
 

@@ -16,6 +16,7 @@ render_mode diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 global uniform float night_light;
 global uniform vec3 fd_cam_pos;
 global uniform vec4 fd_wind;
+#include "res://assets/shaders/fd_grade.gdshaderinc"
 
 uniform float roughness : hint_range(0.0, 1.0) = 0.9;
 uniform vec3 window_color : source_color = vec3(1.0, 0.62, 0.28);
@@ -68,8 +69,8 @@ void fragment() {
 	float mask = smoothstep(0.7, 0.9, a);
 	float glass = 1.0 - smoothstep(0.08, 0.16, abs(a - 0.5));
 	vec3 c = COLOR.rgb;
-	ALBEDO = mix(c, c * v_tint, mask);
-	ROUGHNESS = mix(roughness, 0.25, glass);
+	ALBEDO = fd_grade(mix(c, c * v_tint, mask));
+	ROUGHNESS = fd_wet_rough(mix(roughness, 0.25, glass));
 	SPECULAR = mix(0.25, 0.55, glass);
 	EMISSION = glass * night_light * v_lit * window_color * window_energy;
 	BACKLIGHT = vec3(leaf_backlight * mask) * ALBEDO;
