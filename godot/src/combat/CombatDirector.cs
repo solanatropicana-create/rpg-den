@@ -501,8 +501,8 @@ public partial class CombatDirector : Node
         if (pn > 0) party /= pn;
         foreach (var f in Fight.F)
         {
-            if (f.Fled || f.Fleeing || (f.Side == FSide.Foe && (f.Dead || V2.Distance(f.Pos, party) > 22f))) continue;
-            float k = f.Side == FSide.Party ? 2f : 1f;
+            if (f.Fled || f.Fleeing || (f.Side == FSide.Foe && (f.Dead || V2.Distance(f.Pos, party) > 16f))) continue;
+            float k = f.Side == FSide.Party ? 4f : 1f;
             sum += f.Pos * k; w += k;
         }
         return w > 0 ? sum / w : party;

@@ -63,7 +63,9 @@ public partial class SaveTest : Node
         Check("kaydedildi", saved && SaveGame.Exists(), $"{SaveGame.Describe()}; ilan {(q != null ? "alındı" : "yok")}, kontrol {_controlled}, ekip {s.Party.Count}");
         // (1) the same world continues
         double day0 = s.Macro.W.Day;
+        var hook = s.Macro.LocalCamp; s.Macro.LocalCamp = null;   // both copies run the sim alone (no region taking a camp fight over)
         for (int i = 0; i < 10; i++) { s.Macro.Step(); M.Local.DayTick(s.Macro); }
+        s.Macro.LocalCamp = hook;
         string live = History(s.Macro, day0);
         var loaded = SaveGame.Load();
         for (int i = 0; i < 10; i++) { loaded.Macro.Step(); M.Local.DayTick(loaded.Macro); }
