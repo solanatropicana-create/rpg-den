@@ -224,6 +224,44 @@ public static class Local
         return null;
     }
 
+    // ------------------------------------------------------------ oyuncu
+    /// <summary>Oyuncunun simdeki kaydı: yaratılan karakter (ırk, sınıf, statlar, hizalama, inanç, can, zırh, kese).</summary>
+    public sealed class PlayerSpec
+    {
+        public string Name, Race, Cls, Align = "neutral", Faith = "none";
+        public JsObj<double> Stats = new();
+        public double MaxHp, Ac, Gold, Age;
+    }
+
+    /// <summary>
+    /// Oyuncu simde bir kahramandır (simetri): kahraman kaydı, State "player" (simin yapay zekâsı ona dokunmaz: hedef seçmez,
+    /// handa beklemez, yaşlanıp ölmez), bağımsız (Civ −1), yuvasız. İnanç, itibar (Rep), üyelik (Orgs) ve yaralar bu kayıtta
+    /// taşınır; oyuncu öldüğünde kayıt "dead" olur. Bağlı köye yeni bir yabancının geldiği yazılır.
+    /// </summary>
+    public static Hero CreatePlayer(Sim s, PlayerSpec p)
+    {
+        var link = s.W.Region ?? throw new InvalidOperationException("Local.CreatePlayer: bölge bağlı değil");
+        var v = Village(s);
+        int id = s.Id();
+        var parts = (p.Name ?? "Yabancı").Trim().Split(' ', 2);
+        var h = new Hero
+        {
+            Id = id, Name = p.Name, Race = p.Race, Cls = p.Cls, Level = 1, Xp = 0, Stats = p.Stats, MaxHp = p.MaxHp, Hp = p.MaxHp, Ac = p.Ac,
+            Civ = -1, Pos = v?.Tile ?? 0, Tavern = -1, State = "player", Born = s.Day, IdleSince = s.Day, Kills = 0, Gold = p.Gold,
+            Bio = "Kimsenin tanımadığı bir yolcu.", Align = p.Align, Path = "wanderer", Traits = new List<string>(), Tally = new JsObj<double>(),
+            Bonus = new HeroBonus { Atk = 0 }, Rep = new JsNumObj<double>(), Journal = new List<JournalEntry>(), Base = -1, BaseInn = false,
+            Birth = v?.Id ?? -1, Given = parts[0], Surname = parts.Length > 1 ? parts[1] : "", BirthLevel = 1, BirthAge = p.Age,
+            Deeds = new List<HeroDeed>(), Faith = p.Faith,
+        };
+        s.W.Heroes.Add(h);
+        link.Player = h.Id;
+        s.Metric("playerBorn");
+        Will.Note(s, h, $"{(v != null ? Lore.Ek(v.Name, "a") : "bölgeye")} geldi");
+        s.Log("hero", $"{(v != null ? Lore.Ek(v.Name, "a") : "Bölgeye")} kimsenin tanımadığı bir yabancı geldi: {h.Name} ({D.RACES.GetOr(h.Race, null)?.Name ?? h.Race}).",
+            tile: v?.Tile, cause: "Cebinde birkaç gümüş, sırtında yol giysisi");
+        return h;
+    }
+
     /// <summary>Gün başında (Sim.Step'ten sonra) bölgenin bakımı: kamp yaşıyorsa ilan.</summary>
     public static void DayTick(Sim s)
     {

@@ -37,6 +37,20 @@ public partial class Player : CharacterBody3D
     public Node3D CameraRig { get; private set; }
     public Humanoid Body { get; private set; }
     public float CameraYaw => _yaw;
+    /// <summary>body facing (yaw, radians, model front)</summary>
+    public float Facing => _facing;
+    /// <summary>Faz 2: the character this body belongs to (look, speed); null before the session gives one</summary>
+    public FD.Rpg.Character Character { get; private set; }
+
+    /// <summary>Faz 2: dress the body as the character (race build and ears, colours, hair, weapon in hand).</summary>
+    public void SetCharacter(FD.Rpg.Character c)
+    {
+        Character = c;
+        var visual = GetNode<Node3D>("Visual");
+        Body?.QueueFree();
+        Body = LookKit.Body(c);
+        visual.AddChild(Body);
+    }
     /// <summary>When false the player ignores input (dev free camera, UI).</summary>
     public bool InputEnabled = true;
 

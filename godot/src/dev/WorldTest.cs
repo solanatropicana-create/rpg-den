@@ -51,6 +51,9 @@ public static class WorldTest
         Check("kamp ilanı", q != null || taken != null,
             q != null ? $"{q.Bounty:F0} altın, {(q.Inn != null ? "han panosunda" : "tavernalarda")}"
             : taken != null ? $"{taken.Value.q.Bounty:F0} altınlık ilanı {string.Join(", ", taken.Value.heroes.Select(h => h.Name))} aldı, yolda" : "yok");
+        var ph = s.Player?.HeroId is int hid ? s.Macro.Hero(hid) : null;
+        Check("oyuncu simde", ph != null && ph.State == "player" && s.Link.Player == ph.Id && !M.Inns.InnPool(s.Macro, s.Inn ?? new M.Inn()).Contains(ph),
+            ph != null ? $"{ph.Name} ({ph.Race} {ph.Cls} Sv{ph.Level}, {ph.State}, can {ph.Hp}/{ph.MaxHp}, zırh {ph.Ac}, {ph.Gold:F1} altın, {ph.Align}, {ph.Faith})" : "yok");
         Check("devlet", vi.CivName != null, $"{vi.CivName} ({vi.GovName}), {vi.RulerTitle}, meşruiyet {vi.Legit:F0}, istikrar {vi.Stability:F0}, durum {vi.StatusName ?? "olağan"}");
 
         // days: one macro step per local midnight

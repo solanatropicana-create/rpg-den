@@ -34,6 +34,11 @@ public partial class Humanoid : Node3D
     /// <summary>Faz 2 (ırklar): 0 insan kulağı (modelde), 1 küçük sivri (yarımşık, cüce-gnom, buçukluk), 2 uzun sivri (elf).
     /// Kafa kemiğine bağlı ten renkli koniler.</summary>
     public int Ears;
+    /// <summary>Faz 2: procedural hand-held weapon on the right hand (proc_dagger, proc_shortsword, proc_longsword, proc_scimitar,
+    /// proc_staff, proc_bow); glb tools (tool_*) go through <see cref="Outfit"/>.</summary>
+    public string HandProp;
+    BoneAttachment3D _hand;
+    Skeleton3D _skel;
 
     AnimationPlayer _anim;
     string _idle, _walk, _run, _jump, _current;
@@ -55,6 +60,8 @@ public partial class Humanoid : Node3D
             ApplyOutfit();
             if (_anim != null) BindAnimations();
             if (Ears > 0) AddEars(model);
+            _skel = FindFirst<Skeleton3D>(model);
+            if (HandProp != null) SetHandProp(HandProp);
         }
         if (model == null || _anim == null)
         {
@@ -91,6 +98,82 @@ public partial class Humanoid : Node3D
         }
     }
 
+    /// <summary>Faz 2: show a procedural weapon in the right hand (null removes it). Rest pose holds tools forward (+Z) at the grip,
+    /// 6,5 cm down the hand bone (bone-local +Y points to the fingers).</summary>
+    public void SetHandProp(string prop)
+    {
+        HandProp = prop;
+        if (_skel == null || _skel.FindBone("hand.R") < 0) return;
+        if (_hand == null)
+        {
+            _hand = new BoneAttachment3D { Name = "Hand", BoneName = "hand.R" };
+            _skel.AddChild(_hand);
+        }
+        foreach (var c in _hand.GetChildren()) { if (c is GeometryInstance3D g) _geoms.Remove(g); c.QueueFree(); }
+        if (prop == null) return;
+        var mesh = WeaponMesh(prop);
+        if (mesh == null) return;
+        var mi = new MeshInstance3D { Name = prop, Mesh = mesh, Position = new Vector3(-0.02f, 0.065f, 0.02f) };
+        _hand.AddChild(mi);
+        _geoms.Add(mi);
+        ApplyColors();
+    }
+
+    static readonly Dictionary<string, ArrayMesh> _weaponMeshes = new();
+
+    /// <summary>Low-poly weapon meshes in hand-local space (+Z = blade direction, +Y = toward the fingers).</summary>
+    static ArrayMesh WeaponMesh(string prop)
+    {
+        if (_weaponMeshes.TryGetValue(prop, out var m)) return m;
+        var k = new MeshKit();
+        Color steel = new(0.78f, 0.8f, 0.84f, 0f), dark = new(0.32f, 0.3f, 0.3f, 0f), wood = new(0.45f, 0.3f, 0.18f, 0f), leather = new(0.35f, 0.22f, 0.12f, 0f), brass = new(0.78f, 0.6f, 0.25f, 0f);
+        switch (prop)
+        {
+            case "proc_dagger":
+                k.Box(new Vector3(0, 0, -0.02f), new Vector3(0.03f, 0.03f, 0.11f), leather);
+                k.Box(new Vector3(0, 0, 0.045f), new Vector3(0.09f, 0.02f, 0.02f), brass);
+                k.Box(new Vector3(0, 0, 0.17f), new Vector3(0.035f, 0.008f, 0.22f), steel);
+                break;
+            case "proc_shortsword":
+                k.Box(new Vector3(0, 0, -0.03f), new Vector3(0.03f, 0.03f, 0.13f), leather);
+                k.Box(new Vector3(0, 0, 0.05f), new Vector3(0.14f, 0.025f, 0.025f), brass);
+                k.Box(new Vector3(0, 0, 0.32f), new Vector3(0.045f, 0.01f, 0.52f), steel);
+                break;
+            case "proc_longsword":
+                k.Box(new Vector3(0, 0, -0.05f), new Vector3(0.032f, 0.032f, 0.2f), leather);
+                k.Box(new Vector3(0, 0, -0.16f), new Vector3(0.05f, 0.05f, 0.04f), brass);
+                k.Box(new Vector3(0, 0, 0.065f), new Vector3(0.22f, 0.03f, 0.03f), steel);
+                k.Box(new Vector3(0, 0, 0.5f), new Vector3(0.05f, 0.012f, 0.84f), steel);
+                break;
+            case "proc_scimitar":
+                k.Box(new Vector3(0, 0, -0.03f), new Vector3(0.03f, 0.03f, 0.13f), dark);
+                k.Box(new Vector3(0, 0, 0.05f), new Vector3(0.12f, 0.025f, 0.025f), dark);
+                k.Transform = new Transform3D(Basis.FromEuler(new Vector3(-0.18f, 0, 0)), new Vector3(0, 0.03f, 0.3f));
+                k.Box(Vector3.Zero, new Vector3(0.06f, 0.012f, 0.5f), steel);
+                k.Transform = Transform3D.Identity;
+                break;
+            case "proc_staff":
+                k.Box(new Vector3(0, 0.05f, 0), new Vector3(0.04f, 1.7f, 0.04f), wood);
+                k.Box(new Vector3(0, -0.82f, 0), new Vector3(0.07f, 0.1f, 0.07f), wood);
+                break;
+            case "proc_bow":
+                for (int i = 0; i < 6; i++)
+                {
+                    float a0 = -0.9f + i * 0.3f;
+                    var c = new Vector3(0, MathF.Sin(a0 + 0.15f) * 0.55f, -0.08f + MathF.Cos(a0 + 0.15f) * 0.12f);
+                    k.Transform = new Transform3D(Basis.FromEuler(new Vector3(a0 + 0.15f, 0, 0)), c);
+                    k.Box(Vector3.Zero, new Vector3(0.035f, 0.2f, 0.035f), wood);
+                }
+                k.Transform = Transform3D.Identity;
+                k.Box(new Vector3(0, 0, -0.2f), new Vector3(0.006f, 1.0f, 0.006f), new Color(0.9f, 0.88f, 0.8f, 0f));
+                break;
+            default: return null;
+        }
+        m = k.ToMesh(Models.MaterialFor(MatKind.Character));
+        _weaponMeshes[prop] = m;
+        return m;
+    }
+
     /// <summary>Show "body" plus the <see cref="Outfit"/> parts, hide every other accessory/tool mesh.</summary>
     public void ApplyOutfit()
     {
@@ -98,7 +181,7 @@ public partial class Humanoid : Node3D
         foreach (var g in _geoms)
         {
             string n = g.Name.ToString();
-            bool show = n == "body" || n.StartsWith("body") || n.StartsWith("Ear") || Array.IndexOf(Outfit, n) >= 0;
+            bool show = n == "body" || n.StartsWith("body") || n.StartsWith("Ear") || n.StartsWith("proc_") || Array.IndexOf(Outfit, n) >= 0;
             g.Visible = show;
         }
     }

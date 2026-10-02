@@ -31,6 +31,9 @@ public static class GameClock
     /// <summary>Raised whenever the whole hour changes (arg = new hour 0..23).</summary>
     public static event Action<int> HourChanged;
 
+    /// <summary>Faz 2 (kayıt): restore the absolute clock.</summary>
+    public static void SetTotalHours(double h) { TotalHours = Math.Max(0, h); HourChanged?.Invoke((int)Hour); }
+
     public static void SetHour(float hour)
     {
         int prev = (int)Hour;

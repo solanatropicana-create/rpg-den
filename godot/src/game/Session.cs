@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FD.Rpg;
 using M = FD.Macro;
 
 namespace FD.Game;
@@ -23,6 +24,47 @@ public sealed class Session
     public int BaseMacroDay;
     /// <summary>raised after each macro day step (on the main thread, from <see cref="SyncDay"/>)</summary>
     public event Action<int> MacroDayStepped;
+
+    /// <summary>Faz 2: the player character (null until created) and the party (companions, the player first)</summary>
+    public Character Player;
+    public readonly List<Character> Party = new();
+    int _nextCharId = 1;
+    public int NextCharId() => _nextCharId++;
+    public int PeekNextCharId() => _nextCharId;
+    public void SetNextCharId(int v) => _nextCharId = Math.Max(1, v);
+    /// <summary>region facts the macro world does not hold (saved with the local state)</summary>
+    public readonly Dictionary<string, double> Flags = new();
+
+    /// <summary>Register the created character in the macro world (hero record, State "player") and make them the party leader.</summary>
+    public M.Hero AddPlayer(Character c)
+    {
+        var st = new M.JsObj<double>();
+        for (int i = 0; i < 6; i++) st.Set(Rules.StatIds[i], c.Stats[i]);
+        var h = M.Local.CreatePlayer(Macro, new M.Local.PlayerSpec
+        {
+            Name = c.Name, Race = c.Race, Cls = c.Cls, Align = c.Align, Faith = c.Faith, Stats = st, MaxHp = c.MaxHp, Ac = c.Ac,
+            Gold = c.Inv.Silver / (double)Rules.SilverPerGold, Age = RegionBind.Ages(c.Race).adult + 2,
+        });
+        c.HeroId = h.Id;
+        c.IsPlayer = true;
+        if (c.Id == 0) c.Id = NextCharId();
+        Player = c;
+        Party.Remove(c);
+        Party.Insert(0, c);
+        return h;
+    }
+
+    /// <summary>Write the player's local numbers back to the macro hero record (HP, level, XP, purse, faith, wounds as epithet).</summary>
+    public void SyncPlayerToMacro()
+    {
+        if (Player?.HeroId is not int id) return;
+        var h = Macro.Hero(id);
+        if (h == null) return;
+        h.Hp = Player.Hp; h.MaxHp = Player.MaxHp; h.Ac = Player.Ac; h.Level = Player.Level; h.Xp = Player.Xp;
+        h.Gold = Player.Inv.Silver / (double)Rules.SilverPerGold;
+        h.Faith = Player.Faith; h.Epithet = Player.Epithet;
+        if (Player.Dead && h.State != "dead") { h.State = "dead"; h.DeathDay = Macro.W.Day; }
+    }
 
     /// <summary>
     /// New world: <c>new Sim(seed)</c> with prehistory (progress: day, total), then the region link (<see cref="M.Local.Bind"/>).

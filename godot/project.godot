@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Fantastik Dünya"
-run/main_scene="res://scenes/Region.tscn"
+run/main_scene="res://scenes/Boot.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 
 [autoload]

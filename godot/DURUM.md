@@ -43,6 +43,40 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
 - **Açık:** bağlı kampın ilanını simdeki bir kahraman alıp kampa yürüyebilir (makro kampı uzaktan çözer); bunun bölgede yerel
   savaşla çözülmesi G'de. Karar: G'ye dek makro yolu (`Agents.FightCamp`) sürer.
 
+### B · Karakter yaratma ve oyuncu kişisi (bitti)
+
+- **Açılış** (`scenes/Boot.tscn`, `src/ui/Boot.cs`; ana sahne artık bu): başlık menüsü (Devam et — kayıt varsa, adı, sınıfı,
+  seviyesi ve günüyle; Yeni oyun (Demir mod); Çık) → karakter ekranı → "Dünya doğuyor" (makro dünya ve tarih öncesi işçi
+  iş parçacığında, yıl/gün ilerleme çubuğu) → bölge. Test ve çekim argümanları menüyü atlar (`Dev.SkipMenu`); `--play` menüsüz
+  oyun, `--ui=create --shot=…` ekranın çekimi, `--newgame=ırk,sınıf[,tohum[,ad]]` akışın başsız koşusu (yaratma → dünya → kayıt →
+  bölge).
+- **Karakter ekranı:** 9 ırk (simin ırkları; kısa açıklama ve bonuslar), 4 sınıf (savaşçı, haydut, büyücü, rahip; can zarı ve
+  özellik), 27 puanlık dağıtım (8–15, 14 ve 15 ikişer puan; "sınıfa göre dağıt" sınıfın önceliğiyle 15/14/13/12/10/8), ırk bonusu
+  (simin `RACE_STAT`'ı: insan her yetenekte +1, cüce Güç ve Dayanıklılık +2…), toplam ve değiştirici, hizalama (iyi, tarafsız,
+  kötü), ad (ırkın ad havuzundan rastgele), görünüş (kadın/erkek, ten — ırkın paleti, saç rengi ve biçimi, sakal, giysi rengi,
+  boy ±%6) ve dönen 3B önizleme (`CharacterPreview`: kendi dünyası, ışığı, kamerası; fareyle döner). Büyücü kitabındaki 1. seviye
+  büyüyü seçer (Sihirli Füze, Yanan Eller, Uyku). "Başlangıç" kutusu can, zırh sınıfı, saldırı, taşıma, inanç ve büyüleri yazar.
+- **Kurallar** (`src/rpg/`, Godot'dan bağımsız): `Rules` (D&D 5e: değiştirici, puan dağıtımı, can = tam zar + DAY, sonra ortalama;
+  yeterlilik; seviye simin XP tablosundan; yük kapasitesi Güç × 7 kg, küçük ırklarda ×0,75; cüce/buçukluk/gnom %15 yavaş; büyü
+  zorluk derecesi ve saldırısı; 1. seviye yuvalar 2/3/4; para: 1 altın = 10 gümüş), `Items` (PHB silahları: sopa, hançer, asa,
+  mızrak, el baltası, pala, kısa kılıç, topuz, uzun kılıç, kısa yay; deri zırh, zincir gömlek, zincir zırh, kalkan; şifa iksiri
+  2d4+2, sargı bezi, erzak, şifalı ot, goblin ıvır zıvırı — fiyatlar gümüş, simdeki bir mala bağlı), `Spells` (Ateş Oku, Buz Işını,
+  Sihirli Füze, Yanan Eller, Uyku; Kutsal Alev, Yara Sarma), `Character` (statlar, can, envanter + kese, takılı silah/zırh/kalkan,
+  zırh sınıfı, saldırı — silahsız 1 + Güç, büyüler ve yuvalar, kalıcı yaralar ve lakap, maaş, baygınlık ve ölüm zarları),
+  `CharacterFactory` (oyuncu; simdeki kahramandan yerel kişi — sınıfın varsaydığı takımla).
+- **Başlangıç:** üstündeki giysi ve 5–15 gümüş, silah yok (savaşçı yumrukla +5 isabet, 4 hasar). Büyücü: Ateş Oku, Buz Işını ve
+  seçtiği büyü, 2 yuva. Rahip: Güneş Kilisesi'ne bağlı, Kutsal Alev ve Yara Sarma, 2 yuva.
+- **Oyuncu simde bir kahraman** (`Local.CreatePlayer`, `Session.AddPlayer`): kahraman kaydı, State "player" (simin yapay zekâsı
+  ona dokunmaz: hedef seçmez, handa beklemez, yaşlanıp ölmez), bağımsız, yuvasız; inanç, hizalama, kese (gümüş / 10 altın),
+  itibar ve üyelik kayıtta; köye "kimsenin tanımadığı bir yabancı geldi" diye yazılır. `Session.SyncPlayerToMacro` can, seviye,
+  XP, kese ve lakabı geri yazar.
+- **Görünüş:** `LookKit` karakteri insan modelinde giydirir (ırkın boyu, eni, kulakları; seçilen renkler; zincir zırhta miğfer;
+  elde silah — glb aletleri: sopa, mızrak, balta, çekiç; yordamsal: hançer, kısa kılıç, uzun kılıç, pala, asa, yay sağ el
+  kemiğinde). Oyuncu bedeni `Player.SetCharacter` ile.
+- **Kayıt (ilk sürüm, H'de genişleyecek):** `SaveGame` tek yuva (`user://save/`): makro dünya `Sim.Save` (gzip) + yerel durum
+  JSON (ekip, saat, oyuncunun yeri, bölge bayrakları), geçici dosyaya yazılıp yer değiştirilir. Yeni dünya yaratılınca kaydedilir;
+  menüdeki "Devam et" açar.
+
 ---
 
 # Açık dünya dikey dilimi (30 Eylül 2026)

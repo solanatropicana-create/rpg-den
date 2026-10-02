@@ -112,6 +112,17 @@ public partial class Region : Node3D
         Player = GD.Load<PackedScene>("res://scenes/Player.tscn").Instantiate<Player>();
         AddChild(Player);
         Player.Teleport(RegionSpec.PlayerStart, RegionSpec.YawFacing(RegionSpec.PlayerStartFacing), Heightfield);
+        // Faz 2: the player's character (creation screen, save, or a dev default)
+        if (Session.Player == null)
+        {
+            var dev = FD.Rpg.CharacterFactory.Player("Deneme Yolcu", "human", "fighter", "neutral", FD.Rpg.Rules.SuggestedBase("fighter"), new FD.Rpg.Look(), null, 10);
+            Session.AddPlayer(dev);
+        }
+        Player.SetCharacter(Session.Player);
+        var pending = FD.Game.SaveGame.Pending;
+        if (pending != null && pending.HasPosition)
+            Player.Teleport(new Vector2(pending.PlayerX, pending.PlayerZ), pending.PlayerYaw, Heightfield);
+        FD.Game.SaveGame.Pending = null;
 
         // people
         Census.Populate(Life, (ulong)RegionSpec.Seed + 11, FD.Game.RegionBind.Spec(Session));

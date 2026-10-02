@@ -51,6 +51,15 @@ public partial class Dev : Node
     public double? Seed;
     public int? Prehistory;
     public int WorldTestDays;
+    /// <summary>--play: skip the title menu (dev; a default character is made)</summary>
+    public bool Play;
+    /// <summary>--ui=menu|create: stay in the boot UI on that screen (with --shot: screenshot it)</summary>
+    public string UiScreen;
+    /// <summary>--newgame=race,class[,seed[,name]]: run the boot flow headless (creation → world → save → region)</summary>
+    public string NewGame;
+    /// <summary>tests, shots and tools go straight to the region (Boot skips the menu)</summary>
+    public bool SkipMenu => UiScreen == null && (Play || SelfTest || LifeTestDays > 0 || WorldTestDays > 0 || ShotPath != null || Bench > 0 || MapDumpPath != null
+                            || DumpModel != null || Probe != null || Follow != null || CamPos.HasValue);
     public string Follow, CardFor;
     public bool DebugHud, OpenMap;
     public float FollowDist = 5f, FollowHeight = 1.9f, FollowAngle = 35f;
@@ -102,6 +111,9 @@ public partial class Dev : Node
                     case "--seed": Seed = double.Parse(val, ci); break;
                     case "--prehistory": Prehistory = int.Parse(val, ci); break;
                     case "--worldtest": WorldTestDays = val == "" ? 3 : int.Parse(val, ci); break;
+                    case "--play": Play = true; break;
+                    case "--ui": UiScreen = val; break;
+                    case "--newgame": NewGame = val; UiScreen ??= "newgame"; break;
                     case "--follow": Follow = val; break;
                     case "--followcam":
                     {
