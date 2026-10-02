@@ -17,6 +17,7 @@ node build.mjs                               # dist/fantastik-dunya.html
 Komutlar: `npm run sim`, `npm run sim:v`, `npm run build`, `npm run typecheck`.
 
 ## Dokümanlar
+- `docs/plan-acik-dunya.md` — açık dünya planı; yeni oyun `godot/` (Godot 4.7 .NET). Çalıştır: `OYNA.bat`, durum: `godot/DURUM.md`
 - `docs/art-pipeline.md` — Blender → oyun asset hattı (`assets/blender/*.py` script'le üretilen modeller, `assets/models/*.glb`)
 - `docs/gdd-v0.1-gpt-taslak.md` — ilk GPT taslağı (referans)
 - GDD v0.2 (güncel): https://claude.ai/code/artifact/36f0d7a4-b4ae-435d-bd75-ee7ac7e7d330

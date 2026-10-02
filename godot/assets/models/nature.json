@@ -1,0 +1,1069 @@
+{
+ "file": "nature.glb",
+ "generator": "assets/blender/nature.py",
+ "note": "Trees/bushes: leaves A=1 (tint by species/season, see tint_hint). Rocks, bark, flowers fixed. Small plants (grass/flower/fern/reeds) are meant for MultiMesh instancing near the player.",
+ "convention": {
+  "units": "metres, 1:1",
+  "coords": "All points / boxes / sizes are GODOT LOCAL coordinates of the object: x = Blender x, y = Blender z (up), z = -Blender y. The model FRONT faces +Z (Godot Vector3.MODEL_FRONT); +X is the viewer's right when looking at the front (= the model's own left, Vector3.MODEL_LEFT). Origin = ground level at the footprint centre.",
+  "facing": "facing = horizontal unit vector (Godot local). yaw_deg = degrees(atan2(facing.x, facing.z)); a character whose front is +Z faces that way with rotation.y = deg_to_rad(yaw_deg) (in the object's frame; add the object's yaw).",
+  "vertex_color": "COLOR_0 (linear RGBA). A=0 fixed colour; A=1 tint mask (RGB = grey shade, multiply by instance tint: roofs/banners/awnings = civ colour, leaves/crops/vines = species/season colour); A=0.5 window glass (emissive at night).",
+  "lod": "<name> = near mesh, <name>_lo = far mesh with the same silhouette (where provided).",
+  "collision_boxes": "center/size in Godot local axes (size = [x, y(height), z]), yaw_deg about +Y. Use as BoxShape3D children of a StaticBody3D. walkable_boxes are floors/decks/steps a character may stand on.",
+  "doors": "door points: pos = where a character stands just OUTSIDE the door (on the ground/deck), facing = the door's outward direction (the way you face when you come out). To enter, walk/face along -facing and fade out.",
+  "seats": "seat points: pos = seat surface centre (character hips), facing = the way the sitter looks.",
+  "footprint": "footprint = {center:[x,z], size:[x,z]} rectangle in the object's local XZ plane (flatten a terrain pad over it plus ~1 m margin). footprint_walls = the enclosed wall rectangle only."
+ },
+ "objects": {
+  "tree_oak_1": {
+   "tris": 743,
+   "size": [
+    7.333,
+    9.943,
+    7.949
+   ],
+   "aabb_min": [
+    -3.633,
+    -0.3,
+    -3.867
+   ],
+   "aabb_max": [
+    3.7,
+    9.643,
+    4.083
+   ],
+   "kind": "tree",
+   "species": "oak",
+   "height": 9.6,
+   "crown_radius": 3.96,
+   "crown_base": 4.92,
+   "trunk_radius": 0.455,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.455,
+    "height": 3.13,
+    "center": [
+     0,
+     1.56,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#5d8a3c",
+    "spring": "#7fae4a",
+    "autumn": "#c8782a",
+    "winter": "hide leaves or #8a7a5a"
+   },
+   "lo": "tree_oak_1_lo"
+  },
+  "tree_oak_1_lo": {
+   "tris": 130,
+   "size": [
+    7.569,
+    10.288,
+    7.953
+   ],
+   "aabb_min": [
+    -3.843,
+    -0.231,
+    -3.921
+   ],
+   "aabb_max": [
+    3.727,
+    10.057,
+    4.032
+   ],
+   "kind": "tree",
+   "lod_of": "tree_oak_1"
+  },
+  "tree_oak_2": {
+   "tris": 823,
+   "size": [
+    8.477,
+    11.458,
+    8.902
+   ],
+   "aabb_min": [
+    -4.46,
+    -0.3,
+    -4.994
+   ],
+   "aabb_max": [
+    4.017,
+    11.158,
+    3.908
+   ],
+   "kind": "tree",
+   "species": "oak",
+   "height": 11.2,
+   "crown_radius": 4.61,
+   "crown_base": 5.73,
+   "trunk_radius": 0.474,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.474,
+    "height": 3.69,
+    "center": [
+     0,
+     1.85,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#5d8a3c",
+    "spring": "#7fae4a",
+    "autumn": "#c8782a",
+    "winter": "hide leaves or #8a7a5a"
+   },
+   "lo": "tree_oak_2_lo"
+  },
+  "tree_oak_2_lo": {
+   "tris": 130,
+   "size": [
+    8.675,
+    12.093,
+    9.406
+   ],
+   "aabb_min": [
+    -4.489,
+    -0.214,
+    -5.088
+   ],
+   "aabb_max": [
+    4.186,
+    11.88,
+    4.318
+   ],
+   "kind": "tree",
+   "lod_of": "tree_oak_2"
+  },
+  "tree_oak_3": {
+   "tris": 823,
+   "size": [
+    10.803,
+    12.914,
+    10.626
+   ],
+   "aabb_min": [
+    -5.101,
+    -0.3,
+    -5.667
+   ],
+   "aabb_max": [
+    5.702,
+    12.614,
+    4.959
+   ],
+   "kind": "tree",
+   "species": "oak",
+   "height": 12.8,
+   "crown_radius": 5.27,
+   "crown_base": 6.55,
+   "trunk_radius": 0.494,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.494,
+    "height": 4.22,
+    "center": [
+     0,
+     2.11,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#5d8a3c",
+    "spring": "#7fae4a",
+    "autumn": "#c8782a",
+    "winter": "hide leaves or #8a7a5a"
+   },
+   "lo": "tree_oak_3_lo"
+  },
+  "tree_oak_3_lo": {
+   "tris": 130,
+   "size": [
+    10.759,
+    13.813,
+    10.577
+   ],
+   "aabb_min": [
+    -5.074,
+    -0.227,
+    -5.499
+   ],
+   "aabb_max": [
+    5.685,
+    13.586,
+    5.078
+   ],
+   "kind": "tree",
+   "lod_of": "tree_oak_3"
+  },
+  "tree_pine_1": {
+   "tris": 402,
+   "size": [
+    6.016,
+    12.8,
+    5.536
+   ],
+   "aabb_min": [
+    -2.972,
+    -0.3,
+    -2.826
+   ],
+   "aabb_max": [
+    3.044,
+    12.5,
+    2.71
+   ],
+   "kind": "tree",
+   "species": "pine",
+   "height": 12.5,
+   "crown_radius": 3.05,
+   "crown_base": 1.96,
+   "trunk_radius": 0.35,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.35,
+    "height": 2.5,
+    "center": [
+     0,
+     1.25,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "all_year": "#3f6e46",
+    "winter": "#4a6e5a"
+   },
+   "lo": "tree_pine_1_lo"
+  },
+  "tree_pine_1_lo": {
+   "tris": 58,
+   "size": [
+    5.221,
+    12.7,
+    5.424
+   ],
+   "aabb_min": [
+    -2.922,
+    -0.2,
+    -3.163
+   ],
+   "aabb_max": [
+    2.299,
+    12.5,
+    2.261
+   ],
+   "kind": "tree",
+   "lod_of": "tree_pine_1"
+  },
+  "tree_pine_2": {
+   "tris": 450,
+   "size": [
+    7.292,
+    15.5,
+    6.603
+   ],
+   "aabb_min": [
+    -3.687,
+    -0.3,
+    -3.196
+   ],
+   "aabb_max": [
+    3.605,
+    15.2,
+    3.407
+   ],
+   "kind": "tree",
+   "species": "pine",
+   "height": 15.2,
+   "crown_radius": 3.59,
+   "crown_base": 2.39,
+   "trunk_radius": 0.382,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.382,
+    "height": 3.04,
+    "center": [
+     0,
+     1.52,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "all_year": "#3f6e46",
+    "winter": "#4a6e5a"
+   },
+   "lo": "tree_pine_2_lo"
+  },
+  "tree_pine_2_lo": {
+   "tris": 70,
+   "size": [
+    6.238,
+    15.4,
+    6.542
+   ],
+   "aabb_min": [
+    -2.93,
+    -0.2,
+    -2.801
+   ],
+   "aabb_max": [
+    3.308,
+    15.2,
+    3.741
+   ],
+   "kind": "tree",
+   "lod_of": "tree_pine_2"
+  },
+  "tree_pine_3": {
+   "tris": 450,
+   "size": [
+    7.329,
+    17.9,
+    8.031
+   ],
+   "aabb_min": [
+    -3.753,
+    -0.3,
+    -3.978
+   ],
+   "aabb_max": [
+    3.576,
+    17.6,
+    4.053
+   ],
+   "kind": "tree",
+   "species": "pine",
+   "height": 17.6,
+   "crown_radius": 4.07,
+   "crown_base": 2.78,
+   "trunk_radius": 0.411,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.411,
+    "height": 3.52,
+    "center": [
+     0,
+     1.76,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "all_year": "#3f6e46",
+    "winter": "#4a6e5a"
+   },
+   "lo": "tree_pine_3_lo"
+  },
+  "tree_pine_3_lo": {
+   "tris": 70,
+   "size": [
+    7.276,
+    17.8,
+    7.289
+   ],
+   "aabb_min": [
+    -4.221,
+    -0.2,
+    -4.11
+   ],
+   "aabb_max": [
+    3.054,
+    17.6,
+    3.179
+   ],
+   "kind": "tree",
+   "lod_of": "tree_pine_3"
+  },
+  "tree_birch_1": {
+   "tris": 654,
+   "size": [
+    4.872,
+    11.22,
+    4.666
+   ],
+   "aabb_min": [
+    -2.49,
+    -0.3,
+    -2.585
+   ],
+   "aabb_max": [
+    2.382,
+    10.92,
+    2.081
+   ],
+   "kind": "tree",
+   "species": "birch",
+   "height": 10.4,
+   "crown_radius": 2.83,
+   "crown_base": 3.37,
+   "trunk_radius": 0.202,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.202,
+    "height": 4.68,
+    "center": [
+     0,
+     2.34,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#8db04e",
+    "autumn": "#e0b440"
+   },
+   "lo": "tree_birch_1_lo"
+  },
+  "tree_birch_1_lo": {
+   "tris": 110,
+   "size": [
+    4.291,
+    11.344,
+    4.602
+   ],
+   "aabb_min": [
+    -2.463,
+    -0.205,
+    -2.536
+   ],
+   "aabb_max": [
+    1.829,
+    11.139,
+    2.066
+   ],
+   "kind": "tree",
+   "lod_of": "tree_birch_1"
+  },
+  "tree_birch_2": {
+   "tris": 678,
+   "size": [
+    4.444,
+    12.689,
+    4.485
+   ],
+   "aabb_min": [
+    -2.248,
+    -0.3,
+    -2.041
+   ],
+   "aabb_max": [
+    2.196,
+    12.389,
+    2.444
+   ],
+   "kind": "tree",
+   "species": "birch",
+   "height": 12.2,
+   "crown_radius": 2.54,
+   "crown_base": 4.22,
+   "trunk_radius": 0.211,
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.211,
+    "height": 5.49,
+    "center": [
+     0,
+     2.75,
+     0
+    ]
+   },
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#8db04e",
+    "autumn": "#e0b440"
+   },
+   "lo": "tree_birch_2_lo"
+  },
+  "tree_birch_2_lo": {
+   "tris": 110,
+   "size": [
+    4.023,
+    13.054,
+    4.544
+   ],
+   "aabb_min": [
+    -2.291,
+    -0.206,
+    -2.065
+   ],
+   "aabb_max": [
+    1.733,
+    12.848,
+    2.479
+   ],
+   "kind": "tree",
+   "lod_of": "tree_birch_2"
+  },
+  "bush_1": {
+   "tris": 224,
+   "size": [
+    1.982,
+    1.313,
+    1.688
+   ],
+   "aabb_min": [
+    -0.922,
+    -0.079,
+    -0.786
+   ],
+   "aabb_max": [
+    1.06,
+    1.234,
+    0.902
+   ],
+   "kind": "bush",
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#55803a",
+    "autumn": "#a0622a"
+   },
+   "collision": "none (soft)",
+   "lo": "bush_1_lo"
+  },
+  "bush_1_lo": {
+   "tris": 20,
+   "size": [
+    1.757,
+    1.333,
+    1.581
+   ],
+   "aabb_min": [
+    -0.86,
+    0.065,
+    -0.778
+   ],
+   "aabb_max": [
+    0.897,
+    1.397,
+    0.803
+   ],
+   "kind": "bush",
+   "lod_of": "bush_1"
+  },
+  "bush_2": {
+   "tris": 236,
+   "size": [
+    2.778,
+    1.092,
+    1.502
+   ],
+   "aabb_min": [
+    -1.363,
+    -0.079,
+    -0.819
+   ],
+   "aabb_max": [
+    1.414,
+    1.013,
+    0.684
+   ],
+   "kind": "bush",
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#55803a",
+    "autumn": "#a0622a"
+   },
+   "collision": "none (soft)",
+   "lo": "bush_2_lo"
+  },
+  "bush_2_lo": {
+   "tris": 40,
+   "size": [
+    2.33,
+    1.023,
+    1.667
+   ],
+   "aabb_min": [
+    -1.146,
+    0.017,
+    -0.849
+   ],
+   "aabb_max": [
+    1.184,
+    1.04,
+    0.818
+   ],
+   "kind": "bush",
+   "lod_of": "bush_2"
+  },
+  "bush_3": {
+   "tris": 272,
+   "size": [
+    1.7,
+    1.935,
+    1.326
+   ],
+   "aabb_min": [
+    -0.807,
+    -0.079,
+    -0.727
+   ],
+   "aabb_max": [
+    0.893,
+    1.857,
+    0.599
+   ],
+   "kind": "bush",
+   "tint": "leaves A=1",
+   "tint_hint": {
+    "summer": "#55803a",
+    "autumn": "#a0622a"
+   },
+   "collision": "none (soft)",
+   "lo": "bush_3_lo"
+  },
+  "bush_3_lo": {
+   "tris": 20,
+   "size": [
+    1.432,
+    1.573,
+    1.492
+   ],
+   "aabb_min": [
+    -0.733,
+    0.184,
+    -0.721
+   ],
+   "aabb_max": [
+    0.699,
+    1.757,
+    0.771
+   ],
+   "kind": "bush",
+   "lod_of": "bush_3"
+  },
+  "rock_s": {
+   "tris": 141,
+   "size": [
+    0.555,
+    0.465,
+    0.488
+   ],
+   "aabb_min": [
+    -0.273,
+    -0.056,
+    -0.262
+   ],
+   "aabb_max": [
+    0.282,
+    0.409,
+    0.226
+   ],
+   "kind": "rock",
+   "nominal_size": [
+    0.58,
+    0.46,
+    0.4
+   ],
+   "collision": {
+    "shape": "box (or convex from mesh)",
+    "box": {
+     "center": [
+      0,
+      0.18,
+      0
+     ],
+     "size": [
+      0.464,
+      0.36,
+      0.368
+     ],
+     "yaw_deg": 0.0
+    }
+   }
+  },
+  "rock_m": {
+   "tris": 120,
+   "size": [
+    1.41,
+    1.235,
+    1.279
+   ],
+   "aabb_min": [
+    -0.715,
+    -0.147,
+    -0.625
+   ],
+   "aabb_max": [
+    0.696,
+    1.088,
+    0.654
+   ],
+   "kind": "rock",
+   "nominal_size": [
+    1.6,
+    1.25,
+    1.05
+   ],
+   "collision": {
+    "shape": "box (or convex from mesh)",
+    "box": {
+     "center": [
+      0,
+      0.473,
+      0
+     ],
+     "size": [
+      1.28,
+      0.945,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    }
+   }
+  },
+  "rock_l": {
+   "tris": 306,
+   "size": [
+    4.67,
+    3.015,
+    3.463
+   ],
+   "aabb_min": [
+    -2.155,
+    -0.392,
+    -1.652
+   ],
+   "aabb_max": [
+    2.515,
+    2.623,
+    1.811
+   ],
+   "kind": "rock",
+   "nominal_size": [
+    4.6,
+    3.8,
+    2.8
+   ],
+   "collision": {
+    "shape": "box (or convex from mesh)",
+    "box": {
+     "center": [
+      0,
+      1.26,
+      0
+     ],
+     "size": [
+      3.68,
+      2.52,
+      3.04
+     ],
+     "yaw_deg": 0.0
+    }
+   },
+   "lo": "rock_l_lo"
+  },
+  "rock_l_lo": {
+   "tris": 84,
+   "size": [
+    4.147,
+    3.015,
+    3.339
+   ],
+   "aabb_min": [
+    -1.689,
+    -0.392,
+    -1.527
+   ],
+   "aabb_max": [
+    2.458,
+    2.623,
+    1.813
+   ],
+   "kind": "rock",
+   "lod_of": "rock_l"
+  },
+  "rock_cliff": {
+   "tris": 899,
+   "size": [
+    8.535,
+    6.155,
+    5.065
+   ],
+   "aabb_min": [
+    -4.231,
+    -1.16,
+    -2.691
+   ],
+   "aabb_max": [
+    4.305,
+    4.995,
+    2.374
+   ],
+   "kind": "rock",
+   "nominal_size": [
+    8.4,
+    4.8,
+    5.6
+   ],
+   "collision": {
+    "shape": "box (or convex from mesh)",
+    "box": {
+     "center": [
+      0,
+      2.52,
+      0
+     ],
+     "size": [
+      6.72,
+      5.04,
+      3.84
+     ],
+     "yaw_deg": 0.0
+    }
+   },
+   "lo": "rock_cliff_lo"
+  },
+  "rock_cliff_lo": {
+   "tris": 277,
+   "size": [
+    8.318,
+    6.217,
+    4.939
+   ],
+   "aabb_min": [
+    -4.176,
+    -1.16,
+    -2.493
+   ],
+   "aabb_max": [
+    4.142,
+    5.057,
+    2.446
+   ],
+   "kind": "rock",
+   "lod_of": "rock_cliff"
+  },
+  "stump": {
+   "tris": 133,
+   "size": [
+    1.769,
+    0.739,
+    1.735
+   ],
+   "aabb_min": [
+    -0.927,
+    -0.2,
+    -0.947
+   ],
+   "aabb_max": [
+    0.842,
+    0.539,
+    0.788
+   ],
+   "kind": "stump",
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.4,
+    "height": 0.52,
+    "center": [
+     0,
+     0.26,
+     0
+    ]
+   }
+  },
+  "log_fallen": {
+   "tris": 64,
+   "size": [
+    5.222,
+    1.083,
+    0.912
+   ],
+   "aabb_min": [
+    -2.602,
+    -0.054,
+    -0.479
+   ],
+   "aabb_max": [
+    2.62,
+    1.029,
+    0.432
+   ],
+   "kind": "log",
+   "collision": {
+    "shape": "capsule_x",
+    "radius": 0.32,
+    "length": 5.2,
+    "center": [
+     0,
+     0.26,
+     0
+    ],
+    "box": {
+     "center": [
+      0,
+      0.256,
+      -0.05
+     ],
+     "size": [
+      5.3,
+      0.512,
+      0.6
+     ],
+     "yaw_deg": 0.0
+    }
+   }
+  },
+  "grass_clump": {
+   "tris": 24,
+   "size": [
+    0.361,
+    0.592,
+    0.24
+   ],
+   "aabb_min": [
+    -0.195,
+    -0.03,
+    -0.153
+   ],
+   "aabb_max": [
+    0.166,
+    0.562,
+    0.088
+   ],
+   "kind": "plant",
+   "tint": "blades A=1 (gradient base 0.45 → tip 1.0)",
+   "tint_hint": {
+    "summer": "#6f9a42",
+    "late_summer": "#a8a050",
+    "autumn": "#9a8a4a"
+   },
+   "instancing": "dense MultiMesh near the player, random yaw + scale 0.8–1.25"
+  },
+  "grass_clump_2": {
+   "tris": 24,
+   "size": [
+    0.439,
+    0.428,
+    0.264
+   ],
+   "aabb_min": [
+    -0.195,
+    -0.03,
+    -0.106
+   ],
+   "aabb_max": [
+    0.244,
+    0.398,
+    0.158
+   ],
+   "kind": "plant",
+   "tint": "blades A=1",
+   "tint_hint": {
+    "summer": "#6f9a42",
+    "late_summer": "#a8a050",
+    "autumn": "#9a8a4a"
+   },
+   "note": "short variant"
+  },
+  "flower_clump": {
+   "tris": 37,
+   "size": [
+    0.45,
+    0.434,
+    0.456
+   ],
+   "aabb_min": [
+    -0.252,
+    -0.02,
+    -0.234
+   ],
+   "aabb_max": [
+    0.198,
+    0.414,
+    0.221
+   ],
+   "kind": "plant",
+   "tint": "leaves/stems A=1, petals fixed (yellow/white)",
+   "tint_hint": {
+    "summer": "#6f9a42",
+    "late_summer": "#a8a050",
+    "autumn": "#9a8a4a"
+   }
+  },
+  "flower_clump_2": {
+   "tris": 37,
+   "size": [
+    0.422,
+    0.529,
+    0.397
+   ],
+   "aabb_min": [
+    -0.217,
+    -0.02,
+    -0.185
+   ],
+   "aabb_max": [
+    0.205,
+    0.509,
+    0.212
+   ],
+   "kind": "plant",
+   "tint": "leaves/stems A=1, petals fixed (red/purple/pink/blue)",
+   "tint_hint": {
+    "summer": "#6f9a42",
+    "late_summer": "#a8a050",
+    "autumn": "#9a8a4a"
+   }
+  },
+  "reeds": {
+   "tris": 90,
+   "size": [
+    0.758,
+    1.754,
+    0.612
+   ],
+   "aabb_min": [
+    -0.378,
+    -0.05,
+    -0.326
+   ],
+   "aabb_max": [
+    0.381,
+    1.704,
+    0.286
+   ],
+   "kind": "plant",
+   "tint": "blades A=1, cattails fixed brown",
+   "tint_hint": {
+    "summer": "#7f9a4a",
+    "autumn": "#b09a5a"
+   },
+   "placement": "stream banks / pond edges, base may sit 0.05 m below water line"
+  },
+  "fern": {
+   "tris": 56,
+   "size": [
+    1.233,
+    0.436,
+    1.159
+   ],
+   "aabb_min": [
+    -0.656,
+    0.02,
+    -0.562
+   ],
+   "aabb_max": [
+    0.576,
+    0.456,
+    0.597
+   ],
+   "kind": "plant",
+   "tint": "fronds A=1",
+   "tint_hint": {
+    "summer": "#5a8a3a",
+    "autumn": "#a8723a"
+   }
+  }
+ },
+ "verify": {
+  "problems": []
+ }
+}

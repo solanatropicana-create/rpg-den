@@ -3,3 +3,6 @@ dist/
 _bak/
 _to_delete/
 rpg den/
+_tools/
+godot/.godot/
+godot/shots/

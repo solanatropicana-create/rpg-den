@@ -1,0 +1,299 @@
+using System;
+using System.Globalization;
+using System.Text;
+using Godot;
+using FD.Actors;
+using FD.World;
+
+namespace FD.Dev;
+
+/// <summary>
+/// Development harness (autoload). User arguments go after "--" on the Godot command line:
+/// <code>
+/// --shot=/path.png        save a screenshot after warm-up, then quit
+/// --warm=N                frames to wait before the screenshot / bench start (default 40)
+/// --hour=H                set the game clock (e.g. 19.5)
+/// --timescale=K           game seconds per real second (default 60 → 24-minute day; 0 freezes time)
+/// --cam=x,y,z:tx,ty,tz    free camera at x,y,z looking at tx,ty,tz (player camera bypassed);
+///                         a y written as @h means h metres above the terrain at that x,z (e.g. --cam=10,@1.7,5:0,@1.5,0)
+/// --player=x,z[,yawDeg]   teleport the player (ground-snapped); yaw: 0 = south(+z), 90 = east, 180 = north
+/// --campitch=deg          player camera pitch (negative looks down), --zoom=m camera distance
+/// --fov=deg               camera field of view
+/// --bench=N               after warm-up, measure N frames, print FPS / draw calls / primitives / objects, quit
+/// --selftest              run headless world checks, print PASS/FAIL, exit with code 0/1
+/// --mapdump=/path.png     write the heightfield debug map and quit
+/// --dumpmodel=name        print the node tree / animations of assets/models/name.glb and quit
+/// --tonemap=agx|filmic|aces  override the tonemapper, --exposure=K multiply exposure (look-dev)
+/// --hold=a,b              keep input actions pressed (e.g. --hold=move_forward,sprint) to film motion
+/// --noassets              ignore all glb files (procedural placeholders everywhere)
+/// --probe=x,z;x,z…        print height, slope, ground cover and distances at points, then quit
+/// </code>
+/// </summary>
+public partial class Dev : Node
+{
+    public static Dev Instance { get; private set; }
+
+    public string ShotPath, MapDumpPath, DumpModel, Tonemap;
+    public string[] Hold;
+    public string Probe;
+    string _camSpec;
+    public float? Exposure;
+    public int Warm = 40, Bench;
+    public float? Hour, TimeScale, CamPitch, Zoom, Fov;
+    public Vector3? CamPos, CamTarget;
+    public Vector2? PlayerXZ;
+    public float? PlayerYawDeg;
+    public bool SelfTest;
+    public int LifeTestDays;
+    public string Follow, CardFor;
+    public bool DebugHud, OpenMap;
+    public float FollowDist = 5f, FollowHeight = 1.9f, FollowAngle = 35f;
+
+    int _frames;
+    bool _regionHooked, _done;
+    Camera3D _freeCam;
+    double _benchStart;
+    int _benchFrameStart;
+    ulong _benchUsec;
+
+    public override void _Ready()
+    {
+        Instance = this;
+        ProcessMode = ProcessModeEnum.Always;
+        Parse(OS.GetCmdlineUserArgs());
+        if (Hour.HasValue) GameClock.SetHour(Hour.Value);
+        if (TimeScale.HasValue) GameClock.TimeScale = TimeScale.Value;
+        if (ShotPath != null || Bench > 0) GameClock.TimeScale = TimeScale ?? 0f;   // deterministic shots
+        Region.Built += OnRegionReady;
+    }
+
+    void Parse(string[] args)
+    {
+        var ci = CultureInfo.InvariantCulture;
+        float F(string s) => float.Parse(s, ci);
+        foreach (var a in args)
+        {
+            int eq = a.IndexOf('=');
+            string key = eq > 0 ? a[..eq] : a, val = eq > 0 ? a[(eq + 1)..] : "";
+            try
+            {
+                switch (key)
+                {
+                    case "--shot": ShotPath = val; break;
+                    case "--mapdump": MapDumpPath = val; break;
+                    case "--dumpmodel": DumpModel = val; break;
+                    case "--tonemap": Tonemap = val; break;
+                    case "--hold": Hold = val.Split(','); break;
+                    case "--noassets": FD.Core.Models.ForceMissing = true; break;
+                    case "--probe": Probe = val; break;
+                    case "--exposure": Exposure = F(val); break;
+                    case "--warm": Warm = int.Parse(val, ci); break;
+                    case "--hour": Hour = F(val); break;
+                    case "--timescale": TimeScale = F(val); break;
+                    case "--bench": Bench = int.Parse(val, ci); break;
+                    case "--selftest": SelfTest = true; break;
+                    case "--lifetest": LifeTestDays = val == "" ? 2 : int.Parse(val, ci); break;
+                    case "--follow": Follow = val; break;
+                    case "--followcam":
+                    {
+                        var p = val.Split(',');
+                        FollowDist = F(p[0]); if (p.Length > 1) FollowHeight = F(p[1]); if (p.Length > 2) FollowAngle = F(p[2]);
+                        break;
+                    }
+                    case "--card": CardFor = val; break;
+                    case "--debughud": DebugHud = true; break;
+                    case "--map": OpenMap = true; break;
+                    case "--campitch": CamPitch = F(val); break;
+                    case "--zoom": Zoom = F(val); break;
+                    case "--fov": Fov = F(val); break;
+                    case "--cam":
+                        _camSpec = val;
+                        CamPos = Vector3.Zero;   // resolved against the terrain once the region exists
+                        break;
+                    case "--player":
+                    {
+                        var p = val.Split(',');
+                        PlayerXZ = new Vector2(F(p[0]), F(p[1]));
+                        if (p.Length > 2) PlayerYawDeg = F(p[2]);
+                        break;
+                    }
+                }
+            }
+            catch (Exception e) { GD.PushError($"Dev: bad argument '{a}': {e.Message}"); }
+        }
+    }
+
+    void OnRegionReady(Region region)
+    {
+        _regionHooked = true;
+        if (DumpModel != null)
+        {
+            var root = FD.Core.Models.Instantiate(DumpModel);
+            if (root == null) GD.Print($"[Dev] model {DumpModel} not found");
+            else
+            {
+                void Walk(Node n, int d)
+                {
+                    string extra = n is MeshInstance3D mi ? $" mesh tris~{(mi.Mesh?.GetFaces().Length ?? 0) / 3} visible={mi.Visible}" : "";
+                    if (n is AnimationPlayer ap) extra = " anims: " + string.Join(", ", ap.GetAnimationList());
+                    GD.Print(new string(' ', d * 2) + n.Name + " : " + n.GetClass() + extra);
+                    foreach (var c in n.GetChildren()) Walk(c, d + 1);
+                }
+                Walk(root, 0);
+                root.Free();
+            }
+            GetTree().Quit();
+            return;
+        }
+        var hf = region.Heightfield;
+        if (MapDumpPath != null)
+        {
+            hf.SaveDebugMap(MapDumpPath, 1200);
+            GD.Print($"[Dev] map written to {MapDumpPath}");
+            GetTree().Quit();
+            return;
+        }
+        if (Probe != null)
+        {
+            var ci = CultureInfo.InvariantCulture;
+            foreach (var pt in Probe.Split(';'))
+            {
+                var c = pt.Split(',');
+                float x = float.Parse(c[0], ci), z = float.Parse(c[1], ci);
+                float sd = hf.StreamDistance(x, z, out float s);
+                GD.Print($"[Probe] ({x:F1},{z:F1}) h={hf.Height(x, z):F2} slope={hf.Slope(x, z):F1}° road={hf.RoadDistance(x, z):F1} " +
+                         $"trail={hf.TrailDistance(x, z):F1} stream={sd:F1}(s={s:F0}) forest={hf.ForestDensity(x, z):F2} {hf.Biome(x, z)}");
+            }
+            GetTree().Quit();
+            return;
+        }
+        var player = region.Player;
+        if (PlayerXZ.HasValue && player != null)
+        {
+            float yaw = PlayerYawDeg.HasValue ? Mathf.DegToRad(PlayerYawDeg.Value) : RegionSpec.YawFacing(RegionSpec.PlayerStartFacing);
+            player.Teleport(PlayerXZ.Value, yaw, hf);
+        }
+        if (player != null && (CamPitch.HasValue || Zoom.HasValue))
+            player.SetCameraAngles(player.CameraYaw, Mathf.DegToRad(CamPitch ?? -16f), Zoom ?? player.Zoom);
+        if (Fov.HasValue && player != null) player.Camera.Fov = Fov.Value;
+
+        if (_camSpec != null)
+        {
+            var ci = CultureInfo.InvariantCulture;
+            Vector3 P(string spec)
+            {
+                var c = spec.Split(',');
+                float x = float.Parse(c[0], ci), z = float.Parse(c[2], ci);
+                float y = c[1].StartsWith("@") ? hf.Height(x, z) + float.Parse(c[1][1..], ci) : float.Parse(c[1], ci);
+                return new Vector3(x, y, z);
+            }
+            var parts = _camSpec.Split(':');
+            CamPos = P(parts[0]);
+            if (parts.Length > 1) CamTarget = P(parts[1]);
+        }
+        if (Hold != null) foreach (var a in Hold) if (InputMap.HasAction(a)) Input.ActionPress(a);
+        if (CamPos.HasValue)
+        {
+            _freeCam = new Camera3D { Name = "DevCamera", Fov = Fov ?? 70f, Near = 0.1f, Far = 3000f };
+            region.AddChild(_freeCam);
+            _freeCam.GlobalPosition = CamPos.Value;
+            if (CamTarget.HasValue) _freeCam.LookAt(CamTarget.Value, Vector3.Up);
+            _freeCam.MakeCurrent();
+            if (player != null) player.InputEnabled = false;
+            // keep the player near the camera so near-field systems (grass) are consistent
+        }
+        if (Tonemap != null)
+            region.DayNight.Env.TonemapMode = Tonemap switch
+            {
+                "filmic" => Godot.Environment.ToneMapper.Filmic, "aces" => Godot.Environment.ToneMapper.Aces,
+                "linear" => Godot.Environment.ToneMapper.Linear, _ => Godot.Environment.ToneMapper.Agx,
+            };
+        if (Exposure.HasValue) region.DayNight.ExposureScale = Exposure.Value;
+        if (SelfTest) CallDeferred(nameof(RunSelfTest));
+        if (LifeTestDays > 0) CallDeferred(nameof(RunLifeTest));
+        if (DebugHud) region.Hud?.SetDebug(true);
+        if (OpenMap) region.Hud?.ToggleMap();
+    }
+
+    void RunLifeTest() => FD.Dev.LifeTest.Run(this, Region.Current, LifeTestDays);
+
+    /// <summary>--follow=Name: keep the free camera (or the player) near that person, looking at them.</summary>
+    void FollowPerson()
+    {
+        var life = FD.Life.LifeWorld.Instance;
+        if (life == null || Follow == null) return;
+        FD.Sim.Life.Person who = null;
+        foreach (var p in life.Sim.People)
+            if (p.FullName.Contains(Follow, StringComparison.OrdinalIgnoreCase) || p.Name.Contains(Follow, StringComparison.OrdinalIgnoreCase)) { who = p; break; }
+        if (who == null) return;
+        var a = life.ActorOf(who);
+        if (a == null) return;
+        var region = Region.Current;
+        Vector3 t = a.Visible ? a.GlobalPosition : new Vector3(who.Pos.X, region.Heightfield.Height(who.Pos.X, who.Pos.Y), who.Pos.Y);
+        float ang = Mathf.DegToRad(FollowAngle) + MathF.Atan2(who.Dir.X, who.Dir.Y);
+        var camPos = t + new Vector3(MathF.Sin(ang) * FollowDist, FollowHeight, MathF.Cos(ang) * FollowDist);
+        float gy = region.Heightfield.Height(camPos.X, camPos.Z) + 0.6f;
+        if (camPos.Y < gy) camPos.Y = gy;
+        if (_freeCam == null)
+        {
+            _freeCam = new Camera3D { Name = "FollowCamera", Fov = Fov ?? 60f, Near = 0.08f, Far = 3000f };
+            region.AddChild(_freeCam);
+            _freeCam.MakeCurrent();
+        }
+        _freeCam.GlobalPosition = camPos;
+        _freeCam.LookAt(t + Vector3.Up * 1.0f, Vector3.Up);
+        // keep the player (near-field grass, interaction) next to the camera but out of shot
+        if (region.Player != null) { region.Player.InputEnabled = false; region.Player.GlobalPosition = camPos - new Vector3(0, 1.6f, 0) + (camPos - t).Normalized() * 1.5f; }
+        if (CardFor != null && _frames == Warm - 3) region.Hud?.OpenCardFor(who);
+    }
+
+    void RunSelfTest() => FD.Dev.SelfTest.Run(this, Region.Current);
+
+    public override void _Process(double delta)
+    {
+        if (_done || !_regionHooked) return;
+        _frames++;
+        if (Follow != null) FollowPerson();
+        else if (CardFor != null && _frames == Warm - 3)
+        {
+            var life = FD.Life.LifeWorld.Instance;
+            if (life != null) foreach (var p in life.Sim.People) if (p.FullName.Contains(CardFor, StringComparison.OrdinalIgnoreCase)) { Region.Current.Hud?.OpenCardFor(p); break; }
+        }
+        if (Bench > 0)
+        {
+            if (_frames == Warm) { _benchStart = Time.GetTicksMsec() / 1000.0; _benchFrameStart = _frames; _benchUsec = Time.GetTicksUsec(); }
+            if (_frames == Warm + Bench) { PrintBench(); _done = true; GetTree().Quit(); }
+            return;
+        }
+        if (ShotPath != null && _frames == Warm)
+        {
+            var img = GetViewport().GetTexture().GetImage();
+            var err = img.SavePng(ShotPath);
+            GD.Print($"[Dev] screenshot {ShotPath} {img.GetSize()} ({err}) at {GameClock.TimeString}");
+            _done = true;
+            GetTree().Quit();
+        }
+    }
+
+    void PrintBench()
+    {
+        double secs = (Time.GetTicksUsec() - _benchUsec) / 1e6;
+        int frames = _frames - _benchFrameStart;
+        var sb = new StringBuilder();
+        var cam = GetViewport().GetCamera3D();
+        sb.Append($"[Bench] frames={frames} time={secs:F2}s avgFPS={frames / secs:F2} engineFPS={Engine.GetFramesPerSecond():F1}");
+        sb.Append($" drawCalls={Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)}");
+        sb.Append($" primitives={Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame)}");
+        sb.Append($" objects={Performance.GetMonitor(Performance.Monitor.RenderTotalObjectsInFrame)}");
+        sb.Append($" videoMemMB={Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0}");
+        sb.Append($" nodes={Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}");
+        sb.Append($" physicsMs={Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:F2}");
+        sb.Append($" processMs={Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F2}");
+        var reg = Region.Current;
+        if (reg != null)
+            sb.Append($" vegInstances={reg.Vegetation?.TotalInstances} trees={reg.Vegetation?.TreeCount} grassTiles={reg.Grass?.TileCount} grassInstances={reg.Grass?.LiveInstances}");
+        if (cam != null) sb.Append($" cam={cam.GlobalPosition.X:F0},{cam.GlobalPosition.Y:F0},{cam.GlobalPosition.Z:F0}");
+        sb.Append($" lifeSimMs={FD.Life.LifeWorld.SimMs:F2} actorSyncMs={FD.Life.LifeWorld.SyncMs:F2} lifeOtherMs={FD.Life.LifeWorld.OtherMs:F2}");
+        GD.Print(sb.ToString());
+    }
+}

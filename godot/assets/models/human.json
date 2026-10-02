@@ -1,0 +1,1385 @@
+{
+ "name": "human",
+ "file": "human.glb",
+ "units": "m",
+ "axes": "glTF/Godot: +Y yukarı, karakter +Z yönüne bakar (MODEL_FRONT). Blender: Z yukarı, −Y ön. Nokta listeleri Godot yerel (x, y, z).",
+ "origin": "zeminde, iki ayağın ortası; kök kemik (root) hiç hareket etmez (yerinde animasyon)",
+ "height_m": 1.76,
+ "skeleton": {
+  "bones": [
+   "root",
+   "hips",
+   "spine",
+   "chest",
+   "neck",
+   "head",
+   "upper_arm.L",
+   "lower_arm.L",
+   "hand.L",
+   "upper_arm.R",
+   "lower_arm.R",
+   "hand.R",
+   "upper_leg.L",
+   "lower_leg.L",
+   "foot.L",
+   "upper_leg.R",
+   "lower_leg.R",
+   "foot.R"
+  ],
+  "parents": {
+   "root": null,
+   "hips": "root",
+   "spine": "hips",
+   "chest": "spine",
+   "neck": "chest",
+   "head": "neck",
+   "upper_arm.L": "chest",
+   "lower_arm.L": "upper_arm.L",
+   "hand.L": "lower_arm.L",
+   "upper_arm.R": "chest",
+   "lower_arm.R": "upper_arm.R",
+   "hand.R": "lower_arm.R",
+   "upper_leg.L": "hips",
+   "lower_leg.L": "upper_leg.L",
+   "foot.L": "lower_leg.L",
+   "upper_leg.R": "hips",
+   "lower_leg.R": "upper_leg.R",
+   "foot.R": "lower_leg.R"
+  },
+  "rest_head_godot": {
+   "root": [
+    0.0,
+    0.0,
+    -0.0
+   ],
+   "hips": [
+    0.0,
+    0.915,
+    -0.0
+   ],
+   "spine": [
+    0.0,
+    1.035,
+    -0.0
+   ],
+   "chest": [
+    0.0,
+    1.19,
+    -0.0
+   ],
+   "neck": [
+    0.0,
+    1.405,
+    -0.0
+   ],
+   "head": [
+    0.0,
+    1.5,
+    0.008
+   ],
+   "upper_arm.L": [
+    0.178,
+    1.385,
+    -0.0
+   ],
+   "lower_arm.L": [
+    0.203,
+    1.115,
+    -0.022
+   ],
+   "hand.L": [
+    0.222,
+    0.875,
+    -0.0
+   ],
+   "upper_arm.R": [
+    -0.178,
+    1.385,
+    -0.0
+   ],
+   "lower_arm.R": [
+    -0.203,
+    1.115,
+    -0.022
+   ],
+   "hand.R": [
+    -0.222,
+    0.875,
+    -0.0
+   ],
+   "upper_leg.L": [
+    0.088,
+    0.9,
+    0.0
+   ],
+   "lower_leg.L": [
+    0.088,
+    0.485,
+    0.012
+   ],
+   "foot.L": [
+    0.088,
+    0.085,
+    -0.0
+   ],
+   "upper_leg.R": [
+    -0.088,
+    0.9,
+    -0.0
+   ],
+   "lower_leg.R": [
+    -0.088,
+    0.485,
+    0.012
+   ],
+   "foot.R": [
+    -0.088,
+    0.085,
+    -0.0
+   ]
+  }
+ },
+ "meshes": {
+  "body": {
+   "tris": 896,
+   "rigid_weights": true,
+   "bones": [
+    "chest",
+    "foot.L",
+    "foot.R",
+    "hand.L",
+    "hand.R",
+    "head",
+    "hips",
+    "lower_arm.L",
+    "lower_arm.R",
+    "lower_leg.L",
+    "lower_leg.R",
+    "neck",
+    "spine",
+    "upper_arm.L",
+    "upper_arm.R",
+    "upper_leg.L",
+    "upper_leg.R"
+   ],
+   "color_slots": [
+    "sabit",
+    "ten",
+    "giysi-1",
+    "giysi-2",
+    "saç"
+   ]
+  },
+  "hair_short": {
+   "tris": 52,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hair_long": {
+   "tris": 100,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hair_bun": {
+   "tris": 80,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "beard": {
+   "tris": 42,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hat_straw": {
+   "tris": 128,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "hood": {
+   "tris": 172,
+   "rigid_weights": true,
+   "bones": [
+    "chest",
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "giysi-2"
+   ]
+  },
+  "helmet": {
+   "tris": 142,
+   "rigid_weights": true,
+   "bones": [
+    "head"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "apron": {
+   "tris": 80,
+   "rigid_weights": true,
+   "bones": [
+    "chest",
+    "hips",
+    "spine"
+   ],
+   "kind": "accessory",
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_axe": {
+   "tris": 72,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {
+    "edge": [
+     -0.022,
+     0.202,
+     0.5
+    ],
+    "head": [
+     -0.022,
+     0.105,
+     0.5
+    ]
+   },
+   "points_rest_model_godot": {
+    "edge": [
+     -0.209,
+     0.697,
+     0.509
+    ],
+    "head": [
+     -0.204,
+     0.794,
+     0.505
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_hoe": {
+   "tris": 68,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {
+    "edge": [
+     -0.022,
+     0.247,
+     0.955
+    ]
+   },
+   "points_rest_model_godot": {
+    "edge": [
+     -0.21,
+     0.675,
+     0.966
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_hammer": {
+   "tris": 88,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {
+    "face": [
+     -0.022,
+     0.149,
+     0.285
+    ]
+   },
+   "points_rest_model_godot": {
+    "face": [
+     -0.207,
+     0.739,
+     0.292
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_pitchfork": {
+   "tris": 80,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {
+    "tips": [
+     -0.022,
+     0.087,
+     1.19
+    ]
+   },
+   "points_rest_model_godot": {
+    "tips": [
+     -0.201,
+     0.846,
+     1.193
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_spear": {
+   "tris": 58,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {
+    "tip": [
+     -0.022,
+     0.075,
+     1.31
+    ]
+   },
+   "points_rest_model_godot": {
+    "tip": [
+     -0.201,
+     0.864,
+     1.312
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_lantern": {
+   "tris": 86,
+   "rigid_weights": true,
+   "bones": [
+    "hand.L"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.L",
+   "points_bone_local": {
+    "light": [
+     0.022,
+     0.23,
+     0.0
+    ]
+   },
+   "points_rest_model_godot": {
+    "light": [
+     0.211,
+     0.644,
+     0.011
+    ]
+   },
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_sack": {
+   "tris": 120,
+   "rigid_weights": true,
+   "bones": [
+    "chest"
+   ],
+   "kind": "tool",
+   "attach_bone": "chest",
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_bucket": {
+   "tris": 116,
+   "rigid_weights": true,
+   "bones": [
+    "hand.R"
+   ],
+   "kind": "tool",
+   "attach_bone": "hand.R",
+   "points_bone_local": {},
+   "points_rest_model_godot": {},
+   "color_slots": [
+    "sabit"
+   ]
+  }
+ },
+ "color_slots": {
+  "A=0.0": "sabit renk (RGB olduğu gibi)",
+  "A=0.25": "ten",
+  "A=0.5": "giysi-1 (tunik/gömlek)",
+  "A=0.75": "giysi-2 (pantolon/etek, başlık)",
+  "A=1.0": "saç (saç, sakal, kaş)",
+  "note": "Yuvalı parçalarda RGB gri gölge çarpanıdır (1.0 taban, ~0.8 kıvrım/kenar). Godot: renk = RGB × ton[yuva]. Eşikler: A<0.125 sabit, <0.375 ten, <0.625 giysi-1, <0.875 giysi-2, üstü saç. COLOR_0 doğrusal."
+ },
+ "animations": [
+  {
+   "name": "Idle",
+   "frames": 75,
+   "seconds": 2.5,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.982,
+     "legR": 0.982
+    },
+    "min_z": -0.0,
+    "max_step_deg": 0.42,
+    "loop_seam_step_deg": 0.29,
+    "loop_seam_ratio": 0.93,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Walk",
+   "frames": 32,
+   "seconds": 1.0667,
+   "fps": 30,
+   "loop": true,
+   "designed_speed_mps": 1.4,
+   "cycle_distance_m": 1.493,
+   "check": {
+    "reach": {
+     "legL": 0.99,
+     "legR": 0.99
+    },
+    "min_z": -0.0015,
+    "foot_slip_mps": 0.0064,
+    "max_step_deg": 14.88,
+    "loop_seam_step_deg": 7.67,
+    "loop_seam_ratio": 0.79,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Run",
+   "frames": 21,
+   "seconds": 0.7,
+   "fps": 30,
+   "loop": true,
+   "designed_speed_mps": 4.5,
+   "cycle_distance_m": 3.15,
+   "check": {
+    "reach": {
+     "legL": 0.98,
+     "legR": 0.988
+    },
+    "min_z": -0.0016,
+    "foot_slip_mps": 0.0181,
+    "max_step_deg": 31.83,
+    "loop_seam_step_deg": 21.38,
+    "loop_seam_ratio": 1.06,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Carry",
+   "frames": 32,
+   "seconds": 1.0667,
+   "fps": 30,
+   "loop": true,
+   "designed_speed_mps": 1.4,
+   "cycle_distance_m": 1.493,
+   "note": "Walk ile aynı zamanlama; tool_sack göğüs kemiğine bağlı (sağ omuz), sağ el çuvalı tutar",
+   "check": {
+    "reach": {
+     "legL": 0.99,
+     "legR": 0.99,
+     "armR": 0.35
+    },
+    "min_z": -0.0015,
+    "foot_slip_mps": 0.0064,
+    "max_step_deg": 14.88,
+    "loop_seam_step_deg": 7.67,
+    "loop_seam_ratio": 0.79,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Jump",
+   "frames": 24,
+   "seconds": 0.8,
+   "fps": 30,
+   "loop": false,
+   "note": "kök yükselmez; 0.30–0.50 s havada toplanma (düşüş pozu olarak ~0.45 s kullanılabilir)",
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981
+    },
+    "min_z": -0.0011,
+    "max_step_deg": 55.17
+   }
+  },
+  {
+   "name": "Chop",
+   "frames": 39,
+   "seconds": 1.3,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.984,
+     "legR": 0.976,
+     "armR": 0.742,
+     "armL": 0.855
+    },
+    "min_z": -0.0,
+    "max_step_deg": 31.88,
+    "loop_seam_step_deg": 4.03,
+    "loop_seam_ratio": 0.72,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Hoe",
+   "frames": 45,
+   "seconds": 1.5,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.974,
+     "legR": 0.957,
+     "armR": 0.953,
+     "armL": 0.839
+    },
+    "min_z": -0.0,
+    "max_step_deg": 47.31,
+    "loop_seam_step_deg": 4.29,
+    "loop_seam_ratio": 0.9,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Hammer",
+   "frames": 27,
+   "seconds": 0.9,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.986,
+     "legR": 0.984,
+     "armR": 0.98
+    },
+    "min_z": -0.0,
+    "max_step_deg": 33.29,
+    "loop_seam_step_deg": 4.63,
+    "loop_seam_ratio": 0.52,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Sit",
+   "frames": 90,
+   "seconds": 3.0,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.781,
+     "legR": 0.781,
+     "armR": 0.916,
+     "armL": 0.916
+    },
+    "min_z": -0.0,
+    "max_step_deg": 1.16,
+    "loop_seam_step_deg": 0.67,
+    "loop_seam_ratio": 0.96,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Talk",
+   "frames": 90,
+   "seconds": 3.0,
+   "fps": 30,
+   "loop": true,
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981
+    },
+    "min_z": -0.0,
+    "max_step_deg": 8.58,
+    "loop_seam_step_deg": 2.51,
+    "loop_seam_ratio": 0.75,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Wave",
+   "frames": 36,
+   "seconds": 1.2,
+   "fps": 30,
+   "loop": false,
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981
+    },
+    "min_z": -0.0,
+    "max_step_deg": 23.99
+   }
+  },
+  {
+   "name": "Attack",
+   "frames": 24,
+   "seconds": 0.8,
+   "fps": 30,
+   "loop": false,
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.982,
+     "armR": 0.978
+    },
+    "min_z": -0.0,
+    "max_step_deg": 49.49
+   }
+  },
+  {
+   "name": "Hit",
+   "frames": 12,
+   "seconds": 0.4,
+   "fps": 30,
+   "loop": false,
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981
+    },
+    "min_z": -0.0,
+    "max_step_deg": 20.94
+   }
+  },
+  {
+   "name": "Gather",
+   "frames": 72,
+   "seconds": 2.4,
+   "fps": 30,
+   "loop": true,
+   "optional": true,
+   "note": "çömelip yerden ~0.3 m yükseklikten (bitki/ekin) toplar, bele getirir",
+   "check": {
+    "reach": {
+     "legL": 0.985,
+     "legR": 0.983,
+     "armR": 0.935
+    },
+    "min_z": -0.0,
+    "max_step_deg": 10.59,
+    "loop_seam_step_deg": 3.69,
+    "loop_seam_ratio": 0.75,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Pray",
+   "frames": 90,
+   "seconds": 3.0,
+   "fps": 30,
+   "loop": true,
+   "optional": true,
+   "note": "ayakta, avuçlar göğüs önünde birleşik, baş eğik",
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981,
+     "armR": 0.656,
+     "armL": 0.663
+    },
+    "min_z": -0.0,
+    "max_step_deg": 0.15,
+    "loop_seam_step_deg": 0.11,
+    "loop_seam_ratio": 0.89,
+    "loop_first_eq_last": true
+   }
+  },
+  {
+   "name": "Die",
+   "frames": 36,
+   "seconds": 1.2,
+   "fps": 30,
+   "loop": false,
+   "note": "son kare yerde sırt üstü; son karede kal (loop yok)",
+   "check": {
+    "reach": {
+     "legL": 0.981,
+     "legR": 0.981
+    },
+    "min_z": -0.0001,
+    "max_step_deg": 18.4
+   }
+  }
+ ],
+ "sit": {
+  "seat_height_m": 0.45,
+  "seat_front_edge_behind_root_m": 0.368,
+  "how": "Karakteri oturağa SIRTI dönük koy: kök (orijin) zeminde, oturak ön kenarının 0.37 m önünde; oturak üstü 0.45 m. Godot yerelinde oturak ön kenarı (0, 0.45, -0.37).",
+  "hip_joint_godot": [
+   0.088,
+   0.537,
+   -0.398
+  ]
+ },
+ "work_points_godot": {
+  "chop": {
+   "point": [
+    0.03,
+    0.798,
+    0.949
+   ],
+   "impact_time_s": 0.467,
+   "what": "balta ağzının çarpma noktası (ağaç/kütük yüzeyi); gövde merkezi bunun ~0.12 m önünde (r≈0.15 m)"
+  },
+  "hoe": {
+   "point": [
+    0.0,
+    -0.007,
+    0.927
+   ],
+   "impact_time_s": 0.433,
+   "what": "çapa ağzının toprağa girdiği nokta"
+  },
+  "hammer": {
+   "point": [
+    -0.1,
+    0.76,
+    0.42
+   ],
+   "impact_time_s": 0.3,
+   "what": "çekiç yüzünün örs üstüne vurduğu nokta (örs üst yüzü bu yükseklikte)"
+  }
+ },
+ "locomotion": {
+  "Walk": {
+   "speed_mps": 1.4,
+   "cycle_distance_m": 1.4933,
+   "cycle_s": 1.0667,
+   "stance_fraction": 0.6,
+   "pelvis_drop_m": 0.04,
+   "max_leg_reach": 0.9904
+  },
+  "Run": {
+   "speed_mps": 4.5,
+   "cycle_distance_m": 3.15,
+   "cycle_s": 0.7,
+   "stance_fraction": 0.29,
+   "pelvis_drop_m": 0.095,
+   "max_leg_reach": 0.9881
+  }
+ },
+ "attachments": {
+  "hair_short": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 52,
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hair_long": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 100,
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hair_bun": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 80,
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "beard": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 42,
+   "color_slots": [
+    "saç"
+   ]
+  },
+  "hat_straw": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 128,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "hood": {
+   "kind": "accessory",
+   "bones": [
+    "chest",
+    "head"
+   ],
+   "tris": 172,
+   "color_slots": [
+    "giysi-2"
+   ]
+  },
+  "helmet": {
+   "kind": "accessory",
+   "bones": [
+    "head"
+   ],
+   "tris": 142,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "apron": {
+   "kind": "accessory",
+   "bones": [
+    "chest",
+    "hips",
+    "spine"
+   ],
+   "tris": 80,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_axe": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 72,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_hoe": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 68,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_hammer": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 88,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_pitchfork": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 80,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_spear": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 58,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_lantern": {
+   "kind": "tool",
+   "bones": [
+    "hand.L"
+   ],
+   "tris": 86,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_sack": {
+   "kind": "tool",
+   "bones": [
+    "chest"
+   ],
+   "tris": 120,
+   "color_slots": [
+    "sabit"
+   ]
+  },
+  "tool_bucket": {
+   "kind": "tool",
+   "bones": [
+    "hand.R"
+   ],
+   "tris": 116,
+   "color_slots": [
+    "sabit"
+   ]
+  }
+ },
+ "verification": {
+  "glb": {
+   "animations": {
+    "Attack": {
+     "channels": 54,
+     "seconds": 0.8,
+     "bones": 18
+    },
+    "Carry": {
+     "channels": 54,
+     "seconds": 1.0667,
+     "bones": 18
+    },
+    "Chop": {
+     "channels": 54,
+     "seconds": 1.3,
+     "bones": 18
+    },
+    "Die": {
+     "channels": 54,
+     "seconds": 1.2,
+     "bones": 18
+    },
+    "Gather": {
+     "channels": 54,
+     "seconds": 2.4,
+     "bones": 18
+    },
+    "Hammer": {
+     "channels": 54,
+     "seconds": 0.9,
+     "bones": 18
+    },
+    "Hit": {
+     "channels": 54,
+     "seconds": 0.4,
+     "bones": 18
+    },
+    "Hoe": {
+     "channels": 54,
+     "seconds": 1.5,
+     "bones": 18
+    },
+    "Idle": {
+     "channels": 54,
+     "seconds": 2.5,
+     "bones": 18
+    },
+    "Jump": {
+     "channels": 54,
+     "seconds": 0.8,
+     "bones": 18
+    },
+    "Pray": {
+     "channels": 54,
+     "seconds": 3,
+     "bones": 18
+    },
+    "Run": {
+     "channels": 54,
+     "seconds": 0.7,
+     "bones": 18
+    },
+    "Sit": {
+     "channels": 54,
+     "seconds": 3,
+     "bones": 18
+    },
+    "Talk": {
+     "channels": 54,
+     "seconds": 3,
+     "bones": 18
+    },
+    "Walk": {
+     "channels": 54,
+     "seconds": 1.0667,
+     "bones": 18
+    },
+    "Wave": {
+     "channels": 54,
+     "seconds": 1.2,
+     "bones": 18
+    }
+   },
+   "skins": 1,
+   "joints": [
+    "root",
+    "hips",
+    "spine",
+    "chest",
+    "neck",
+    "head",
+    "upper_arm.L",
+    "lower_arm.L",
+    "hand.L",
+    "upper_arm.R",
+    "lower_arm.R",
+    "hand.R",
+    "upper_leg.L",
+    "lower_leg.L",
+    "foot.L",
+    "upper_leg.R",
+    "lower_leg.R",
+    "foot.R"
+   ],
+   "meshes": {
+    "apron": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "beard": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      1.0
+     ]
+    },
+    "body": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0,
+      0.25,
+      0.5,
+      0.75,
+      1.0
+     ]
+    },
+    "hair_bun": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      1.0
+     ]
+    },
+    "hair_long": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      1.0
+     ]
+    },
+    "hair_short": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      1.0
+     ]
+    },
+    "hat_straw": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "helmet": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "hood": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.75
+     ]
+    },
+    "tool_axe": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_bucket": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_hammer": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_hoe": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_lantern": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_pitchfork": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_sack": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    },
+    "tool_spear": {
+     "skin": true,
+     "attrs": [
+      "COLOR_0",
+      "JOINTS_0",
+      "NORMAL",
+      "POSITION",
+      "WEIGHTS_0"
+     ],
+     "alpha_slots": [
+      0.0
+     ]
+    }
+   },
+   "tool_points_max_dev_m": 0.00083,
+   "errors": []
+  },
+  "reimport": {
+   "armatures": 1,
+   "bones": 18,
+   "meshes": [
+    "Icosphere",
+    "apron",
+    "beard",
+    "body",
+    "hair_bun",
+    "hair_long",
+    "hair_short",
+    "hat_straw",
+    "helmet",
+    "hood",
+    "tool_axe",
+    "tool_bucket",
+    "tool_hammer",
+    "tool_hoe",
+    "tool_lantern",
+    "tool_pitchfork",
+    "tool_sack",
+    "tool_spear"
+   ],
+   "actions": [
+    "Attack",
+    "Carry",
+    "Chop",
+    "Die",
+    "Gather",
+    "Hammer",
+    "Hit",
+    "Hoe",
+    "Idle",
+    "Jump",
+    "Pray",
+    "Run",
+    "Sit",
+    "Talk",
+    "Walk",
+    "Wave"
+   ],
+   "body_vgroups": 18,
+   "body_armature_mod": true,
+   "bbox_dev_m": {
+    "Walk@8": 0.0,
+    "Chop@14": 0.0,
+    "Die@36": 1e-05,
+    "Sit@20": 0.0
+   }
+  }
+ },
+ "godot_notes": [
+  "Döngü bayrakları glTF'de taşınmaz: Idle, Walk, Run, Carry, Chop, Hoe, Hammer, Sit, Talk, Gather, Pray için loop_mode = LINEAR ayarlayın (içe aktarma ayarı ya da kodda). Diğerleri tek sefer.",
+  "Alet uç noktaları (points_bone_local) bağlı kemiğin yerel uzayında (Blender ve glTF/Godot aynı): BoneAttachment3D + alt düğüm konumu olarak kullanın (fener ışığı, meşale alevi).",
+  "Ayak kaymasın: AnimationPlayer speed_scale = gerçek_hız / designed_speed_mps (Walk, Carry, Run).",
+  "Kök hareketi yok; CharacterBody3D gövdeyi taşır. Die son karede kalır.",
+  "Malzeme yok: köşe rengi COLOR_0 (RGBA, doğrusal) + A yuvasına göre örnek başına ton (instance uniform) uygulayın.",
+  "Aksesuar ve aletler ayrı iskinli MeshInstance3D; adlarıyla visible aç/kapat. Aletler el kemiğine katı bağlı.",
+  "Model +Z yönüne bakar (Godot MODEL_FRONT)."
+ ]
+}

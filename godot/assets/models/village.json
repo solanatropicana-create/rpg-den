@@ -1,0 +1,2020 @@
+{
+ "file": "village.glb",
+ "generator": "assets/blender/village.py",
+ "note": "Village / road props, 1:1. Points in Godot local coords. Most props have collision_boxes; tiny ones none.",
+ "convention": {
+  "units": "metres, 1:1",
+  "coords": "All points / boxes / sizes are GODOT LOCAL coordinates of the object: x = Blender x, y = Blender z (up), z = -Blender y. The model FRONT faces +Z (Godot Vector3.MODEL_FRONT); +X is the viewer's right when looking at the front (= the model's own left, Vector3.MODEL_LEFT). Origin = ground level at the footprint centre.",
+  "facing": "facing = horizontal unit vector (Godot local). yaw_deg = degrees(atan2(facing.x, facing.z)); a character whose front is +Z faces that way with rotation.y = deg_to_rad(yaw_deg) (in the object's frame; add the object's yaw).",
+  "vertex_color": "COLOR_0 (linear RGBA). A=0 fixed colour; A=1 tint mask (RGB = grey shade, multiply by instance tint: roofs/banners/awnings = civ colour, leaves/crops/vines = species/season colour); A=0.5 window glass (emissive at night).",
+  "lod": "<name> = near mesh, <name>_lo = far mesh with the same silhouette (where provided).",
+  "collision_boxes": "center/size in Godot local axes (size = [x, y(height), z]), yaw_deg about +Y. Use as BoxShape3D children of a StaticBody3D. walkable_boxes are floors/decks/steps a character may stand on.",
+  "doors": "door points: pos = where a character stands just OUTSIDE the door (on the ground/deck), facing = the door's outward direction (the way you face when you come out). To enter, walk/face along -facing and fade out.",
+  "seats": "seat points: pos = seat surface centre (character hips), facing = the way the sitter looks.",
+  "footprint": "footprint = {center:[x,z], size:[x,z]} rectangle in the object's local XZ plane (flatten a terrain pad over it plus ~1 m margin). footprint_walls = the enclosed wall rectangle only."
+ },
+ "objects": {
+  "well": {
+   "tris": 1221,
+   "size": [
+    3.065,
+    3.72,
+    2.642
+   ],
+   "aabb_min": [
+    -1.505,
+    -0.3,
+    -1.32
+   ],
+   "aabb_max": [
+    1.56,
+    3.42,
+    1.321
+   ],
+   "kind": "well",
+   "points": {
+    "draw_point": {
+     "pos": [
+      1.85,
+      0,
+      0.1
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ],
+     "yaw_deg": -90.0,
+     "note": "villager turns the crank / draws water"
+    },
+    "bucket": {
+     "pos": [
+      0,
+      1.05,
+      0
+     ]
+    }
+   },
+   "footprint": {
+    "center": [
+     0.0,
+     -0.0
+    ],
+    "size": [
+     2.4,
+     2.1
+    ]
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.42,
+      0
+     ],
+     "size": [
+      2.0,
+      0.84,
+      2.0
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      -1.07,
+      1.4,
+      0
+     ],
+     "size": [
+      0.2,
+      2.8,
+      0.2
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      1.07,
+      1.4,
+      0
+     ],
+     "size": [
+      0.2,
+      2.8,
+      0.2
+     ],
+     "yaw_deg": 0.0
+    }
+   ],
+   "lo": "well_lo"
+  },
+  "well_lo": {
+   "tris": 84,
+   "size": [
+    2.96,
+    3.25,
+    2.24
+   ],
+   "aabb_min": [
+    -1.48,
+    -0.2,
+    -1.12
+   ],
+   "aabb_max": [
+    1.48,
+    3.05,
+    1.12
+   ],
+   "kind": "well",
+   "lod_of": "well"
+  },
+  "fence_rail": {
+   "tris": 36,
+   "size": [
+    2.12,
+    1.5,
+    0.139
+   ],
+   "aabb_min": [
+    -1.07,
+    -0.35,
+    -0.07
+   ],
+   "aabb_max": [
+    1.051,
+    1.15,
+    0.07
+   ],
+   "kind": "fence",
+   "segment_length": 2.0,
+   "chain": "rails span x = -1.0 … +1.0 (Godot local); the segment carries ONE post at x = -1.0. Chain segments every 2.0 m along local +X and put one fence_post at the free end (x = +1.0 of the last segment). Segments may be scaled along X to fill gaps and pitched to follow terrain.",
+   "post_at": [
+    -1.0,
+    0.0,
+    0.0
+   ],
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.55,
+      0
+     ],
+     "size": [
+      2.0,
+      1.1,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "fence_post": {
+   "tris": 12,
+   "size": [
+    0.139,
+    1.5,
+    0.139
+   ],
+   "aabb_min": [
+    -0.07,
+    -0.35,
+    -0.07
+   ],
+   "aabb_max": [
+    0.07,
+    1.15,
+    0.07
+   ],
+   "kind": "fence",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.55,
+      0
+     ],
+     "size": [
+      0.14,
+      1.1,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "gate": {
+   "tris": 60,
+   "size": [
+    1.855,
+    1.82,
+    0.178
+   ],
+   "aabb_min": [
+    -0.929,
+    -0.4,
+    -0.089
+   ],
+   "aabb_max": [
+    0.926,
+    1.42,
+    0.089
+   ],
+   "kind": "gate",
+   "span": 1.68,
+   "opening_width": 1.5,
+   "children": {
+    "gate_leaf": {
+     "offset": [
+      -0.75,
+      0.0,
+      0.0
+     ],
+     "hinge_axis": [
+      0,
+      1,
+      0
+     ],
+     "note": "rotate gate_leaf about its local +Y to open (e.g. ±100°)"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      -0.84,
+      0.65,
+      0
+     ],
+     "size": [
+      0.18,
+      1.3,
+      0.18
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0.84,
+      0.65,
+      0
+     ],
+     "size": [
+      0.18,
+      1.3,
+      0.18
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      0.62,
+      0
+     ],
+     "size": [
+      1.5,
+      1.1,
+      0.1
+     ],
+     "yaw_deg": 0.0,
+     "note": "leaf (disable when open)"
+    }
+   ]
+  },
+  "gate_leaf": {
+   "tris": 120,
+   "size": [
+    1.5,
+    1.0,
+    0.127
+   ],
+   "aabb_min": [
+    0.0,
+    0.12,
+    -0.065
+   ],
+   "aabb_max": [
+    1.5,
+    1.12,
+    0.062
+   ],
+   "kind": "gate_leaf",
+   "parent": "gate",
+   "pivot": "hinge (local origin), leaf spans x = 0 … 1.5"
+  },
+  "field_crop_wheat": {
+   "tris": 39,
+   "size": [
+    0.426,
+    1.079,
+    0.394
+   ],
+   "aabb_min": [
+    -0.2,
+    -0.03,
+    -0.138
+   ],
+   "aabb_max": [
+    0.226,
+    1.049,
+    0.256
+   ],
+   "kind": "crop",
+   "tint": "A=1: tint green (young) → gold (ripe) by season",
+   "tint_hint": {
+    "young": "#6f9a42",
+    "ripe": "#d8b44a"
+   },
+   "instancing": "rows, ~0.4 m spacing, random yaw"
+  },
+  "field_crop_cabbage": {
+   "tris": 38,
+   "size": [
+    0.458,
+    0.199,
+    0.55
+   ],
+   "aabb_min": [
+    -0.162,
+    0.032,
+    -0.246
+   ],
+   "aabb_max": [
+    0.296,
+    0.231,
+    0.304
+   ],
+   "kind": "crop",
+   "tint": "fixed colours",
+   "instancing": "rows, ~0.55 m spacing"
+  },
+  "scarecrow": {
+   "tris": 378,
+   "size": [
+    1.9,
+    2.51,
+    0.641
+   ],
+   "aabb_min": [
+    -0.95,
+    -0.4,
+    -0.33
+   ],
+   "aabb_max": [
+    0.95,
+    2.11,
+    0.31
+   ],
+   "kind": "scarecrow",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      1.0,
+      0
+     ],
+     "size": [
+      0.3,
+      2.0,
+      0.3
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "haystack": {
+   "tris": 158,
+   "size": [
+    3.455,
+    3.413,
+    3.588
+   ],
+   "aabb_min": [
+    -1.637,
+    -0.161,
+    -1.822
+   ],
+   "aabb_max": [
+    1.818,
+    3.252,
+    1.766
+   ],
+   "kind": "haystack",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      1.0,
+      0
+     ],
+     "size": [
+      2.6,
+      2.0,
+      2.6
+     ],
+     "yaw_deg": 0.0
+    }
+   ],
+   "footprint": {
+    "center": [
+     0.0,
+     -0.0
+    ],
+    "size": [
+     3.2,
+     3.2
+    ]
+   }
+  },
+  "hay_bale": {
+   "tris": 30,
+   "size": [
+    1.017,
+    0.49,
+    0.53
+   ],
+   "aabb_min": [
+    -0.508,
+    -0.01,
+    -0.265
+   ],
+   "aabb_max": [
+    0.51,
+    0.48,
+    0.265
+   ],
+   "kind": "hay_bale",
+   "stackable": true,
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.23,
+      0
+     ],
+     "size": [
+      1.0,
+      0.46,
+      0.5
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "woodpile": {
+   "tris": 520,
+   "size": [
+    2.0,
+    1.61,
+    0.729
+   ],
+   "aabb_min": [
+    -1.0,
+    -0.3,
+    -0.365
+   ],
+   "aabb_max": [
+    1.0,
+    1.31,
+    0.364
+   ],
+   "kind": "woodpile",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.6,
+      0
+     ],
+     "size": [
+      1.9,
+      1.2,
+      0.7
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "chopping_block": {
+   "tris": 148,
+   "size": [
+    1.207,
+    1.38,
+    1.558
+   ],
+   "aabb_min": [
+    -0.421,
+    -0.15,
+    -0.793
+   ],
+   "aabb_max": [
+    0.787,
+    1.23,
+    0.765
+   ],
+   "kind": "chopping_block",
+   "points": {
+    "work_point": {
+     "pos": [
+      0.0,
+      0,
+      0.72
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0,
+     "note": "woodcutter stands here, block in front"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.26,
+      0
+     ],
+     "size": [
+      0.62,
+      0.52,
+      0.62
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "log_pile": {
+   "tris": 252,
+   "size": [
+    4.759,
+    1.634,
+    2.14
+   ],
+   "aabb_min": [
+    -2.38,
+    -0.353,
+    -1.075
+   ],
+   "aabb_max": [
+    2.38,
+    1.281,
+    1.066
+   ],
+   "kind": "log_pile",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.6,
+      0
+     ],
+     "size": [
+      4.6,
+      1.2,
+      1.9
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "barrel": {
+   "tris": 222,
+   "size": [
+    0.61,
+    0.86,
+    0.58
+   ],
+   "aabb_min": [
+    -0.305,
+    0.0,
+    -0.29
+   ],
+   "aabb_max": [
+    0.305,
+    0.86,
+    0.29
+   ],
+   "kind": "barrel",
+   "collision": {
+    "shape": "cylinder",
+    "radius": 0.31,
+    "height": 0.86
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.43,
+      0
+     ],
+     "size": [
+      0.6,
+      0.86,
+      0.6
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "crate": {
+   "tris": 162,
+   "size": [
+    0.714,
+    0.7,
+    0.72
+   ],
+   "aabb_min": [
+    -0.357,
+    0.0,
+    -0.36
+   ],
+   "aabb_max": [
+    0.357,
+    0.7,
+    0.36
+   ],
+   "kind": "crate",
+   "stackable": true,
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.35,
+      0
+     ],
+     "size": [
+      0.7,
+      0.7,
+      0.7
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "sack": {
+   "tris": 132,
+   "size": [
+    0.575,
+    0.826,
+    0.481
+   ],
+   "aabb_min": [
+    -0.289,
+    -0.002,
+    -0.233
+   ],
+   "aabb_max": [
+    0.287,
+    0.824,
+    0.248
+   ],
+   "kind": "sack",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.32,
+      0
+     ],
+     "size": [
+      0.55,
+      0.64,
+      0.45
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "sack_pile": {
+   "tris": 647,
+   "size": [
+    1.41,
+    0.814,
+    1.22
+   ],
+   "aabb_min": [
+    -0.587,
+    -0.002,
+    -0.622
+   ],
+   "aabb_max": [
+    0.823,
+    0.812,
+    0.598
+   ],
+   "kind": "sack_pile",
+   "collision_boxes": [
+    {
+     "center": [
+      0.05,
+      0.35,
+      0.05
+     ],
+     "size": [
+      1.4,
+      0.7,
+      1.1
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "bucket": {
+   "tris": 132,
+   "size": [
+    0.336,
+    0.419,
+    0.328
+   ],
+   "aabb_min": [
+    -0.168,
+    0.0,
+    -0.164
+   ],
+   "aabb_max": [
+    0.168,
+    0.419,
+    0.164
+   ],
+   "kind": "bucket"
+  },
+  "cart": {
+   "tris": 344,
+   "size": [
+    1.9,
+    1.363,
+    3.546
+   ],
+   "aabb_min": [
+    -0.95,
+    -0.003,
+    -1.79
+   ],
+   "aabb_max": [
+    0.95,
+    1.36,
+    1.756
+   ],
+   "kind": "cart",
+   "length": 3.5,
+   "children": {
+    "cart_wheel_L": {
+     "offset": [
+      0.8,
+      0.62,
+      -0.8
+     ],
+     "spin_axis": [
+      1,
+      0,
+      0
+     ]
+    },
+    "cart_wheel_R": {
+     "offset": [
+      -0.8,
+      0.62,
+      -0.8
+     ],
+     "spin_axis": [
+      1,
+      0,
+      0
+     ]
+    }
+   },
+   "wheel_radius": 0.62,
+   "wheel_note": "wheels are child nodes pivoting at the hub; L = +X (model's own left). Positive rotation about local +X rolls the cart forward (+Z). Angle += distance / wheel_radius. cart_lo includes static wheels.",
+   "points": {
+    "hitch_point": {
+     "pos": [
+      0,
+      0,
+      2.45
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0,
+     "note": "place the ox origin here (ox faces the same way)"
+    },
+    "cargo": {
+     "pos": [
+      0,
+      0.84,
+      -0.8
+     ],
+     "note": "bed floor centre (1.24 x 1.9 m)"
+    },
+    "driver_walk": {
+     "pos": [
+      -1.05,
+      0,
+      1.4
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0,
+     "note": "drover walks beside the ox"
+    }
+   },
+   "footprint": {
+    "center": [
+     0.0,
+     -0.025
+    ],
+    "size": [
+     1.8,
+     3.55
+    ]
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.75,
+      -0.8
+     ],
+     "size": [
+      1.8,
+      1.5,
+      2.0
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      0.8,
+      0.95
+     ],
+     "size": [
+      1.2,
+      0.25,
+      1.6
+     ],
+     "yaw_deg": 0.0
+    }
+   ],
+   "lo": "cart_lo"
+  },
+  "cart_lo": {
+   "tris": 92,
+   "size": [
+    1.7,
+    1.29,
+    3.5
+   ],
+   "aabb_min": [
+    -0.85,
+    0.0,
+    -1.75
+   ],
+   "aabb_max": [
+    0.85,
+    1.29,
+    1.75
+   ],
+   "kind": "cart",
+   "lod_of": "cart"
+  },
+  "cart_wheel_L": {
+   "tris": 276,
+   "size": [
+    0.26,
+    1.209,
+    1.209
+   ],
+   "aabb_min": [
+    -0.13,
+    -0.605,
+    -0.605
+   ],
+   "aabb_max": [
+    0.13,
+    0.605,
+    0.605
+   ],
+   "kind": "cart_wheel",
+   "parent": "cart",
+   "pivot": "hub (local origin), spin about local +X"
+  },
+  "cart_wheel_R": {
+   "tris": 276,
+   "size": [
+    0.26,
+    1.225,
+    1.225
+   ],
+   "aabb_min": [
+    -0.13,
+    -0.612,
+    -0.612
+   ],
+   "aabb_max": [
+    0.13,
+    0.612,
+    0.612
+   ],
+   "kind": "cart_wheel",
+   "parent": "cart",
+   "pivot": "hub (local origin), spin about local +X"
+  },
+  "market_stall": {
+   "tris": 1286,
+   "size": [
+    3.06,
+    2.929,
+    2.212
+   ],
+   "aabb_min": [
+    -1.53,
+    -0.3,
+    -0.96
+   ],
+   "aabb_max": [
+    1.53,
+    2.629,
+    1.251
+   ],
+   "kind": "market_stall",
+   "tint": "awning A=1 (civ / merchant colour, stripes via shade)",
+   "points": {
+    "vendor_point": {
+     "pos": [
+      0,
+      0,
+      -0.1
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    },
+    "customer_point": {
+     "pos": [
+      0,
+      0,
+      1.45
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0
+    }
+   },
+   "footprint": {
+    "center": [
+     0.0,
+     0.1
+    ],
+    "size": [
+     3.1,
+     1.9
+    ]
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.47,
+      0.52
+     ],
+     "size": [
+      2.9,
+      0.95,
+      0.7
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      -0.4,
+      0.45,
+      -0.62
+     ],
+     "size": [
+      2.0,
+      0.9,
+      0.5
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      -1.38,
+      1.1,
+      0.72
+     ],
+     "size": [
+      0.14,
+      2.2,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      1.38,
+      1.1,
+      0.72
+     ],
+     "size": [
+      0.14,
+      2.2,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      -1.38,
+      1.27,
+      -0.72
+     ],
+     "size": [
+      0.14,
+      2.55,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      1.38,
+      1.27,
+      -0.72
+     ],
+     "size": [
+      0.14,
+      2.55,
+      0.14
+     ],
+     "yaw_deg": 0.0
+    }
+   ],
+   "lo": "market_stall_lo"
+  },
+  "market_stall_lo": {
+   "tris": 62,
+   "size": [
+    3.06,
+    2.736,
+    2.028
+   ],
+   "aabb_min": [
+    -1.53,
+    -0.1,
+    -0.775
+   ],
+   "aabb_max": [
+    1.53,
+    2.636,
+    1.253
+   ],
+   "kind": "market_stall",
+   "lod_of": "market_stall"
+  },
+  "ox": {
+   "tris": 381,
+   "size": [
+    0.84,
+    1.62,
+    2.529
+   ],
+   "aabb_min": [
+    -0.42,
+    0.0,
+    -1.099
+   ],
+   "aabb_max": [
+    0.42,
+    1.62,
+    1.43
+   ],
+   "kind": "animal",
+   "species": "ox",
+   "rigged": false,
+   "length": 2.4,
+   "note": "static low-poly ox; front = +Z. Place at cart hitch_point to pull the cart.",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.8,
+      0.2
+     ],
+     "size": [
+      0.9,
+      1.6,
+      2.4
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "bench": {
+   "tris": 96,
+   "size": [
+    1.6,
+    0.463,
+    0.422
+   ],
+   "aabb_min": [
+    -0.8,
+    -0.009,
+    -0.211
+   ],
+   "aabb_max": [
+    0.8,
+    0.454,
+    0.211
+   ],
+   "kind": "bench",
+   "points": {
+    "seat_1": {
+     "pos": [
+      -0.4,
+      0.47,
+      0
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    },
+    "seat_2": {
+     "pos": [
+      0.4,
+      0.47,
+      0
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    }
+   },
+   "seat_note": "seat points are on the seat surface (h=0.47 m); a sitter may face either side (no backrest)",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.24,
+      0
+     ],
+     "size": [
+      1.6,
+      0.48,
+      0.36
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "table_outdoor": {
+   "tris": 312,
+   "size": [
+    1.914,
+    0.769,
+    1.862
+   ],
+   "aabb_min": [
+    -0.952,
+    -0.009,
+    -0.931
+   ],
+   "aabb_max": [
+    0.962,
+    0.76,
+    0.931
+   ],
+   "kind": "table",
+   "points": {
+    "seat_1": {
+     "pos": [
+      -0.45,
+      0.47,
+      0.72
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0
+    },
+    "seat_2": {
+     "pos": [
+      0.45,
+      0.47,
+      0.72
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0
+    },
+    "seat_3": {
+     "pos": [
+      -0.45,
+      0.47,
+      -0.72
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    },
+    "seat_4": {
+     "pos": [
+      0.45,
+      0.47,
+      -0.72
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    }
+   },
+   "seat_note": "seat points on the bench surface, facing the table",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.38,
+      0
+     ],
+     "size": [
+      1.9,
+      0.76,
+      0.84
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      0.24,
+      0.72
+     ],
+     "size": [
+      1.9,
+      0.48,
+      0.34
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      0.24,
+      -0.72
+     ],
+     "size": [
+      1.9,
+      0.48,
+      0.34
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "signpost": {
+   "tris": 301,
+   "size": [
+    1.767,
+    3.14,
+    1.22
+   ],
+   "aabb_min": [
+    -0.853,
+    -0.4,
+    -0.441
+   ],
+   "aabb_max": [
+    0.915,
+    2.74,
+    0.779
+   ],
+   "kind": "signpost",
+   "note": "three arrow boards (yaw 25°, 160°, -65° about the post); letters suggested by dark strokes",
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      1.3,
+      0
+     ],
+     "size": [
+      0.2,
+      2.6,
+      0.2
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "lamp_post": {
+   "tris": 179,
+   "size": [
+    1.04,
+    3.55,
+    0.4
+   ],
+   "aabb_min": [
+    -0.2,
+    -0.4,
+    -0.2
+   ],
+   "aabb_max": [
+    0.84,
+    3.15,
+    0.2
+   ],
+   "kind": "lamp_post",
+   "points": {
+    "light_point": {
+     "pos": [
+      0.72,
+      2.3,
+      0
+     ],
+     "note": "OmniLight3D here (lantern glass A=0.5 glows)"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      1.5,
+      0
+     ],
+     "size": [
+      0.22,
+      3.0,
+      0.22
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "torch_post": {
+   "tris": 104,
+   "size": [
+    0.313,
+    2.432,
+    0.12
+   ],
+   "aabb_min": [
+    -0.06,
+    -0.4,
+    -0.06
+   ],
+   "aabb_max": [
+    0.253,
+    2.032,
+    0.06
+   ],
+   "kind": "torch_post",
+   "points": {
+    "light_point": {
+     "pos": [
+      0.21,
+      2.12,
+      0
+     ],
+     "note": "flame particles + OmniLight3D (no flame mesh)"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.9,
+      0
+     ],
+     "size": [
+      0.16,
+      1.8,
+      0.16
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "trough": {
+   "tris": 140,
+   "size": [
+    1.81,
+    0.55,
+    0.82
+   ],
+   "aabb_min": [
+    -0.905,
+    0.0,
+    -0.41
+   ],
+   "aabb_max": [
+    0.905,
+    0.55,
+    0.41
+   ],
+   "kind": "trough",
+   "points": {
+    "drink_point": {
+     "pos": [
+      0,
+      0,
+      0.75
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0,
+     "note": "animal / person drinking"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.27,
+      0
+     ],
+     "size": [
+      1.8,
+      0.55,
+      0.66
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "anvil": {
+   "tris": 127,
+   "size": [
+    0.84,
+    1.0,
+    0.684
+   ],
+   "aabb_min": [
+    -0.34,
+    -0.15,
+    -0.323
+   ],
+   "aabb_max": [
+    0.5,
+    0.85,
+    0.361
+   ],
+   "kind": "anvil",
+   "points": {
+    "work_point": {
+     "pos": [
+      0,
+      0,
+      0.62
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0,
+     "note": "smith stands here, anvil horn to his right"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.4,
+      0
+     ],
+     "size": [
+      0.62,
+      0.8,
+      0.55
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "forge": {
+   "tris": 892,
+   "size": [
+    2.32,
+    4.731,
+    1.403
+   ],
+   "aabb_min": [
+    -0.85,
+    -0.2,
+    -0.771
+   ],
+   "aabb_max": [
+    1.47,
+    4.531,
+    0.632
+   ],
+   "kind": "forge",
+   "points": {
+    "fire_point": {
+     "pos": [
+      0,
+      0.97,
+      0.05
+     ],
+     "note": "fire particles + OmniLight3D (orange)"
+    },
+    "chimney_top": {
+     "pos": [
+      0,
+      4.531,
+      -0.05
+     ],
+     "note": "smoke"
+    },
+    "work_point": {
+     "pos": [
+      -0.2,
+      0,
+      1.05
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0,
+     "note": "smith tends the fire"
+    },
+    "bellows_point": {
+     "pos": [
+      1.25,
+      0,
+      0.75
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0,
+     "note": "pull the bellows lever"
+    }
+   },
+   "footprint": {
+    "center": [
+     0.225,
+     -0.0
+    ],
+    "size": [
+     2.15,
+     1.3
+    ]
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.45,
+      0
+     ],
+     "size": [
+      1.62,
+      0.9,
+      1.22
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      1.45,
+      -0.43
+     ],
+     "size": [
+      1.62,
+      1.2,
+      0.36
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      1.22,
+      0.45,
+      -0.05
+     ],
+     "size": [
+      0.55,
+      0.9,
+      0.95
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      3.3,
+      -0.05
+     ],
+     "size": [
+      0.8,
+      2.2,
+      0.8
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "grindstone": {
+   "tris": 200,
+   "size": [
+    1.12,
+    1.135,
+    0.9
+   ],
+   "aabb_min": [
+    -0.4,
+    -0.015,
+    -0.45
+   ],
+   "aabb_max": [
+    0.72,
+    1.12,
+    0.45
+   ],
+   "kind": "grindstone",
+   "points": {
+    "work_point": {
+     "pos": [
+      0.95,
+      0,
+      0.1
+     ],
+     "facing": [
+      -1.0,
+      0.0,
+      0.0
+     ],
+     "yaw_deg": -90.0,
+     "note": "turns the crank"
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.55,
+      0
+     ],
+     "size": [
+      0.8,
+      1.1,
+      0.95
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "clothesline": {
+   "tris": 480,
+   "size": [
+    4.31,
+    2.365,
+    1.475
+   ],
+   "aabb_min": [
+    -2.155,
+    -0.4,
+    -0.375
+   ],
+   "aabb_max": [
+    2.155,
+    1.965,
+    1.1
+   ],
+   "kind": "clothesline",
+   "collision_boxes": [
+    {
+     "center": [
+      -2.1,
+      1.0,
+      0
+     ],
+     "size": [
+      0.16,
+      2.0,
+      0.8
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      2.1,
+      1.0,
+      0
+     ],
+     "size": [
+      0.16,
+      2.0,
+      0.8
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "dog_house": {
+   "tris": 300,
+   "size": [
+    1.519,
+    1.61,
+    1.72
+   ],
+   "aabb_min": [
+    -0.76,
+    0.0,
+    -0.73
+   ],
+   "aabb_max": [
+    0.759,
+    1.61,
+    0.99
+   ],
+   "kind": "dog_house",
+   "tint": "roof A=1",
+   "points": {
+    "dog_point": {
+     "pos": [
+      0,
+      0,
+      0.9
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    }
+   },
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.5,
+      0
+     ],
+     "size": [
+      1.0,
+      1.0,
+      1.2
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "sheep": {
+   "tris": 196,
+   "size": [
+    0.731,
+    1.006,
+    1.462
+   ],
+   "aabb_min": [
+    -0.342,
+    0.0,
+    -0.683
+   ],
+   "aabb_max": [
+    0.389,
+    1.006,
+    0.779
+   ],
+   "kind": "animal",
+   "species": "sheep",
+   "rigged": false,
+   "collision_boxes": [
+    {
+     "center": [
+      0,
+      0.45,
+      0
+     ],
+     "size": [
+      0.7,
+      0.9,
+      1.3
+     ],
+     "yaw_deg": 0.0
+    }
+   ]
+  },
+  "bridge": {
+   "tris": 1192,
+   "size": [
+    4.439,
+    3.432,
+    13.001
+   ],
+   "aabb_min": [
+    -2.0,
+    -0.502,
+    -6.501
+   ],
+   "aabb_max": [
+    2.439,
+    2.93,
+    6.5
+   ],
+   "kind": "bridge",
+   "span_axis": "Godot Z (deck runs z = -6.5 … +6.5, i.e. front-to-back)",
+   "span": 12.0,
+   "deck_length": 13.0,
+   "deck_width": 3.5,
+   "deck_top_y": 1.8,
+   "placement": "origin = stream-bed centre under the bridge. Deck top is 1.8 m above the origin, so with banks ~1.8 m above the bed the deck is flush with both banks; deck ends overlap the banks by 0.5 m (z = ±6..±6.5). Rotate yaw so local Z follows the road.",
+   "points": {
+    "end_front": {
+     "pos": [
+      0,
+      1.8,
+      6.5
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "yaw_deg": 0.0
+    },
+    "end_back": {
+     "pos": [
+      0,
+      1.8,
+      -6.5
+     ],
+     "facing": [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     "yaw_deg": 180.0
+    },
+    "mid": {
+     "pos": [
+      0,
+      1.8,
+      0
+     ]
+    }
+   },
+   "walkable_boxes": [
+    {
+     "center": [
+      0,
+      1.75,
+      0
+     ],
+     "size": [
+      3.5,
+      0.1,
+      13.0
+     ],
+     "yaw_deg": 0.0
+    }
+   ],
+   "collision_boxes": [
+    {
+     "center": [
+      -1.67,
+      2.35,
+      0
+     ],
+     "size": [
+      0.16,
+      1.1,
+      12.6
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      1.67,
+      2.35,
+      0
+     ],
+     "size": [
+      0.16,
+      1.1,
+      12.6
+     ],
+     "yaw_deg": 0.0
+    },
+    {
+     "center": [
+      0,
+      0.6,
+      3.25
+     ],
+     "size": [
+      3.1,
+      1.4,
+      0.35
+     ],
+     "yaw_deg": 0.0,
+     "note": "pile bent"
+    },
+    {
+     "center": [
+      0,
+      0.6,
+      -0.0
+     ],
+     "size": [
+      3.1,
+      1.4,
+      0.35
+     ],
+     "yaw_deg": 0.0,
+     "note": "pile bent"
+    },
+    {
+     "center": [
+      0,
+      0.6,
+      -3.25
+     ],
+     "size": [
+      3.1,
+      1.4,
+      0.35
+     ],
+     "yaw_deg": 0.0,
+     "note": "pile bent"
+    }
+   ],
+   "footprint": {
+    "center": [
+     0.0,
+     -0.0
+    ],
+    "size": [
+     3.5,
+     13.0
+    ]
+   },
+   "lo": "bridge_lo"
+  },
+  "bridge_lo": {
+   "tris": 66,
+   "size": [
+    3.5,
+    3.05,
+    13.0
+   ],
+   "aabb_min": [
+    -1.75,
+    -0.2,
+    -6.5
+   ],
+   "aabb_max": [
+    1.75,
+    2.85,
+    6.5
+   ],
+   "kind": "bridge",
+   "lod_of": "bridge"
+  }
+ },
+ "verify": {
+  "problems": []
+ }
+}
