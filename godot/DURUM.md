@@ -233,6 +233,27 @@ D bayılma ve yara → E ekip → F envanter ve ekonomi → G etkileşim ve pano
   kamp ayaktaysa oyuncu ilanı kopardı ve 3 gün sonra açık ilan yok). `--fighttest`'e 3 × Sv6 (rahip/savaşçı/haydut) vs 7 goblin:
   56/60, 60/60, 60/60.
 
+### H · Kayıt (Demir mod) ve A'nın kalanı (bitti)
+
+- **Tek yuva, kendiliğinden kayıt** (`SaveGame`, `src/game/GameMenu.cs`): makro dünya (`Sim.Save`) + yerel durum (ekip: statlar,
+  çantalar, kese, kuşanılanlar, yaralar ve lakaplar, maaş günleri, kafes; kontrol edilen kişi ve yeri; saat; bayraklar: ot öbekleri,
+  kafes denemesi, soyulma günü; kamp sandığı). Kayıt anları: pencere kapanınca (savaş sürüyorsa önce o anki canlar karakterlere yazılır
+  — pencereyi kapatmak kaçış değil), her yeni gün, savaştan (zafer ya da yenilgi uyanışından), kiralamadan, handa uykudan, kamptan,
+  ilan koparınca, ödülden, sandıktan, simdeki kahramanların kamp savaşından sonra. Herkes ölünce yuva silinir.
+- **Oyun menüsü** (Esc; savaşta değil): Devam; ayarlar (savaş başında duraklat, zarlar başların üstünde — `user://settings.json`);
+  kaydet ve ana menüye dön; kaydet ve çık. Eski kayda dönüş yok.
+- **Test:** `--savetest`: oynanmış bir durum (yoldaş kiralanıp Tab ile ona geçilmiş, eşya, topallık, toplanmış ot öbeği, alınmış ilan,
+  başka bir yerde, saat 15:30) kaydedilir; (1) aynı dünya sürer: kayıttan açılan makro dünya 10 gün sonra canlı dünyayla aynı tarihi
+  yazar (523 olay, aynı özet); (2) bölge kayıttan yeniden açılınca kontrol edilen kişi aynı yerde (0,00 m), ekip, çantalar, yaralar,
+  kese, saat, bayraklar, sandık ve ilan aynı. PASS.
+- **A'nın kalanı — sokak sahneleri** (`LifeSim.Mood`, `Brain.Leisure`): köyün simdeki durumu her gün okunur: **festival** — akşam köy
+  meydanda (dans eden, eğlenen; meydanda şenlik ateşi), **kıtlık** — akşamları muhtarın kapısında erzak kuyruğu, **salgın** — akşamları
+  herkes evinde, **canavar tehdidi** — oduncular ormana gitmez, avluda odun yarar. Lafta da (G) duyulur. `--mood=…` ile zorlanır;
+  lifetest festival, kıtlık ve salgında PASS (festivalde en kalabalık öbek 7).
+- Yerelden sime (A): kamp temizlendi, goblin öldü (C), kahraman öldü/yaralandı, oyuncu soyuldu/esir düştü (D), kiralama (E), alım
+  satım (F), ilan ve ödül, kahramanların kamp savaşı (G). Simden yerele: fiyat ve stok (F), panodaki ilanlar, söylentiler, handaki
+  kahramanlar (E, G), köyün durumu (laf ve sokak sahneleri).
+
 ---
 
 # Açık dünya dikey dilimi (30 Eylül 2026)

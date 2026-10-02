@@ -31,6 +31,8 @@ public sealed partial class LifeSim
     public string VillageName = "Sessiztepe";
     public string InnName = "Yorgun Katır";
     public string CampName = "Kırık Diş kampı";
+    /// <summary>Faz 2 A: the village's state in the sim (festival, shortage/hunger, plague, monsters; null: ordinary days) — street scenes</summary>
+    public string Mood;
 
     /// <summary>Player (hero) position in the ground plane and whether sprinting — goblins react to it.</summary>
     public Vector2 PlayerPos;

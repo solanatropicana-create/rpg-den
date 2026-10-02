@@ -698,6 +698,15 @@ public partial class CombatDirector : Node
         _s.Flags["robbedDay"] = _s.Macro.W.Day;
     }
 
+    /// <summary>H: the game is closing mid-fight: hit points and the fallen as they are now go to the characters (iron mode: closing the
+    /// window is no escape).</summary>
+    public void WriteBackNow()
+    {
+        if (Fight == null || Summary) return;
+        Fight.WriteBack((int)_s.Macro.W.Day, _s.Camp?.Name);
+        foreach (var f in Fight.F) if (f.Char != null && f.Down && !f.Dead) { f.Char.Down = false; f.Char.Hp = 1; }
+    }
+
     /// <summary>The camp is broken when its chief fell and no goblin of it still stands outside the fight (the rest scatter), or when
     /// none of its goblins is left at all.</summary>
     bool CampBroken()

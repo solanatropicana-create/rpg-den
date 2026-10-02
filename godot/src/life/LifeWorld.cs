@@ -198,8 +198,28 @@ public partial class LifeWorld : Node3D
         }
     }
 
+    Node3D _festival;
+
+    /// <summary>Faz 2 A: on a festival day (the sim's village status) a bonfire burns at the plaza in the evening.</summary>
+    void UpdateFestival()
+    {
+        bool on = Sim.Mood == "festival" && (GameClock.Hour >= 17.5f || GameClock.Hour < 1f);
+        if (on == (_festival != null)) return;
+        if (!on) { _festival.QueueFree(); _festival = null; return; }
+        var plaza = Sim.PlaceOf(PlaceKind.Plaza);
+        if (plaza == null) return;
+        var c = plaza.Center;
+        var pos = new Vector3(c.X, _region.Heightfield.Height(c.X, c.Y) + 0.2f, c.Y);
+        _festival = new Node3D { Name = "FestivalFire" };
+        AddChild(_festival);
+        Fx.Fire(_festival, pos, 0.9f);
+        Fx.Smoke(_festival, pos + Vector3.Up * 1.5f, 0.8f);
+        _festival.AddChild(new OmniLight3D { Position = pos + Vector3.Up * 1.2f, LightColor = new Color(1f, 0.6f, 0.25f), LightEnergy = 3.5f, OmniRange = 16f });
+    }
+
     void UpdateHomes()
     {
+        UpdateFestival();
         float h = GameClock.Hour;
         foreach (var (placeId, (geoms, smoke)) in _homes)
         {

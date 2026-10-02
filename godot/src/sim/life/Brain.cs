@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -178,6 +179,19 @@ public sealed class Brain
     {
         var plaza = _w.PlaceOf(PlaceKind.Plaza);
         var home = Home;
+        // Faz 2 A: the village's state in the sim makes the street scene
+        if (_w.Mood == "festival" && plaza != null && _h >= 17.5f && _h < bed - 0.5f && R(91) < 0.85f)
+        {
+            bool dance = R(92 + (int)_h) < 0.55f;
+            var at = plaza.RandomPoint(new Rng((ulong)(_p.Id * 131 + _day * 7 + (int)_h)), 1.5f);
+            return InArea(ActKind.Socialize, plaza, at, H.Norm(plaza.Center - at), dance ? (R(93) < 0.5f ? "Jump" : "Wave") : "Talk", null, Math.Min(Mins(40 + R(94) * 50), At(bed - 0.3f)),
+                dance ? "Festivalde dans ediyor" : "Festivalde eğleniyor", "Festivale gidiyor", "Köyde festival var (simde); meydanda ateş yakıldı, herkes orada.", 2.5f);
+        }
+        if (_w.Mood is "plague")
+            return HomeAct("Evden çıkmıyor", "Köyde salgın var (simde); herkes evine kapanmış.", Math.Min(Mins(60 + R(95) * 60), At(bed)));
+        if (_w.Mood is "shortage" or "hunger" && R(96) < 0.4f && _p.Role != Role.Headman && _w.People.FirstOrDefault(x => x.Role == Role.Headman) is Person hd && hd.Home >= 0 && _w.Places[hd.Home] is Place hm)
+            return InArea(ActKind.Socialize, hm, hm.Door + hm.DoorFace * (2.2f + R(97) * 2f), -hm.DoorFace, "Talk", null, Math.Min(Mins(30 + R(98) * 30), At(bed - 0.5f)),
+                "Muhtarın kapısında erzak bekliyor", "Muhtarın evine gidiyor", "Köyde kıtlık var (simde); muhtar ambardan kalanı paylaştırıyor.", 1.5f);
         float r = R(50 + (int)(_h * 2));
         bool lateInn = _p.Age >= 18 && _p.Role is not (Role.Elder or Role.Priest) && R(77) < (_p.Social < 0.4f ? 0.3f : 0.1f);
         var inn = _w.PlaceOf(PlaceKind.Inn);
@@ -293,6 +307,11 @@ public sealed class Brain
     Activity Woodcutter()
     {
         var site = _w.PlaceOf(PlaceKind.Logging);
+        if (_w.Mood == "monsters" && _h >= 7f && _h < 17f && Home != null)
+        {
+            var y = FreeSpot(Home, "yard", 35);
+            if (y != null) return AtSpot(ActKind.Work, Home, y, "Chop", "tool_axe", At(17f), "Avluda odun yarıyor", "Eve dönüyor", "Ormanda canavar var (simde); oduncular köyden çıkmıyor, eldeki odunu yarıyor.");
+        }
         { float st = 6.8f - 0.35f + R(17) * 0.8f; if (_h < st) return Chores(st); }
         if (_h >= 12f && _h < 12.8f) return Lunch(site, 12f, 12.8f);
         if (_h >= 16.8f && _h < 17.6f)

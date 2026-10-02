@@ -419,6 +419,7 @@ public partial class Hud : CanvasLayer
     }
 
     public void OpenCardFor(Person p) => OpenCard(p);
+    public bool MapOpen => _mapRoot != null && _mapRoot.Visible;
 
     float _partyT;
     void UpdateParty()

@@ -57,6 +57,7 @@ public partial class Region : Node3D
     public FD.Game.Board Board { get; private set; }
     public FD.Game.Talk Talk { get; private set; }
     public FD.Game.NpcBands Bands { get; private set; }
+    public FD.Game.GameMenu Menu { get; private set; }
     public InventoryPanel Inventory { get; private set; }
     public TradePanel Trade { get; private set; }
 
@@ -206,6 +207,13 @@ public partial class Region : Node3D
         Bands = new FD.Game.NpcBands();
         AddChild(Bands);
         Bands.Init(this);
+        Menu = new FD.Game.GameMenu();
+        AddChild(Menu);
+        Menu.Init(this);
+        // Faz 2 A: the village's state in the sim makes the street scene (festival at the plaza, a queue at the headman's door…)
+        string MoodNow() { var vi = Session.Village(); return FD.Dev.Dev.Instance?.Mood ?? vi?.Status ?? vi?.Crisis; }
+        Life.Mood = MoodNow();
+        Director.NewDay += _ => Life.Mood = MoodNow();
         Step("life");
         IsReady = true;
         GD.Print($"[Region] ready in {total.ElapsedMilliseconds} ms");

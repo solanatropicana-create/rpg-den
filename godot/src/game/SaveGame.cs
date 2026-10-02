@@ -45,6 +45,8 @@ public static class SaveGame
     /// <summary>set by <see cref="Load"/>, consumed by the region (player position etc.)</summary>
     public static LocalState Pending;
     public static string LastError;
+    /// <summary>when and why the slot was last written (this session)</summary>
+    public static string LastSaved;
 
     public static bool Exists() => File.Exists(WorldPath) && File.Exists(LocalPath);
 
@@ -92,6 +94,7 @@ public static class SaveGame
             File.Move(wTmp, WorldPath, true);
             File.Move(lTmp, LocalPath, true);
             GD.Print($"[Save] {reason}: gün {GameClock.Day + 1} {GameClock.Hour:F1}, makro gün {s.Macro.W.Day}");
+            LastSaved = $"{GameClock.TimeString} ({reason})";
             LastError = null;
             return true;
         }
